@@ -2,7 +2,7 @@
 
 Issue: #4
 Owner: Codex
-Status: In progress
+Status: Complete
 
 ## Purpose
 
@@ -16,10 +16,10 @@ real server boot.
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Implement with tests.
+- [x] Capture the issue's acceptance evidence.
+- [x] Complete `/review` and resolve P1 findings.
+- [x] Record the retrospective.
 
 ## Decision Log
 
@@ -27,24 +27,44 @@ real server boot.
 | --- | --- | --- |
 | 2026-07-19 | Keep all arena implementation under a `buildbattle` package and avoid a general scenario abstraction. | BB-02 is scenario-specific, and the repository contract reserves a platform seam for BB-14. |
 | 2026-07-19 | Represent clears and walls as lazy cuboid fill operations consumed by one bounded queue. | The command can enqueue a constant number of operations while every tick performs at most `blocks-per-tick` block mutations. |
-| 2026-07-19 | Place plots on a deterministic centered grid using center-to-center `plot-spacing`. | This makes bounds, spacing, and non-overlap directly testable for every configured plot count. |
+| 2026-07-19 | Place plots on deterministic concentric square rings using `plot-spacing` as the grid pitch. | This makes bounds, spacing, and non-overlap directly testable while reserving the hub for gathering and later chest work. |
 | 2026-07-19 | Treat packaged `config.yml` as the source of numeric and timing defaults, then validate all values while loading. | Defaults remain operator-visible and no gameplay timing, deck, plot, or batch values are hidden in code. |
 
 ## Surprises & Discoveries
 
 - The delivery worktree began detached at `origin/main`; it was clean, so the base branch
   could be fast-forwarded and the issue branch created without carrying unrelated changes.
+- The first `/review` found that a centered 3×3 grid put the fifth plot directly on the
+  hub at the default eight-plot capacity. The geometry now skips the center by construction,
+  and the eight-plot regression test asserts all expected ring positions.
+- A nested review sandbox could compile the final sources but could not bind a Paper server
+  port. The delivery session therefore reran the pinned Paper server directly and captured
+  the command evidence below.
 
 ## Acceptance evidence
 
-Planned evidence:
-
-- `make ci-fast` for compilation and unit tests covering plot bounds, spacing, overlap,
-  batching limits, and packaged configuration.
-- Paper smoke-test output showing `battle_world` creation and successful plugin enable.
-- A real server command run showing `/battle start` enqueues two plots and completes the
-  batched mutations at `blocks-per-tick: 4000` without a watchdog stall.
+- `make ci-fast` completed successfully with 13 tests covering packaged configuration,
+  plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
+  batching limits and arithmetic, command authorization settings, and protection-plugin
+  detection.
+- Pinned Paper `1.21.11` build `132` enabled the final plugin jar and logged:
+  `Loaded or created superflat world battle_world.`
+- The same boot logged:
+  `Loaded battle_world spawn chunk before reading arena floor at hub x=0, z=0, Y=-61.`
+- Running `battle start` from the Paper console logged:
+  `Arena build queued: 2 plots in battle_world, 81660 block mutations at 4000 per tick.`
+- One second later the server logged:
+  `Arena build complete: 2 plots in battle_world (81660 block mutations).`
+- The final log contained no `A single server tick took`, `The server has stopped
+  responding`, or `Watchdog Thread` signature and completed a clean shutdown with
+  `All dimensions are saved`.
+- A second `/review` after the hub fix reported no functional regression.
 
 ## Retrospective
 
-To be completed after implementation, local review, and acceptance verification.
+BB-02 now supplies the configuration contract needed by later phase work, creates and
+stabilizes the arena world, reserves a real hub while laying out arbitrary plot counts,
+and turns every plot clear or wall build into lazy operations behind a strict tick budget.
+The server smoke path now exercises the temporary two-plot command instead of proving only
+that the plugin enables. Keeping the fill plan pure made both exact wall geometry and the
+runtime mutation count testable without mocking Paper.

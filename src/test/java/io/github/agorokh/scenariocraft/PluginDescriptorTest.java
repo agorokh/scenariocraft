@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -30,9 +31,13 @@ class PluginDescriptorTest {
     }
 
     @Test
-    void entryPointRemainsTheMinimalPaperLifecycle() {
+    void entryPointUsesThePaperLifecycle() {
         assertEquals(JavaPlugin.class, ScenarioCraftPlugin.class.getSuperclass());
-        assertEquals(1, ScenarioCraftPlugin.class.getDeclaredMethods().length);
-        assertEquals("onEnable", ScenarioCraftPlugin.class.getDeclaredMethods()[0].getName());
+        assertTrue(
+                Arrays.stream(ScenarioCraftPlugin.class.getDeclaredMethods())
+                        .anyMatch(method -> method.getName().equals("onEnable")));
+        assertTrue(
+                Arrays.stream(ScenarioCraftPlugin.class.getDeclaredMethods())
+                        .anyMatch(method -> method.getName().equals("onDisable")));
     }
 }

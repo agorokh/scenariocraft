@@ -179,6 +179,14 @@ jobs:
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
                 grep -q "Done (" logs/latest.log; then
+                printf "battle start\n" >&3
+                break
+              fi
+              sleep 1
+            done
+            while kill -0 "${server_pid}" 2>/dev/null; do
+              if test -f logs/latest.log &&
+                grep -q "Arena build complete: 2 plots in battle_world" logs/latest.log; then
                 printf "stop\n" >&3
                 break
               fi
@@ -219,6 +227,22 @@ jobs:
           if ! grep -q 'Done (' "${log}"; then
             printf 'Paper did not reach Done.\n'
             grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
+            failed=1
+          fi
+          if ! grep -q \
+            'Arena build queued: 2 plots in battle_world, 81660 block mutations at 4000 per tick' \
+            "${log}" ||
+            ! grep -q \
+              'Arena build complete: 2 plots in battle_world (81660 block mutations)' \
+              "${log}"; then
+            printf 'The two-plot batched arena build did not complete as expected.\n'
+            grep -n -C 4 -E 'Arena build|battle_world|ERROR|Exception' "${log}" || true
+            failed=1
+          fi
+          if grep -n -C 4 -E \
+            'A single server tick took|The server has stopped responding|Watchdog Thread' \
+            "${log}"; then
+            printf 'Paper reported a watchdog stall during arena construction.\n'
             failed=1
           fi
           if ! grep -q 'Stopping server' "${log}" ||
