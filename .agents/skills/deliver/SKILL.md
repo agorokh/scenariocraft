@@ -47,6 +47,23 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
      { printf 'Issue number must be a positive integer\n' >&2; exit 1; }
    command -v gh
    command -v jq
+   command -v grep
+   command -v head
+   JQ_VERSION="$(jq --version)"
+   JQ_VERSION_NUMBER="$(
+     printf '%s\n' "${JQ_VERSION}" |
+       grep -Eo '[0-9]+\.[0-9]+' |
+       head -n 1
+   )"
+   [[ "${JQ_VERSION_NUMBER}" =~ ^[0-9]+\.[0-9]+$ ]] ||
+     { printf 'Cannot parse jq version: %s\n' "${JQ_VERSION}" >&2; exit 1; }
+   JQ_MAJOR="${JQ_VERSION_NUMBER%%.*}"
+   JQ_MINOR="${JQ_VERSION_NUMBER#*.}"
+   if ! { test "${JQ_MAJOR}" -gt 1 ||
+     { test "${JQ_MAJOR}" -eq 1 && test "${JQ_MINOR}" -ge 6; }; }; then
+     printf 'jq 1.6 or newer is required\n' >&2
+     exit 1
+   fi
    command -v sleep
    gh auth status
    PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
@@ -87,9 +104,9 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    smallest implementation slice otherwise — so GitHub has a branch difference to review.
    On the new branch, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` for a multi-hour issue and record the intended approach in the
-   Decision Log. If the repository-local template is missing, use the same required
-   sections: Purpose, Progress, Decision Log, Surprises & Discoveries, Acceptance evidence,
-   and Retrospective.
+   Decision Log. For multi-hour work, run `test -f docs/plans/TEMPLATE.md` before copying it;
+   a missing repository-local template is a contract failure that must be escalated rather
+   than replaced with an improvised plan.
    Re-run the same four repository-contract checks immediately after creating the branch.
    Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
    not require the code gate. Then explicitly create the draft against the verified base:

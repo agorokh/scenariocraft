@@ -43,24 +43,30 @@ do not load `.env` files or service-manager configuration implicitly.
    command -v gh
    command -v jq
    JQ_VERSION="$(jq --version)"
-   [[ "${JQ_VERSION}" =~ ^jq-1\.[6-9]([.-].*)?$ ]] ||
-     { printf 'jq 1.6 or newer is required\n' >&2; exit 1; }
+   JQ_VERSION_NUMBER="$(
+     printf '%s\n' "${JQ_VERSION}" |
+       grep -Eo '[0-9]+\.[0-9]+' |
+       head -n 1
+   )"
+   [[ "${JQ_VERSION_NUMBER}" =~ ^[0-9]+\.[0-9]+$ ]] ||
+     { printf 'Cannot parse jq version: %s\n' "${JQ_VERSION}" >&2; exit 1; }
+   JQ_MAJOR="${JQ_VERSION_NUMBER%%.*}"
+   JQ_MINOR="${JQ_VERSION_NUMBER#*.}"
+   if ! { test "${JQ_MAJOR}" -gt 1 ||
+     { test "${JQ_MAJOR}" -eq 1 && test "${JQ_MINOR}" -ge 6; }; }; then
+     printf 'jq 1.6 or newer is required\n' >&2
+     exit 1
+   fi
    command -v sleep
    command -v awk
    command -v date
    command -v grep
+   command -v head
+   command -v mktemp
    GH_VERSION="$(
      gh --version |
-       awk '/gh version/ {
-         for (i = 1; i <= NF; i++) {
-           if ($i ~ /^v?[0-9]+\.[0-9]+/) {
-             sub(/^v/, "", $i)
-             match($i, /^[0-9]+\.[0-9]+(\.[0-9]+)?/)
-             print substr($i, RSTART, RLENGTH)
-             exit
-           }
-         }
-       }'
+       grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |
+       head -n 1
    )"
    [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
      { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
@@ -111,6 +117,33 @@ do not load `.env` files or service-manager configuration implicitly.
    this resolution session's ID only when that exact list item is absent. Preserve the rest
    of the description. This idempotent set of unique IDs keeps every session that changed
    the PR auditable without duplicating entries after a resumed invocation.
+
+   Before entering the CI-repair path, initialize the head watermark and load the durable
+   repair counters. Step 4 reloads the complete ledger, but step 3 must never read an unset
+   counter:
+
+   ```sh
+   REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
+     --json headRefOid --jq .headRefOid)"
+   REPAIR_ATTEMPTS_JSON='{}'
+   PR_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+   if printf '%s\n' "${PR_BODY}" |
+     grep -q '^<!-- resolve-pr-ledgers:v1$'; then
+     EARLY_LEDGER_JSON="$(
+       printf '%s\n' "${PR_BODY}" |
+         awk '
+           /^<!-- resolve-pr-ledgers:v1$/ { capture = 1; next }
+           capture && /^-->$/ { exit }
+           capture { print }
+         '
+     )"
+     REPAIR_ATTEMPTS_JSON="$(
+       printf '%s' "${EARLY_LEDGER_JSON}" |
+         jq -e '(.repair_attempts // {}) |
+           if type == "object" then . else error("invalid repair ledger") end'
+     )"
+   fi
+   ```
 
 3. If CI is pending, wait 60 seconds and reinspect it until terminal or until the
    end-to-end budget in `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800
@@ -190,6 +223,85 @@ do not load `.env` files or service-manager configuration implicitly.
      REVIEW_LEDGER_JSON='[]'
      REPAIR_ATTEMPTS_JSON='{}'
    fi
+   validate_managed_ledger() {
+     local body="$1" marker_count extracted
+     marker_count="$(
+       printf '%s\n' "${body}" |
+         awk '/^<!-- resolve-pr-ledgers:v1$/ { count++ } END { print count + 0 }'
+     )"
+     test "${marker_count}" -le 1 || return 1
+     test "${marker_count}" -eq 1 || return 0
+     extracted="$(
+       printf '%s\n' "${body}" |
+         awk '
+           /^<!-- resolve-pr-ledgers:v1$/ { capture = 1; next }
+           capture && /^-->$/ { closed = 1; exit }
+           capture { print }
+           END { if (capture && !closed) exit 1 }
+         '
+     )" || return 1
+     printf '%s' "${extracted}" |
+       jq -e '
+         (.conversation | type == "array") and
+         (.reviews | type == "array") and
+         ((.repair_attempts // {}) | type == "object")
+       ' >/dev/null
+   }
+   persist_resolution_state() {
+     local update_attempt body current_body next_body post_update_body
+     local ledgers_json update_ok=0
+     ledgers_json="$(
+       jq -cn --argjson conversation "${CONVERSATION_LEDGER_JSON}" \
+         --argjson reviews "${REVIEW_LEDGER_JSON}" \
+         --argjson repair_attempts "${REPAIR_ATTEMPTS_JSON}" \
+         '{conversation: $conversation, reviews: $reviews,
+           repair_attempts: $repair_attempts}'
+     )"
+     for update_attempt in 1 2 3; do
+       body="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+       validate_managed_ledger "${body}" || {
+         printf 'Malformed or duplicate managed ledger block\n' >&2
+         return 1
+       }
+       next_body="$(
+         printf '%s\n' "${body}" |
+           awk -v ledgers="${ledgers_json}" '
+             BEGIN { replaced = 0; skipping = 0 }
+             /^<!-- resolve-pr-ledgers:v1$/ {
+               print "<!-- resolve-pr-ledgers:v1"
+               print ledgers
+               print "-->"
+               replaced = 1
+               skipping = 1
+               next
+             }
+             skipping && /^-->$/ { skipping = 0; next }
+             skipping { next }
+             { print }
+             END {
+               if (!replaced) {
+                 print "<!-- resolve-pr-ledgers:v1"
+                 print ledgers
+                 print "-->"
+               }
+             }
+           '
+       )"
+       validate_managed_ledger "${next_body}" || return 1
+       current_body="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+       if test "${current_body}" = "${body}" &&
+         printf '%s\n' "${next_body}" |
+           gh pr edit <P> --repo "${REPO}" --body-file - >/dev/null; then
+         post_update_body="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+         if test "${post_update_body}" = "${next_body}"; then
+           update_ok=1
+           break
+         fi
+       fi
+       sleep 2
+     done
+     test "${update_ok}" -eq 1
+   }
    RATE_LIMIT_JSON="$(gh api rate_limit)"
    GRAPHQL_REMAINING="$(
      printf '%s' "${RATE_LIMIT_JSON}" | jq -r .resources.graphql.remaining
@@ -203,9 +315,11 @@ do not load `.env` files or service-manager configuration implicitly.
        --body "Escalation: GraphQL rate limit is below 100; resets at ${GRAPHQL_RESET}."
      exit 1
    }
+   REST_PAGES_FILE="$(mktemp)"
+   trap 'rm -f "${REST_PAGES_FILE}"' EXIT HUP INT TERM
    fetch_rest_collection() {
      local endpoint="$1" page=1 page_length
-     REST_COLLECTION_JSON='[]'
+     : >"${REST_PAGES_FILE}"
      while test "${page}" -le 50; do
        PAGE_OK=0
        for PAGE_DELAY in 0 5 15 45; do
@@ -221,10 +335,7 @@ do not load `.env` files or service-manager configuration implicitly.
        done
        test "${PAGE_OK}" -eq 1 || return 1
        page_length="$(printf '%s' "${PAGE_JSON}" | jq 'length')"
-       REST_COLLECTION_JSON="$(
-         jq -cn --argjson accumulated "${REST_COLLECTION_JSON}" \
-           --argjson page "${PAGE_JSON}" '$accumulated + $page'
-       )"
+       printf '%s' "${PAGE_JSON}" | jq -c . >>"${REST_PAGES_FILE}"
        test "${page_length}" -eq 100 || return 0
        page=$((page + 1))
      done
@@ -236,6 +347,7 @@ do not load `.env` files or service-manager configuration implicitly.
        --body "Escalation: conversation-comment inventory exceeded 50 pages."
      exit 1
    }
+   REST_COLLECTION_JSON="$(jq -s 'add // []' "${REST_PAGES_FILE}")"
    CONVERSATION_COMMENTS_JSON="${REST_COLLECTION_JSON}"
    CONVERSATION_LEDGER_JSON="$(
      jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
@@ -260,6 +372,7 @@ do not load `.env` files or service-manager configuration implicitly.
        --body "Escalation: formal-review inventory exceeded 50 pages."
      exit 1
    }
+   REST_COLLECTION_JSON="$(jq -s 'add // []' "${REST_PAGES_FILE}")"
    FORMAL_REVIEWS_JSON="${REST_COLLECTION_JSON}"
    REVIEW_LEDGER_JSON="$(
      jq -cn --argjson ledger "${REVIEW_LEDGER_JSON}" \
@@ -500,6 +613,11 @@ do not load `.env` files or service-manager configuration implicitly.
      printf '%s' "${CONVERSATION_LEDGER_JSON}" |
        jq '[.[] | select(.status != "ADDRESSED")] | length'
    )"
+   persist_resolution_state || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: durable conversation assessment could not be persisted safely."
+     exit 1
+   }
    ```
 
    Assess every formal review body too, including a `COMMENTED` summary with no inline
@@ -520,7 +638,18 @@ do not load `.env` files or service-manager configuration implicitly.
            .evidence_sha = $sha
          else . end)'
    )"
+   persist_resolution_state || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: durable formal-review assessment could not be persisted safely."
+     exit 1
+   }
    ```
+
+   `persist_resolution_state` means execute the combined, validated body update in step 8
+   immediately after the transition and verify the just-written body before continuing.
+   Do not defer this call until a review wait: a completed current-head review can bypass
+   the polling path, and the next fresh inventory must still be able to reconstruct the
+   assessment.
 
    Before accepting either `ADDRESSED` state at the merge gate, fetch its
    `evidence_comment_id` from the complete conversation inventory and verify the resolver
@@ -641,7 +770,7 @@ do not load `.env` files or service-manager configuration implicitly.
 
    ```sh
    CHECKPOINT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-   [[ "${CHECKPOINT_TIMESTAMP}" =~ ^[-0-9TZ:+.]+$ ]] ||
+   [[ "${CHECKPOINT_TIMESTAMP}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
      { printf 'Unsupported UTC timestamp format\n' >&2; exit 1; }
    CHECKPOINT="<!-- resolve-pr-checkpoint:v1 head=${REVIEWED_SHA} cycle=<CYCLE> timestamp=${CHECKPOINT_TIMESTAMP} -->"
    LEDGERS_JSON="$(
@@ -658,6 +787,11 @@ do not load `.env` files or service-manager configuration implicitly.
    BODY_UPDATE_OK=0
    for BODY_UPDATE_ATTEMPT in 1 2 3; do
      BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+     validate_managed_ledger "${BODY}" || {
+       gh pr comment <P> --repo "${REPO}" \
+         --body "Escalation: PR description contains a malformed or duplicate managed ledger."
+       exit 1
+     }
      SESSION_PRESENT=0
      printf '%s\n' "${BODY}" |
        grep -Fqx -- "${SESSION_LINE}" && SESSION_PRESENT=1
@@ -693,7 +827,7 @@ do not load `.env` files or service-manager configuration implicitly.
              }
              next
            }
-           /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[-0-9TZ:+.]+ -->$/ {
+           /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z -->$/ {
              if (!checkpoint_replaced) {
                print checkpoint
                checkpoint_replaced = 1
@@ -717,12 +851,20 @@ do not load `.env` files or service-manager configuration implicitly.
            }
          '
      )"
+     validate_managed_ledger "${NEXT_BODY}" || {
+       gh pr comment <P> --repo "${REPO}" \
+         --body "Escalation: combined PR-description update produced an invalid ledger."
+       exit 1
+     }
      CURRENT_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
      if test "${CURRENT_BODY}" = "${BODY}" &&
        printf '%s\n' "${NEXT_BODY}" |
-         gh pr edit <P> --repo "${REPO}" --body-file -; then
-       BODY_UPDATE_OK=1
-       break
+         gh pr edit <P> --repo "${REPO}" --body-file - >/dev/null; then
+       POST_UPDATE_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+       if test "${POST_UPDATE_BODY}" = "${NEXT_BODY}"; then
+         BODY_UPDATE_OK=1
+         break
+       fi
      fi
      sleep 2
    done
@@ -804,13 +946,17 @@ do not load `.env` files or service-manager configuration implicitly.
    CONVERSATION_LEDGER_JSON="$(
      jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
        --argjson comments "${CONVERSATION_COMMENTS_JSON}" \
-       --arg resolver "${RESOLVER_LOGIN}" '
+       --arg resolver "${RESOLVER_LOGIN}" \
+       --arg reviewed_sha "${REVIEWED_SHA}" '
        $ledger | map(
          if .status == "ADDRESSED" then
            . as $entry |
            ("resolve-pr evidence: comment " + ($entry.id | tostring) +
             ", head " + ($entry.evidence_sha // "")) as $marker |
-           if [$comments[] |
+           if .system_evidence == true then .
+           elif ($entry.evidence_sha // "") != $reviewed_sha then
+             .status = "UNADDRESSED"
+           elif [$comments[] |
              select(.id == $entry.evidence_comment_id and
                     .user.login == $resolver and
                     (.body | contains($marker)))] | length == 1
@@ -820,13 +966,16 @@ do not load `.env` files or service-manager configuration implicitly.
    REVIEW_LEDGER_JSON="$(
      jq -cn --argjson ledger "${REVIEW_LEDGER_JSON}" \
        --argjson comments "${CONVERSATION_COMMENTS_JSON}" \
-       --arg resolver "${RESOLVER_LOGIN}" '
+       --arg resolver "${RESOLVER_LOGIN}" \
+       --arg reviewed_sha "${REVIEWED_SHA}" '
        $ledger | map(
          if .status == "ADDRESSED" then
            . as $entry |
            ("resolve-pr evidence: review " + ($entry.id | tostring) +
             ", head " + ($entry.evidence_sha // "")) as $marker |
-           if [$comments[] |
+           if ($entry.evidence_sha // "") != $reviewed_sha then
+             .status = "UNADDRESSED"
+           elif [$comments[] |
              select(.id == $entry.evidence_comment_id and
                     .user.login == $resolver and
                     (.body | contains($marker)))] | length == 1
