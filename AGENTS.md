@@ -27,6 +27,7 @@ make ci-fast
 ```
 
 `make ci-fast` is the local CI-parity gate. The build jar is written to `build/libs/`.
+PR resolution requires GitHub CLI 2.49.0 or newer for `--match-head-commit`.
 
 ## Conventions
 

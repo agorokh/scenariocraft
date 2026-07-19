@@ -26,7 +26,8 @@ ExecPlan updated and the session ID recorded.
    Decision Log. Verify the repository-local template exists before using it; if it is
    missing, comment on the issue and stop rather than improvising a replacement.
 3. Resolve the intended base branch from the target issue, defaulting to the repository's
-   remote default branch. Fetch it, switch to it, and fast-forward it before creating branch
+   remote default branch. Reject a nonempty `git status --porcelain` before switching
+   branches. Fetch the base, switch to it, and fast-forward it before creating branch
    `codex/<issue>-<slug>`; verify that the new branch contains no unexpected commits. Make
    and push the first scoped commit — the ExecPlan for multi-hour work, or the smallest
    implementation slice otherwise — before opening a draft PR so GitHub has a branch
@@ -35,8 +36,8 @@ ExecPlan updated and the session ID recorded.
    implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
    the issue and stop; do not silently expand scope.
-5. Write tests alongside the change. Verify the checked-in `Makefile` exposes `ci-fast` with
-   `make -n ci-fast`, then run `make ci-fast` locally before every code push.
+5. Write tests alongside the change. Fail fast with a clear message if `Makefile` is absent
+   or `make -n ci-fast` fails; otherwise run `make ci-fast` locally before every code push.
 6. If an ExecPlan was created, update it: check off Progress and record anything that failed
    or surprised you under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Run `/review` against `code_review.md` while the PR is still a draft and fix every P1.
@@ -51,11 +52,11 @@ ExecPlan updated and the session ID recorded.
    Do not push merely to restart healthy pending checks. If the budget expires, escalate and
    stop without marking the PR ready. If checks fail, push fixes while the PR remains a
    draft, then repeat the pushed-SHA and GitHub-check verification for the replacement head.
-   Only then mark the PR ready for review.
+   This pre-review CI repair belongs to `deliver`; only then mark the PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
-   to merged; do not run the CI-repair, review-resolution, or merge loop here.
+   to merged; do not run the post-review CI-repair, review-resolution, or merge loop here.
 8. If the same correction has now been needed twice, append a dated rule to
     `AGENTS.md` → Corrections in this PR.
 

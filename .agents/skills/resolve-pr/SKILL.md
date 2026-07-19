@@ -35,11 +35,11 @@ workflow exists before relying on check state.
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
    gh repo view "${REPO}" --json nameWithOwner
-   test -f .github/workflows/ci.yml
    test -z "$(git status --porcelain)"
    gh pr checkout <P> --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
      "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
+   test -f .github/workflows/ci.yml
    ```
 
 2. Inspect the PR:
@@ -73,7 +73,7 @@ workflow exists before relying on check state.
    Check review threads with GraphQL because REST does not report resolution state:
 
    ```sh
-   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{author{login} body}}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
+   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{databaseId author{login} body}}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
    ```
 
    Use `-F` for the PR number. `-f` sends a string and fails the GraphQL integer
@@ -104,7 +104,16 @@ workflow exists before relying on check state.
    - If a human replies inside an advisory thread, treat that thread as gating.
 
 6. Address every thread with either a fix and push or a factual reply explaining why the
-   finding does not apply. After the fix or reply is visible, resolve the thread explicitly:
+   finding does not apply. Use the root comment's `databaseId` from step 4 to post a factual
+   reply:
+
+   ```sh
+   gh api --method POST \
+     "repos/${REPO}/pulls/<P>/comments/<COMMENT_ID>/replies" \
+     -f body='<FACTUAL_REPLY>'
+   ```
+
+   After the fix or reply is visible, resolve the thread explicitly:
 
    ```sh
    gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}' -f id=<THREAD_ID>
@@ -129,11 +138,17 @@ workflow exists before relying on check state.
    gh api --paginate --slurp \
      "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
      jq --arg sha "${REVIEWED_SHA}" \
-       'add | map(select(.commit_id == $sha)) | map({user: .user.login, state, body})'
+       '(add // [])
+        | map(select(.commit_id == $sha))
+        | group_by(.user.login // "deleted")
+        | map(max_by(.submitted_at))
+        | map({user: (.user.login // "deleted"), state, body})'
    ```
 
    Reject `DISMISSED` and `CHANGES_REQUESTED` as completion signals. `APPROVED` or
    `COMMENTED` means the pass posted, but every finding in its body still must be addressed.
+   Evaluate only the latest same-SHA review per reviewer; an earlier change request
+   superseded by that review is historical.
    A nonempty `reviewRequests` list means review is pending. When the repository has no
    required or requested reviewer, wait one full cycle for asynchronous findings; after
    that, absence of a formal review is non-blocking and only posted findings, unresolved
