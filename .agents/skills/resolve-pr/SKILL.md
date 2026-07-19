@@ -215,16 +215,18 @@ calling any helper; do not assume shell functions are exported across processes.
          jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
              jq '.conversation')" \
            --argjson desired "${desired_conversation}" '
-           ($current + $desired) | group_by(.id) |
-           map(sort_by(if .status == "ADDRESSED" then 1 else 0 end) | .[-1])
+           ([$current[] |
+              select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+           sort_by(.id)
          '
        )"
        REVIEW_LEDGER_JSON="$(
          jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
              jq '.reviews')" \
            --argjson desired "${desired_reviews}" '
-           ($current + $desired) | group_by(.id) |
-           map(sort_by(if .status == "ADDRESSED" then 1 else 0 end) | .[-1])
+           ([$current[] |
+              select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+           sort_by(.id)
          '
        )"
        REPAIR_ATTEMPTS_JSON="$(
@@ -372,6 +374,8 @@ calling any helper; do not assume shell functions are exported across processes.
    redacted, stable `<CHECK>:<ROOT_CAUSE>` key:
 
    ```sh
+   # Run this counter block only when a pushed repair's replacement head has
+   # failed for the same root cause, never on the initial pre-repair failure.
    REPAIR_KEY="<CHECK>:<REDACTED_ROOT_CAUSE>"
    REPAIR_ATTEMPTS_JSON="$(
      printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
@@ -384,8 +388,11 @@ calling any helper; do not assume shell functions are exported across processes.
        gh pr comment <P> --repo "${REPO}" --body-file -
      exit 1
    }
-   test "$(printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
-     jq --arg key "${REPAIR_KEY}" '.[$key]')" -lt 3 || {
+   COMPLETED_FAILED_REPAIR_COUNT="$(
+     printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
+       jq --arg key "${REPAIR_KEY}" '.[$key]'
+   )"
+   test "${COMPLETED_FAILED_REPAIR_COUNT}" -lt 3 || {
      printf 'Escalation: %s failed after three repair attempts.\n' \
        "${REPAIR_KEY}" |
        gh pr comment <P> --repo "${REPO}" --body-file -
@@ -869,8 +876,10 @@ calling any helper; do not assume shell functions are exported across processes.
            select([
              $reviews[] |
              select(author == ($change | author) and
-                    (.submitted_at | fromdateiso8601) >
-                      ($change.submitted_at | fromdateiso8601) and
+                    (.submitted_at |
+                      gsub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) >
+                      ($change.submitted_at |
+                        gsub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) and
                     .commit_id == $sha and
                     .state == "APPROVED")
            ] | length == 0)
@@ -1034,7 +1043,7 @@ calling any helper; do not assume shell functions are exported across processes.
        jq --arg sha "${REVIEWED_SHA}" '
          [.[] |
            select(.state == "PENDING" and
-                  ((.commit.oid // "") == $sha or .commit == null))
+                  (.commit.oid // "") == $sha)
          ] | length'
    )"
    PR_AUTHOR_LOGIN="$(gh pr view <P> --repo "${REPO}" \

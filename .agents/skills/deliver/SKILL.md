@@ -100,23 +100,29 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    creating branch `codex/<issue>-<slug>`. Derive `slug` with lowercase ASCII letters,
    digits, and hyphens only, then require `[[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]`;
    never paste issue text into a shell command. Verify that the new branch contains no
-   unexpected commits. Make and push the first scoped commit — the ExecPlan for multi-hour work, or the
-   smallest implementation slice otherwise — so GitHub has a branch difference to review.
-   On the new branch, create or extend `docs/plans/<feature>.md` from
+   unexpected commits. On the new branch, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` for a multi-hour issue and record the intended approach in the
    Decision Log. For multi-hour work, run `test -f docs/plans/TEMPLATE.md` before copying it;
    a missing repository-local template is a contract failure that must be escalated rather
    than replaced with an improvised plan.
+   Only after creating that plan, make and push the first scoped commit — the ExecPlan for
+   multi-hour work, or the smallest implementation slice otherwise — so GitHub has a branch
+   difference to review.
    Re-run the same four repository-contract checks immediately after creating the branch.
    Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
    not require the code gate. Then explicitly create the draft against the verified base:
 
    ```sh
+   BASE_REF="<VERIFIED_BASE_REF>"
+   SLUG="<DERIVED_SAFE_SLUG>"
+   PR_TITLE="<VERIFIED_PR_TITLE>"
+   DESCRIPTION_FILE="<CREATED_DESCRIPTION_FILE>"
    [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
      { printf 'Unsafe branch slug\n' >&2; exit 1; }
    [[ "${BASE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] ||
      { printf 'Unsafe base ref\n' >&2; exit 1; }
-   DESCRIPTION_BODY="$(<"<DESCRIPTION_FILE>")"
+   test -s "${DESCRIPTION_FILE}"
+   DESCRIPTION_BODY="$(<"${DESCRIPTION_FILE}")"
    PR_JSON="$(
      jq -cn --arg title "${PR_TITLE}" --arg head "codex/<issue>-${SLUG}" \
        --arg base "${BASE_REF}" --arg body "${DESCRIPTION_BODY}" \
