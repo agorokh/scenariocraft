@@ -1,0 +1,28 @@
+# Arena geometry and block-edit budget
+plot-size: 33
+wall-height: 30
+plot-spacing: 64
+max-plots: 8
+blocks-per-tick: 4000
+
+# Phase timings used by the Build Battle round controller
+gather-seconds: 30
+note-seconds: 60
+build-seconds: 1200
+reveal-linger-seconds: 900
+
+# Starter deck: short, kid-friendly prompts that work in a compact plot
+tasks:
+  - A dragon treehouse
+  - A rocket-powered castle
+  - An underwater bakery
+  - A friendly monster school
+  - A jungle roller coaster
+  - A moon base for cats
+  - A tiny wizard village
+  - A pirate ship in the clouds
+  - A robot pet playground
+  - A secret garden library
+
+exempt-names: []
+allow-any-start: true

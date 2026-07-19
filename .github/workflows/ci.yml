@@ -14,6 +14,7 @@ env:
   PAPER_BUILD: '132'
   PAPER_SHA256: '5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba'
   PAPER_BOOT_TIMEOUT_SECONDS: ${{ vars.PAPER_BOOT_TIMEOUT_SECONDS || '300' }}
+  BATTLE_QUEUE_TIMEOUT_SECONDS: ${{ vars.BATTLE_QUEUE_TIMEOUT_SECONDS || '30' }}
 
 jobs:
   build:
@@ -156,6 +157,10 @@ jobs:
             printf 'PAPER_BOOT_TIMEOUT_SECONDS must be a positive integer.\n'
             exit 1
           }
+          [[ "${BATTLE_QUEUE_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] || {
+            printf 'BATTLE_QUEUE_TIMEOUT_SECONDS must be a positive integer.\n'
+            exit 1
+          }
           # shellcheck disable=SC2016
           timeout --signal=TERM --kill-after=10s \
             "${PAPER_BOOT_TIMEOUT_SECONDS}s" bash -c '
@@ -176,11 +181,77 @@ jobs:
               fi
             }
             trap cleanup EXIT TERM INT
+            battle_log_offset=0
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
                 grep -q "Done (" logs/latest.log; then
+                battle_log_offset=$(wc -c <logs/latest.log)
+                printf "battle start\n" >&3
+                break
+              fi
+              sleep 1
+            done
+            queue_seen=0
+            queue_failure=timeout
+            for ((attempt = 0; attempt < BATTLE_QUEUE_TIMEOUT_SECONDS; attempt++)); do
+              new_battle_log=$(
+                tail -c "+$((battle_log_offset + 1))" logs/latest.log 2>/dev/null ||
+                  true
+              )
+              if grep -q "Arena build queued: 2 plots in battle_world" \
+                <<<"${new_battle_log}"; then
+                queue_seen=1
+                break
+              fi
+              if ! kill -0 "${server_pid}" 2>/dev/null; then
+                queue_failure=server-exited
+                break
+              fi
+              if grep -Fq \
+                -e "Unknown command" \
+                -e "Unknown or incomplete command" <<<"${new_battle_log}"; then
+                queue_failure=unknown-command
+                break
+              fi
+              if grep -q "Arena chunk preparation failed" <<<"${new_battle_log}"; then
+                queue_failure=preparation-failed
+                break
+              fi
+              sleep 1
+            done
+            if test "${queue_seen}" -ne 1; then
+              case "${queue_failure}" in
+                unknown-command)
+                  printf "Paper rejected battle start as an unknown command.\n" >&2
+                  ;;
+                preparation-failed)
+                  printf "Arena chunk preparation failed before the build queued.\n" >&2
+                  ;;
+                server-exited)
+                  printf "Paper exited before battle start queued.\n" >&2
+                  ;;
+                *)
+                  printf "battle start did not queue within %s seconds.\n" \
+                    "${BATTLE_QUEUE_TIMEOUT_SECONDS}" >&2
+                  ;;
+              esac
+              exit 1
+            fi
+            while kill -0 "${server_pid}" 2>/dev/null; do
+              new_battle_log=$(
+                tail -c "+$((battle_log_offset + 1))" logs/latest.log 2>/dev/null ||
+                  true
+              )
+              if grep -q "Arena build complete: 2 plots in battle_world" \
+                <<<"${new_battle_log}"; then
                 printf "stop\n" >&3
                 break
+              fi
+              if grep -Fq \
+                -e "Arena chunk preparation failed" \
+                -e "Arena block mutation failed" <<<"${new_battle_log}"; then
+                printf "Arena build failed before completion.\n" >&2
+                exit 1
               fi
               sleep 1
             done
@@ -219,6 +290,47 @@ jobs:
           if ! grep -q 'Done (' "${log}"; then
             printf 'Paper did not reach Done.\n'
             grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
+            failed=1
+          fi
+          queued_line="$(
+            grep -E \
+              'Arena build queued: 2 plots in battle_world, [0-9]+ block mutations at 4000 per tick' \
+              "${log}" | tail -n 1 || true
+          )"
+          complete_line="$(
+            grep -E \
+              'Arena build complete: 2 plots in battle_world \([0-9]+ block mutations\)' \
+              "${log}" | tail -n 1 || true
+          )"
+          queued_mutations="$(
+            printf '%s\n' "${queued_line}" |
+              sed -nE \
+                's/^.*Arena build queued: 2 plots in battle_world, ([0-9]+) block mutations at 4000 per tick.*$/\1/p'
+          )"
+          complete_mutations="$(
+            printf '%s\n' "${complete_line}" |
+              sed -nE \
+                's/^.*Arena build complete: 2 plots in battle_world \(([0-9]+) block mutations\).*$/\1/p'
+          )"
+          if test -z "${queued_line}" ||
+            test -z "${complete_line}"; then
+            printf 'The two-plot batched arena build did not complete as expected.\n'
+            grep -n -C 4 -E 'Arena build|battle_world|ERROR|Exception' "${log}" || true
+            failed=1
+          elif ! [[ "${queued_mutations}" =~ ^[0-9]+$ ]] ||
+            ! [[ "${complete_mutations}" =~ ^[0-9]+$ ]]; then
+            printf 'Could not extract numeric arena mutation totals from the smoke log.\n'
+            grep -n -C 2 -E 'Arena build queued|Arena build complete' "${log}" || true
+            failed=1
+          elif test "${queued_mutations}" != "${complete_mutations}"; then
+            printf 'Queued and completed arena mutation totals differ: %s vs %s.\n' \
+              "${queued_mutations}" "${complete_mutations}"
+            failed=1
+          fi
+          if grep -n -C 4 -E \
+            'A single server tick took|The server has stopped responding|Watchdog Thread' \
+            "${log}"; then
+            printf 'Paper reported a watchdog stall during arena construction.\n'
             failed=1
           fi
           if ! grep -q 'Stopping server' "${log}" ||
