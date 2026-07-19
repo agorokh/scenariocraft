@@ -50,8 +50,11 @@ do not load `.env` files or service-manager configuration implicitly.
      gh --version |
        awk '/gh version/ {
          for (i = 1; i <= NF; i++) {
-           if ($i ~ /^v?[0-9]+\.[0-9]+(\.[0-9]+)?$/) {
-             sub(/^v/, "", $i); print $i; exit
+           if ($i ~ /^v?[0-9]+\.[0-9]+/) {
+             sub(/^v/, "", $i)
+             match($i, /^[0-9]+\.[0-9]+(\.[0-9]+)?/)
+             print substr($i, RSTART, RLENGTH)
+             exit
            }
          }
        }'
@@ -175,8 +178,19 @@ do not load `.env` files or service-manager configuration implicitly.
      local endpoint="$1" page=1 page_length
      REST_COLLECTION_JSON='[]'
      while test "${page}" -le 50; do
-       PAGE_JSON="$(gh api "${endpoint}&page=${page}")"
-       printf '%s' "${PAGE_JSON}" | jq -e 'type == "array"' >/dev/null
+       PAGE_OK=0
+       for PAGE_DELAY in 0 5 15 45; do
+         if test "${PAGE_DELAY}" -gt 0; then
+           sleep $((PAGE_DELAY + $(awk 'BEGIN { srand(); print int(rand() * 5) }')))
+         fi
+         if PAGE_JSON="$(gh api "${endpoint}&page=${page}")" &&
+           printf '%s' "${PAGE_JSON}" |
+             jq -e 'type == "array"' >/dev/null; then
+           PAGE_OK=1
+           break
+         fi
+       done
+       test "${PAGE_OK}" -eq 1 || return 1
        page_length="$(printf '%s' "${PAGE_JSON}" | jq 'length')"
        REST_COLLECTION_JSON="$(
          jq -cn --argjson accumulated "${REST_COLLECTION_JSON}" \
@@ -199,8 +213,10 @@ do not load `.env` files or service-manager configuration implicitly.
        --argjson comments "${CONVERSATION_COMMENTS_JSON}" '
        [$comments[] as $comment |
          ([$ledger[] |
-             select((.id | tonumber) == ($comment.id | tonumber))][0] //
-          {id: $comment.id, status: "UNADDRESSED"})
+             select((.id | tonumber) == ($comment.id | tonumber) and
+                    .updated_at == $comment.updated_at)][0] //
+          {id: $comment.id, updated_at: $comment.updated_at,
+           status: "UNADDRESSED"})
        ]'
    )"
    fetch_rest_collection \
@@ -215,8 +231,10 @@ do not load `.env` files or service-manager configuration implicitly.
        --argjson reviews "${FORMAL_REVIEWS_JSON}" '
        [$reviews[] as $review |
          ([$ledger[] |
-             select((.id | tonumber) == ($review.id | tonumber))][0] //
-          {id: $review.id, status: "UNADDRESSED"})
+             select((.id | tonumber) == ($review.id | tonumber) and
+                    .submitted_at == $review.submitted_at)][0] //
+          {id: $review.id, submitted_at: $review.submitted_at,
+           status: "UNADDRESSED"})
        ]'
    )"
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
@@ -572,48 +590,86 @@ do not load `.env` files or service-manager configuration implicitly.
        --argjson reviews "${REVIEW_LEDGER_JSON}" \
        '{conversation: $conversation, reviews: $reviews}'
    )"
-   BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
-   NEXT_BODY="$(
+   CODEX_SESSION_ID="<SESSION_ID>"
+   [[ "${CODEX_SESSION_ID}" =~ ^[0-9a-f-]+$ ]] ||
+     { printf 'Invalid Codex session ID\n' >&2; exit 1; }
+   SESSION_LINE="- \`${CODEX_SESSION_ID}\`"
+   BODY_UPDATE_OK=0
+   for BODY_UPDATE_ATTEMPT in 1 2 3; do
+     BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+     SESSION_PRESENT=0
      printf '%s\n' "${BODY}" |
-       awk -v checkpoint="${CHECKPOINT}" -v ledgers="${LEDGERS_JSON}" '
-         BEGIN { checkpoint_replaced = 0; ledger_replaced = 0; skip_ledger = 0 }
-         /^<!-- resolve-pr-ledgers:v1$/ {
-           if (!ledger_replaced) {
-             print "<!-- resolve-pr-ledgers:v1"
-             print ledgers
-             print "-->"
-             ledger_replaced = 1
+       grep -Fqx -- "${SESSION_LINE}" && SESSION_PRESENT=1
+     NEXT_BODY="$(
+       printf '%s\n' "${BODY}" |
+         awk -v checkpoint="${CHECKPOINT}" -v ledgers="${LEDGERS_JSON}" \
+           -v session_line="${SESSION_LINE}" \
+           -v session_present="${SESSION_PRESENT}" '
+           BEGIN {
+             checkpoint_replaced = 0
+             ledger_replaced = 0
+             skip_ledger = 0
+             sessions_seen = 0
            }
-           skip_ledger = 1
-           next
-         }
-         skip_ledger && /^-->$/ { skip_ledger = 0; next }
-         skip_ledger { next }
-         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[-0-9TZ:+.]+ -->$/ {
-           if (!checkpoint_replaced) {
-             print checkpoint
-             checkpoint_replaced = 1
+           /^<!-- resolve-pr-ledgers:v1$/ {
+             if (!ledger_replaced) {
+               print "<!-- resolve-pr-ledgers:v1"
+               print ledgers
+               print "-->"
+               ledger_replaced = 1
+             }
+             skip_ledger = 1
+             next
            }
-           next
-         }
-         { print }
-         END {
-           if (!ledger_replaced) {
-             print "<!-- resolve-pr-ledgers:v1"
-             print ledgers
-             print "-->"
+           skip_ledger && /^-->$/ { skip_ledger = 0; next }
+           skip_ledger { next }
+           /^## Codex sessions$/ {
+             sessions_seen = 1
+             print
+             if (!session_present) {
+               print ""
+               print session_line
+             }
+             next
            }
-           if (!checkpoint_replaced) print checkpoint
-         }
-       '
-   )"
-   CURRENT_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
-   test "${CURRENT_BODY}" = "${BODY}" || {
-     printf 'PR body changed; recompute the combined update\n' >&2
+           /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[-0-9TZ:+.]+ -->$/ {
+             if (!checkpoint_replaced) {
+               print checkpoint
+               checkpoint_replaced = 1
+             }
+             next
+           }
+           { print }
+           END {
+             if (!sessions_seen) {
+               print ""
+               print "## Codex sessions"
+               print ""
+               print session_line
+             }
+             if (!ledger_replaced) {
+               print "<!-- resolve-pr-ledgers:v1"
+               print ledgers
+               print "-->"
+             }
+             if (!checkpoint_replaced) print checkpoint
+           }
+         '
+     )"
+     CURRENT_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+     if test "${CURRENT_BODY}" = "${BODY}" &&
+       printf '%s\n' "${NEXT_BODY}" |
+         gh pr edit <P> --repo "${REPO}" --body-file -; then
+       BODY_UPDATE_OK=1
+       break
+     fi
+     sleep 2
+   done
+   test "${BODY_UPDATE_OK}" -eq 1 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: PR description changed during three combined update attempts."
      exit 1
    }
-   printf '%s\n' "${NEXT_BODY}" |
-     gh pr edit <P> --repo "${REPO}" --body-file -
    ```
 
    Apply the ledger-section replacement and checkpoint-line replacement to the same freshly
@@ -704,7 +760,12 @@ do not load `.env` files or service-manager configuration implicitly.
      CHECKS_STATUS=$?
    test -n "${CHECKS_JSON}" ||
      { printf 'Empty checks response; merge gate is incomplete\n' >&2; exit 1; }
-   printf '%s' "${CHECKS_JSON}" | jq -e 'type == "array" and length > 0' >/dev/null
+   if ! printf '%s' "${CHECKS_JSON}" |
+     jq -e 'type == "array" and length > 0' >/dev/null; then
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: checks API returned empty or invalid JSON."
+     exit 1
+   fi
    CHECK_ACTION="$(
      printf '%s' "${CHECKS_JSON}" |
        jq -r '
@@ -739,15 +800,17 @@ do not load `.env` files or service-manager configuration implicitly.
          MERGEABLE)
            ;;
          CONFLICTING)
-           BASE_REF="$(gh pr view <P> --repo "${REPO}" \
-             --json baseRefName --jq .baseRefName)"
-           git fetch origin "${BASE_REF}"
+           BASE_SHA="$(gh pr view <P> --repo "${REPO}" \
+             --json baseRefOid --jq .baseRefOid)"
+           PR_REMOTE_URL="$(gh repo view "${REPO}" --json url --jq .url)"
+           git fetch "${PR_REMOTE_URL}.git" "${BASE_SHA}"
            CONFLICT_FILES="$(
              git merge-tree --write-tree --name-only \
-               HEAD "origin/${BASE_REF}" 2>&1 || true
+               HEAD "${BASE_SHA}" 2>&1 || true
            )"
-           gh pr comment <P> --repo "${REPO}" \
-             --body "Escalation: PR is conflicting. Merge-tree output: ${CONFLICT_FILES}"
+           printf 'Escalation: PR is conflicting. Merge-tree output: %s\n' \
+             "${CONFLICT_FILES}" |
+             gh pr comment <P> --repo "${REPO}" --body-file -
            exit 1
            ;;
          *)

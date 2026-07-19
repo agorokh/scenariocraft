@@ -79,18 +79,24 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    For a new delivery, resolve the intended base branch from the target issue, defaulting
    to the repository's remote default branch. Reject a nonempty `git status --porcelain`
    before switching branches. Fetch the base, switch to it, and fast-forward it before
-   creating branch `codex/<issue>-<slug>`; verify that the new branch contains no unexpected
-   commits. Make and push the first scoped commit — the ExecPlan for multi-hour work, or the
+   creating branch `codex/<issue>-<slug>`. Derive `slug` with lowercase ASCII letters,
+   digits, and hyphens only, then require `[[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]`;
+   never paste issue text into a shell command. Verify that the new branch contains no
+   unexpected commits. Make and push the first scoped commit — the ExecPlan for multi-hour work, or the
    smallest implementation slice otherwise — so GitHub has a branch difference to review.
    Re-run the same four repository-contract checks immediately after creating the branch.
    Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
    not require the code gate. Then explicitly create the draft against the verified base:
 
    ```sh
+   [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
+     { printf 'Unsafe branch slug\n' >&2; exit 1; }
    gh pr create --draft --repo "${REPO}" --base "${BASE_REF}" \
-     --head "codex/<issue>-<slug>" --title "<TITLE>" \
+     --head "codex/<issue>-${SLUG}" --title "${PR_TITLE}" \
      --body-file "<DESCRIPTION_FILE>"
    ```
+
+   Keep `PR_TITLE` as data in the quoted `--title` argument; never evaluate it as shell.
 
    Keep the PR in draft while implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
