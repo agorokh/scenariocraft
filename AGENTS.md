@@ -51,5 +51,10 @@ make ci-fast
 
 ## Corrections
 
-Entries in this section must be dated and trace to a repeated operator correction. No
-corrections have been recorded yet.
+Entries in this section must be dated and trace to a repeated operator correction.
+
+- 2026-07-19 — Do not create or reference infrastructure that does not exist in this
+  repository. A session added `docs/01_Vault/` handoff notes describing a memory bridge, a
+  Tier-3 workspace, a code-edit gate, a self-hosted reviewer, and a resolve-gate — none of
+  which exist here. Durable memory in this repository is: the issue backlog, `docs/plans/`
+  ExecPlans, and this Corrections section. Nothing else.
