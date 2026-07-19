@@ -12,6 +12,16 @@ description: Take one ScenarioCraft Build Week issue from specification to a pul
 **Outputs:** One ready-for-review PR satisfying that issue's acceptance criteria, with its
 ExecPlan updated and the session ID recorded.
 
+## Configuration
+
+- `SCENARIOCRAFT_REPO` is an optional `owner/name` string; it defaults to
+  `agorokh/scenariocraft`.
+- `SCENARIOCRAFT_CI_WAIT_SECONDS` is an optional positive integer in seconds; it defaults to
+  `1800`.
+
+Set overrides with `export NAME=value` in the shell that launches the agent. These skills
+do not load `.env` files or service-manager configuration implicitly.
+
 ## Steps
 
 1. Read, in order: issue [#2](https://github.com/agorokh/scenariocraft/issues/2)
@@ -49,7 +59,8 @@ ExecPlan updated and the session ID recorded.
    Confirm local CI and that pushed head's GitHub checks are green. If checks are pending,
    wait 60 seconds and reinspect them until terminal or until the end-to-end budget in
    `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800 seconds to account
-   for runner queue time separately from the job timeout; the operator may override it.
+   for runner queue time separately from the job timeout; the operator may override it
+   with a positive integer.
    Do not push merely to restart healthy pending checks. If the budget expires, escalate and
    stop without marking the PR ready. If checks fail, push fixes while the PR remains a
    draft, then repeat the pushed-SHA and GitHub-check verification for the replacement head.

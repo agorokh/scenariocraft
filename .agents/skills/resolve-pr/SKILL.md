@@ -19,6 +19,18 @@ with `gh pr merge --help`. The workflow requires the GitHub CLI; fail fast when 
 absent instead of attempting installation during PR resolution. Verify the checked-in CI
 workflow exists before relying on check state.
 
+## Configuration
+
+- `SCENARIOCRAFT_REPO` is an optional `owner/name` string; it defaults to
+  `agorokh/scenariocraft`.
+- `SCENARIOCRAFT_CI_WAIT_SECONDS` is an optional positive integer in seconds; it defaults to
+  `1800`.
+- `RESOLVE_PR_POLL_INTERVAL_SECONDS` is an optional positive integer in seconds; it defaults
+  to `600`.
+
+Set overrides with `export NAME=value` in the shell that launches the agent. These skills
+do not load `.env` files or service-manager configuration implicitly.
+
 ## Steps
 
 1. Authenticate, resolve the repository target, reject a dirty worktree, check out the
@@ -28,7 +40,12 @@ workflow exists before relying on check state.
 
    ```sh
    command -v gh
-   gh --version
+   GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
+   GH_MAJOR="${GH_VERSION%%.*}"
+   GH_REMAINDER="${GH_VERSION#*.}"
+   GH_MINOR="${GH_REMAINDER%%.*}"
+   test "${GH_MAJOR}" -gt 2 ||
+     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }
    gh auth status
    gh pr merge --help | grep -q -- '--match-head-commit'
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
@@ -214,17 +231,23 @@ workflow exists before relying on check state.
    review does not count as a completed pass but does not itself gate merge. Confirm every
    change request on that SHA was dismissed or superseded by a later approving review.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
-   inventory. Derive `UNRESOLVED_THREAD_COUNT` and
-   `CURRENT_HEAD_PENDING_REVIEW_COUNT` from that fresh GraphQL result, then verify all
-   reported checks, the head, review requests, and review decision. Pin the merge to the
-   reviewed SHA:
+   inventory. Derive `UNRESOLVED_THREAD_COUNT`,
+   `CURRENT_HEAD_PENDING_REVIEW_COUNT`, and
+   `CURRENT_HEAD_CHANGES_REQUESTED_COUNT` from that fresh GraphQL result. For change
+   requests, use the latest current-SHA review per reviewer as in step 8; do not rely on
+   `reviewDecision`, which can be empty without branch protection. Then verify all reported
+   checks, the head, review requests, and review decision. Pin the merge to the reviewed
+   SHA:
 
    ```sh
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
+   test "${CURRENT_HEAD_CHANGES_REQUESTED_COUNT}" -eq 0
    CHECKS_STATUS=0
    CHECKS_JSON="$(gh pr checks <P> --repo "${REPO}" --json name,bucket)" ||
      CHECKS_STATUS=$?
+   test -n "${CHECKS_JSON}" ||
+     { printf 'Empty checks response; merge gate is incomplete\n' >&2; exit 1; }
    printf '%s' "${CHECKS_JSON}" | jq -e 'type == "array" and length > 0' >/dev/null
    test "$(printf '%s' "${CHECKS_JSON}" |
      jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length')" -eq 0
@@ -251,7 +274,11 @@ workflow exists before relying on check state.
    and fix the check; escalate an unknown bucket rather than guessing. If `mergeable` is
    `UNKNOWN`, wait and re-read it within the step 3 CI wait budget. If it is `CONFLICTING`,
    report the conflicting files in an escalation comment and stop. Merge only when it is
-   `MERGEABLE`.
+   `MERGEABLE`. Retry only a transient merge API failure, at most three attempts with a
+   10-second delay. Before each retry, return to the start of step 9 and rerun the complete
+   gate, including the fresh step 4 inventory and unchanged-head assertion; stop immediately
+   for a non-transient policy or authorization failure. After the third transient failure,
+   post `Escalation: squash merge failed three times for <REVIEWED_SHA>.` and stop.
 
 ## Escalate
 
@@ -262,6 +289,7 @@ Comment on the PR with the evidence and the decision a human must make, then sto
 - A security or dependency tradeoff needs a human decision.
 - The PR is conflicting and cannot be updated without expanding scope.
 - Branch protection or a force-push would be required.
+- A transient merge API failure persists for three attempts.
 - `gh` cannot resolve PR state after retries.
 
 ## Guardrails
