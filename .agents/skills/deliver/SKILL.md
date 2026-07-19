@@ -31,11 +31,26 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    issue's acceptance criteria as the definition of done. Set
    `REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"` for an intentional fork or renamed
    remote, verify it with `gh repo view "${REPO}"`, and read the working agreement with
-   `gh issue view 2 --repo "${REPO}"`. Fail fast if `Makefile`, `code_review.md`, or the
-   working agreement is absent, and run `make -n ci-fast >/dev/null` to verify the CI target
-   before beginning delivery. Initialize and validate the CI budget:
+   `gh issue view 2 --repo "${REPO}"`. Fail fast if `Makefile`, `code_review.md`,
+   `.github/workflows/ci.yml`, or the working agreement is absent, and run
+   `make -n ci-fast >/dev/null` to verify the CI target before beginning delivery. Verify
+   the GitHub CLI dependency and initialize the CI budget:
 
    ```sh
+   set -euo pipefail
+   command -v gh
+   GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
+   [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
+     { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
+   GH_MAJOR="${GH_VERSION%%.*}"
+   GH_REMAINDER="${GH_VERSION#*.}"
+   GH_MINOR="${GH_REMAINDER%%.*}"
+   if ! { test "${GH_MAJOR}" -gt 2 ||
+     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }; }; then
+     printf 'gh 2.49.0 or newer is required\n' >&2
+     exit 1
+   fi
+   test -f .github/workflows/ci.yml
    SCENARIOCRAFT_CI_WAIT_SECONDS="${SCENARIOCRAFT_CI_WAIT_SECONDS:-1800}"
    [[ "${SCENARIOCRAFT_CI_WAIT_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
      { printf 'Invalid CI wait seconds\n' >&2; exit 1; }

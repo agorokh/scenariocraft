@@ -249,9 +249,10 @@ do not load `.env` files or service-manager configuration implicitly.
 
    Separately carry change requests across head changes. For each reviewer, inspect all
    reviews across all commits. A `CHANGES_REQUESTED` review remains gating after a fix push
-   until GitHub marks it `DISMISSED` or that reviewer posts a later `APPROVED` or
-   `COMMENTED` review on the current head. A review on an intermediate or older head does
-   not clear it. This cross-head gate applies even when `reviewDecision` is empty.
+   until GitHub marks it `DISMISSED` or that reviewer posts a later `APPROVED` review on the
+   current head. A `COMMENTED` review does not clear a change request, and a review on an
+   intermediate or older head does not clear it. This cross-head gate applies even when
+   `reviewDecision` is empty.
    Compute the outstanding count from the complete REST review inventory:
 
    ```sh
@@ -267,7 +268,7 @@ do not load `.env` files or service-manager configuration implicitly.
              select(author == ($change | author) and
                     .submitted_at > $change.submitted_at and
                     .commit_id == $sha and
-                    (.state == "APPROVED" or .state == "COMMENTED"))
+                    .state == "APPROVED")
            ] | length == 0)
          ] | length'
    )"
@@ -315,12 +316,13 @@ do not load `.env` files or service-manager configuration implicitly.
    change request on that SHA was dismissed or superseded by a later approving review.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
    inventory. Derive `UNRESOLVED_THREAD_COUNT`,
-   `CURRENT_HEAD_PENDING_REVIEW_COUNT`,
-   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT`, and
-   `OUTSTANDING_CHANGES_REQUESTED_COUNT` from that fresh GraphQL result. For change requests,
-   apply step 8's cross-head rule; do not rely on `reviewDecision`, which can be empty
-   without branch protection. Then verify all reported checks, the head, review requests,
-   and review decision. Pin the merge to the reviewed SHA:
+   `CURRENT_HEAD_PENDING_REVIEW_COUNT`, and
+   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT` from the fresh GraphQL result. Separately refresh
+   the complete paginated REST review inventory and derive
+   `OUTSTANDING_CHANGES_REQUESTED_COUNT` with step 8's REST-shaped jq. Do not apply that jq
+   to GraphQL nodes, whose field names differ, and do not rely on `reviewDecision`, which can
+   be empty without branch protection. Then verify all reported checks, the head, review
+   requests, and review decision. Pin the merge to the reviewed SHA:
 
    ```sh
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
