@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 final class BatchedBlockEditorTest {
     @Test
     void preparesAndTicketsChunksBeforeRunningBudgetedBlockEdits() {
-        TestRig rig = new TestRig(false);
+        TestRig rig = new TestRig(false, false);
         AtomicLong completedMutations = new AtomicLong();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         BatchedBlockEditor editor =
@@ -63,7 +63,7 @@ final class BatchedBlockEditorTest {
 
     @Test
     void reportsChunkPreparationFailureWithoutStartingMutations() {
-        TestRig rig = new TestRig(true);
+        TestRig rig = new TestRig(true, false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         BatchedBlockEditor editor =
                 new BatchedBlockEditor(
@@ -83,6 +83,30 @@ final class BatchedBlockEditorTest {
         editor.close();
     }
 
+    @Test
+    void defersSchedulerHandoffFailureToTheEditorTick() {
+        TestRig rig = new TestRig(false, true);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        BatchedBlockEditor editor =
+                new BatchedBlockEditor(
+                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
+
+        editor.enqueueArena(
+                List.of(new PlotBounds(0, 0, 0, 0)),
+                0,
+                1,
+                ignored -> {},
+                failure::set);
+
+        assertTrue(editor.isBusy());
+        assertNull(failure.get());
+        rig.tick.get().run();
+        assertFalse(editor.isBusy());
+        assertNotNull(failure.get());
+        assertEquals(0, rig.blockMutations.get());
+        editor.close();
+    }
+
     private static final class TestRig {
         private final AtomicInteger blockMutations = new AtomicInteger();
         private final AtomicInteger chunkLoads = new AtomicInteger();
@@ -92,7 +116,7 @@ final class BatchedBlockEditorTest {
         private final Plugin plugin;
         private final World world;
 
-        private TestRig(boolean failChunkLoad) {
+        private TestRig(boolean failChunkLoad, boolean failPreparationHandoff) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             Block block =
                     proxy(
@@ -142,6 +166,10 @@ final class BatchedBlockEditorTest {
                                         yield task;
                                     }
                                     case "runTask" -> {
+                                        if (failPreparationHandoff) {
+                                            throw new IllegalStateException(
+                                                    "test scheduler handoff failure");
+                                        }
                                         ((Runnable) arguments[1]).run();
                                         yield task;
                                     }

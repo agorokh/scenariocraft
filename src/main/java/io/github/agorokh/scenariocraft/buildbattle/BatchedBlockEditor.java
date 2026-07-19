@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
 import java.util.logging.Level;
@@ -23,6 +24,7 @@ public final class BatchedBlockEditor implements AutoCloseable {
     private final Logger logger;
     private final BukkitTask task;
     private final Set<ChunkCoordinate> chunkTickets = new HashSet<>();
+    private final AtomicReference<Throwable> pendingPreparationFailure = new AtomicReference<>();
     private Runnable completion;
     private Consumer<Throwable> preparationFailure;
     private boolean preparingChunks;
@@ -74,10 +76,16 @@ public final class BatchedBlockEditor implements AutoCloseable {
         preparingChunks = false;
         completion = null;
         preparationFailure = null;
+        pendingPreparationFailure.set(null);
         releaseChunkTickets();
     }
 
     private void runTick() {
+        Throwable handoffFailure = pendingPreparationFailure.getAndSet(null);
+        if (handoffFailure != null) {
+            reportPreparationFailure(handoffFailure);
+            return;
+        }
         boolean hadWork = queue.hasWork();
         queue.runTick();
         if (hadWork && !queue.hasWork() && completion != null) {
@@ -118,7 +126,7 @@ public final class BatchedBlockEditor implements AutoCloseable {
                                                 () -> finishPreparation(plan, futures, failure));
                             } catch (RuntimeException exception) {
                                 if (!closed) {
-                                    reportPreparationFailure(exception);
+                                    pendingPreparationFailure.compareAndSet(null, exception);
                                 }
                             }
                         });

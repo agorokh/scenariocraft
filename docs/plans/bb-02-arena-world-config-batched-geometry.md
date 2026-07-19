@@ -21,6 +21,8 @@ real server boot.
 - [x] Complete `/review` and resolve P1 findings.
 - [x] Resolve external review findings about pre-existing worlds, chunk preparation, and
       smoke fast-failure.
+- [x] Keep asynchronous preparation failures on the Paper main thread and align smoke
+      failure detection with the runtime log contract.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -33,6 +35,7 @@ real server boot.
 | 2026-07-19 | Treat packaged `config.yml` as the source of numeric and timing defaults, then validate all values while loading. | Defaults remain operator-visible and no gameplay timing, deck, plot, or batch values are hidden in code. |
 | 2026-07-19 | Asynchronously prepare every chunk touched by the fill plan and hold plugin chunk tickets until mutation completes. | Synchronous chunk generation inside a scheduled mutation tick can violate the apparent block budget even when the number of `setType` calls is bounded. |
 | 2026-07-19 | Reject a pre-existing `battle_world` unless Paper reports `WorldType.FLAT`. | Loading an arbitrary same-named world would make the single sampled floor height unsafe for plots away from the hub. |
+| 2026-07-19 | Hand scheduler-rejection failures back to the editor tick through an atomic slot. | The async completion thread must never mutate editor state or call a command sender when Paper rejects the normal main-thread handoff. |
 
 ## Surprises & Discoveries
 
@@ -49,10 +52,13 @@ real server boot.
   plan, loaded asynchronously, and ticketed for the lifetime of the edit.
 - Kimi's HIGH claim that `/battle` was absent from `plugin.yml` was false: the packaged
   descriptor already declared the command, and the real-server smoke had executed it.
+- A current-head review found that CI's preparation-failure grep did not match the runtime
+  message and that scheduler rejection could take an off-thread callback path. The log
+  contract now matches exactly, and the editor tick owns that failure transition.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 18 tests covering packaged configuration,
+- `make ci-fast` completed successfully with 19 tests covering packaged configuration,
   plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
   batching limits and arithmetic, asynchronous chunk preparation and ticket cleanup,
   existing-world validation, command authorization settings, and protection-plugin detection.
