@@ -61,3 +61,9 @@ Entries in this section must be dated and trace to a repeated operator correctio
   Tier-3 workspace, a code-edit gate, a self-hosted reviewer, and a resolve-gate — none of
   which exist here. Durable memory in this repository is: the issue backlog, `docs/plans/`
   ExecPlans, and this Corrections section. Nothing else.
+
+- 2026-07-19 — Ported procedures lose the edge cases that made them work. The public
+  resolve-pr skill was written from a longer internal one and silently dropped GraphQL
+  pagination, full thread-comment scanning, the head-SHA review-completion gate, and the
+  retry bound. Multi-model review found all four. When porting a procedure, port its
+  failure handling first — that is the part experience paid for.

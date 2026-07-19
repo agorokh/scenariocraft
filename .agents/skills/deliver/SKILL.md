@@ -1,16 +1,16 @@
 ---
 name: deliver
-description: Take one ScenarioCraft Build Week issue from specification through a merged pull request. Use when asked to deliver an issue from the build-week milestone, such as "deliver 4 (BB-02)" or "deliver 8 (BB-06)."
+description: Take one ScenarioCraft Build Week issue from specification to a pull request ready for external review. Use when asked to deliver an issue from the build-week milestone, such as "deliver 4 (BB-02)" or "deliver 8 (BB-06)."
 ---
 
 # Deliver a ScenarioCraft issue
 
-**Job:** Take one issue from spec to merged PR.
+**Job:** Take one issue from spec to a PR ready for external review.
 
 **Inputs:** An issue number on the build-week milestone.
 
-**Outputs:** One merged PR satisfying that issue's acceptance criteria, with its ExecPlan
-updated and the session ID recorded.
+**Outputs:** One ready-for-review PR satisfying that issue's acceptance criteria, with its
+ExecPlan updated and the session ID recorded.
 
 ## Steps
 
@@ -29,11 +29,13 @@ updated and the session ID recorded.
    under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Put the issue number, the acceptance evidence each criterion asks for, and the Codex
    session ID in the PR description. Mark the PR ready for review.
-   Marking it ready is what starts the external review — reviewers do not run on drafts, so
-   a PR left in draft will sit with no findings and that is not the same as a clean review.
-8. Run `/review` against `code_review.md`. Fix every P1 in the same PR.
-9. Merge only with CI green. Never merge red.
-10. If the same correction has now been needed twice, append a dated rule to
+   Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
+   is not the same as a clean review.
+   Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
+   to merged; do not run the review-and-merge loop here.
+   If CI fails after the PR is marked ready, push fixes rather than leaving a red PR sitting
+   under review.
+8. If the same correction has now been needed twice, append a dated rule to
     `AGENTS.md` → Corrections in this PR.
 
 ## Do not
