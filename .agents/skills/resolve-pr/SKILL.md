@@ -129,10 +129,27 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    GRAPHQL_THREADS_JSON='[]'
    GRAPHQL_REVIEWS_JSON='[]'
-   CONVERSATION_LEDGER_JSON='[]'
+   THREAD_PAGE_COUNT=0
+   REVIEW_PAGE_COUNT=0
+   CONVERSATION_LEDGER_JSON="${CONVERSATION_LEDGER_JSON:-[]}"
+   GRAPHQL_REMAINING="$(gh api rate_limit --jq .resources.graphql.remaining)"
+   test "${GRAPHQL_REMAINING}" -ge 100 || {
+     GRAPHQL_RESET="$(gh api rate_limit --jq .resources.graphql.reset)"
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: GraphQL rate limit is below 100; reset epoch ${GRAPHQL_RESET}."
+     exit 1
+   }
    CONVERSATION_COMMENTS_JSON="$(
      gh api --paginate "repos/${REPO}/issues/<P>/comments?per_page=100" |
        jq -s -e 'if all(.[]; type == "array") then add // [] else error("invalid comment page") end'
+   )"
+   CONVERSATION_LEDGER_JSON="$(
+     jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
+       --argjson comments "${CONVERSATION_COMMENTS_JSON}" '
+       [$comments[] as $comment |
+         ([$ledger[] | select(.id == $comment.id)][0] //
+          {id: $comment.id, status: "UNADDRESSED"})
+       ]'
    )"
    gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100"
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
@@ -149,6 +166,7 @@ do not load `.env` files or service-manager configuration implicitly.
    `null`.
    If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
    `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
+   Increment a `THREAD_PAGE_COUNT` for every fetched page and escalate if it exceeds 50.
    Accumulate every page's `nodes` in a running set keyed by thread `id`; never replace an
    earlier page with a later one. After each successful page fetch, execute:
 
@@ -176,7 +194,24 @@ do not load `.env` files or service-manager configuration implicitly.
    independently report `hasNextPage: false` and all accumulated pages are retained. For
    either connection, when `hasNextPage` is true, require a nonempty `endCursor`; an empty
    cursor is an incomplete response that must be retried or escalated, never passed as
-   `after=`.
+   `after=`. Increment a separate `REVIEW_PAGE_COUNT` for every fetched review page and
+   escalate if it exceeds 50. After each successful page fetch, increment and check the
+   applicable counter:
+
+   ```sh
+   THREAD_PAGE_COUNT=$((THREAD_PAGE_COUNT + 1))
+   test "${THREAD_PAGE_COUNT}" -le 50 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: review-thread inventory exceeded 50 pages."
+     exit 1
+   }
+   REVIEW_PAGE_COUNT=$((REVIEW_PAGE_COUNT + 1))
+   test "${REVIEW_PAGE_COUNT}" -le 50 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: formal-review inventory exceeded 50 pages."
+     exit 1
+   }
+   ```
 
    ```sh
    REVIEW_PAGE_NODES="$(
@@ -489,6 +524,12 @@ do not load `.env` files or service-manager configuration implicitly.
    requests, and review decision. Pin the merge to the reviewed SHA:
 
    ```sh
+   test "$(printf '%s' "${CONVERSATION_LEDGER_JSON}" | jq 'length')" -eq \
+     "$(printf '%s' "${CONVERSATION_COMMENTS_JSON}" | jq 'length')"
+   UNADDRESSED_CONVERSATION_COMMENT_COUNT="$(
+     printf '%s' "${CONVERSATION_LEDGER_JSON}" |
+       jq '[.[] | select(.status != "ADDRESSED")] | length'
+   )"
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
    test "${UNADDRESSED_CONVERSATION_COMMENT_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
