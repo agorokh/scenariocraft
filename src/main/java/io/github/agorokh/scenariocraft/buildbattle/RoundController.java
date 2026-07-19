@@ -29,7 +29,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int TELEPORT_FADE_TICKS = 10;
     private static final int TITLE_STAY_TICKS = 50;
 
-    private final Plugin plugin;
     private final Server server;
     private final BattleSettings settings;
     private final ArenaWorld arena;
@@ -49,7 +48,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             ArenaWorld arena,
             BatchedBlockEditor blockEditor,
             Logger logger) {
-        this.plugin = Objects.requireNonNull(plugin, "plugin");
+        Objects.requireNonNull(plugin, "plugin");
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.arena = Objects.requireNonNull(arena, "arena");
@@ -116,12 +115,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
 
         transitionTo(RoundPhase.PREPARING);
-        sender.sendMessage(
-                players.size() < MINIMUM_DEBUG_PLOTS
-                        ? "Starting with "
-                                + players.size()
-                                + " builder and debug fill for two plots."
-                        : "Starting Build Battle for " + players.size() + " builders!");
+        if (players.isEmpty()) {
+            sender.sendMessage("Starting a two-plot practice round.");
+        } else if (players.size() == 1) {
+            sender.sendMessage("Starting with one builder and one extra practice plot.");
+        } else {
+            sender.sendMessage("Starting Build Battle for " + players.size() + " builders!");
+        }
         broadcast("Build Battle is getting the arena ready in safe little batches!");
 
         long mutations =
@@ -361,7 +361,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void applyCurrentPhase(Player player, Contestant contestant) {
         switch (phase()) {
-            case PREPARING, GATHERING, NOTE_PICK -> moveToHub(player, contestant);
+            case PREPARING, GATHERING -> moveToHub(player, contestant);
+            case NOTE_PICK -> {
+                moveToHub(player, contestant);
+                player.sendTitle(
+                        "Build idea!",
+                        settings.tasks().getFirst(),
+                        TELEPORT_FADE_TICKS,
+                        TITLE_STAY_TICKS,
+                        TELEPORT_FADE_TICKS);
+            }
             case BUILDING -> moveToPlot(player, contestant);
             case REVEAL -> {
                 player.setGameMode(GameMode.ADVENTURE);

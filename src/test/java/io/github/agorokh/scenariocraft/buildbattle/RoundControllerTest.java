@@ -83,6 +83,36 @@ class RoundControllerTest {
         }
     }
 
+    @Test
+    void reconnectingContestantReceivesTheCurrentPhaseState() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        int titlesBeforeReconnect = rig.titles.get();
+        rig.gameMode.set(GameMode.SURVIVAL);
+
+        rig.controller.onPlayerJoin(
+                new org.bukkit.event.player.PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.titles.get() > titlesBeforeReconnect);
+
+        rig.runTimerTick();
+        rig.gameMode.set(GameMode.SURVIVAL);
+        rig.lastTeleport.set(null);
+        rig.controller.onPlayerJoin(
+                new org.bukkit.event.player.PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.lastTeleport.get());
+        assertTrue(
+                Math.abs(rig.lastTeleport.get().getX()) > 1.0
+                        || Math.abs(rig.lastTeleport.get().getZ()) > 1.0);
+        assertTrue(rig.bossbarPlayers.get() > 0);
+        rig.close();
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
@@ -91,6 +121,7 @@ class RoundControllerTest {
         private final AtomicInteger blockMutations = new AtomicInteger();
         private final AtomicInteger bossbarPlayers = new AtomicInteger();
         private final AtomicInteger titles = new AtomicInteger();
+        private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final World world;
         private final Player player;
         private final Plugin plugin;
@@ -153,7 +184,11 @@ class RoundControllerTest {
                                             gameMode.set((GameMode) arguments[0]);
                                             yield null;
                                         }
-                                        case "isOnline", "isOp", "teleport" -> true;
+                                        case "isOnline", "isOp" -> true;
+                                        case "teleport" -> {
+                                            lastTeleport.set((Location) arguments[0]);
+                                            yield true;
+                                        }
                                         case "sendTitle" -> {
                                             titles.incrementAndGet();
                                             yield null;

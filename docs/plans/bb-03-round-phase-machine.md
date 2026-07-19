@@ -16,8 +16,8 @@ state, scheduled timers, cancellable arena work, and real-server acceptance evid
 
 - [x] Define the smallest end-to-end slice.
 - [x] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
+- [x] Capture the issue's acceptance evidence.
+- [x] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -43,10 +43,31 @@ session.
   branch, and the connected GitHub app created the exact verified draft PR.
 - The desktop shell did not expose its installed Java runtime through `JAVA_HOME`; local
   Gradle gates use the repository-required Homebrew Java 21 installation explicitly.
+- `/review` found no P1 but caught that "debug fill" was developer language in a
+  player-facing message and that a reconnect during `NOTE_PICK` did not replay the current
+  task title. Both paths now use kid-friendly feedback and have reconnect regression
+  coverage.
 
 ## Acceptance evidence
 
-Pending implementation, focused tests, local CI, and a real Paper server cycle.
+- `make ci-fast` completed successfully with 37 tests. The focused coverage includes every
+  legal and illegal phase pair, countdown arithmetic and warning boundaries, command
+  authorization, one-contestant debug-fill cycling, reconnect state restoration, clean
+  stop from every active phase, batched wall removal, and editor cancellation.
+- Pinned Paper `1.21.11` build `132` enabled the final implementation with Java 21. A real
+  offline-mode protocol client joined as `BuilderKid`, ran `/battle start`, and completed
+  the two-plot round as one connected player plus one debug plot.
+- The client received the hardcoded `A dragon treehouse` task, gathering and note
+  countdown chat, seven bossbar protocol packets during `BUILDING`, reveal chat, and
+  `Build Battle complete — amazing creating, everyone!`.
+- Paper logged the complete transition chain:
+  `IDLE -> PREPARING -> GATHERING -> NOTE_PICK -> BUILDING -> REVEAL -> IDLE`.
+- Paper queued and completed `1288` reset mutations and `320` reveal mutations at the
+  configured `4000` blocks per tick.
+- Separate real-server commands logged clean returns to `IDLE` when stopped from
+  `PREPARING`, `GATHERING`, `NOTE_PICK`, `BUILDING`, and `REVEAL`.
+- The acceptance log contained no watchdog, arena mutation failure, plugin enable failure,
+  or plugin disable failure signature and ended with `All dimensions are saved`.
 
 ## Retrospective
 
