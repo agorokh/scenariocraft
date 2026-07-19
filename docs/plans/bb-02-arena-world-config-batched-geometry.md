@@ -28,6 +28,7 @@ real server boot.
 - [x] Bound asynchronous chunk preparation, clear every failed build, and make smoke
       correlate its queued and completed mutation totals.
 - [x] Scope smoke command detection to log bytes written after `battle start`.
+- [x] Let completed chunk loads win a same-deadline race with their main-thread handoff.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -75,10 +76,13 @@ real server boot.
 - The next Kimi pass noted that `sed` could return an unmatched log line as a supposed
   mutation count. Extraction is now anchored and produces no value on mismatch, followed
   by an explicit digits-only assertion and a separate queued-versus-completed comparison.
+- A later cursor pass found that the timeout task could run just before an already-queued
+  completion handoff. The deadline now yields when every chunk future is done, and a
+  regression test drives that exact scheduler ordering through successful completion.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 22 tests covering packaged configuration,
+- `make ci-fast` completed successfully with 23 tests covering packaged configuration,
   plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
   batching limits and arithmetic, asynchronous chunk preparation and ticket cleanup,
   existing-world validation, command authorization settings, and protection-plugin detection.

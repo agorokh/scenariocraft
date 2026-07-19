@@ -207,7 +207,9 @@ jobs:
                 queue_failure=server-exited
                 break
               fi
-              if grep -Eq "Unknown (or incomplete )?command" <<<"${new_battle_log}"; then
+              if grep -Fq \
+                -e "Unknown command" \
+                -e "Unknown or incomplete command" <<<"${new_battle_log}"; then
                 queue_failure=unknown-command
                 break
               fi
@@ -245,8 +247,9 @@ jobs:
                 printf "stop\n" >&3
                 break
               fi
-              if grep -Eq "Arena (chunk preparation|block mutation) failed" \
-                <<<"${new_battle_log}"; then
+              if grep -Fq \
+                -e "Arena chunk preparation failed" \
+                -e "Arena block mutation failed" <<<"${new_battle_log}"; then
                 printf "Arena build failed before completion.\n" >&2
                 exit 1
               fi

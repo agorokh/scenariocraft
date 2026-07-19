@@ -236,6 +236,9 @@ public final class BatchedBlockEditor implements AutoCloseable {
         if (!isActivePreparation(generation)) {
             return;
         }
+        if (futures.stream().allMatch(CompletableFuture::isDone)) {
+            return;
+        }
         reportPreparationFailure(
                 new TimeoutException("Arena chunk preparation exceeded 30 seconds"));
         for (CompletableFuture<Chunk> future : futures) {

@@ -135,6 +135,37 @@ final class BatchedBlockEditorTest {
     }
 
     @Test
+    void completedChunksWinRaceWithPreparationTimeout() {
+        TestRig rig = new TestRig(false, false, false, false, true);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicLong completedMutations = new AtomicLong();
+        BatchedBlockEditor editor =
+                new BatchedBlockEditor(
+                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
+
+        editor.enqueueArena(
+                List.of(new PlotBounds(0, 0, 0, 0)),
+                0,
+                1,
+                completedMutations::set,
+                failure::set);
+        assertNotNull(rig.preparationHandoff.get());
+
+        rig.preparationTimeout.get().run();
+        assertTrue(editor.isBusy());
+        assertNull(failure.get());
+
+        rig.preparationHandoff.get().run();
+        while (editor.isBusy()) {
+            rig.tick.get().run();
+        }
+
+        assertEquals(17, completedMutations.get());
+        assertNull(failure.get());
+        editor.close();
+    }
+
+    @Test
     void recoversFromMutationFailureAndReleasesTickets() {
         TestRig rig = new TestRig(false, false, true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -208,6 +239,7 @@ final class BatchedBlockEditorTest {
         private final AtomicInteger ticketsRemoved = new AtomicInteger();
         private final AtomicReference<Runnable> tick = new AtomicReference<>();
         private final AtomicReference<Runnable> preparationTimeout = new AtomicReference<>();
+        private final AtomicReference<Runnable> preparationHandoff = new AtomicReference<>();
         private final Plugin plugin;
         private final World world;
 
@@ -219,6 +251,7 @@ final class BatchedBlockEditorTest {
                     failChunkLoad,
                     failPreparationHandoff,
                     failFirstBlockMutation,
+                    false,
                     false);
         }
 
@@ -227,6 +260,20 @@ final class BatchedBlockEditorTest {
                 boolean failPreparationHandoff,
                 boolean failFirstBlockMutation,
                 boolean hangChunkLoad) {
+            this(
+                    failChunkLoad,
+                    failPreparationHandoff,
+                    failFirstBlockMutation,
+                    hangChunkLoad,
+                    false);
+        }
+
+        private TestRig(
+                boolean failChunkLoad,
+                boolean failPreparationHandoff,
+                boolean failFirstBlockMutation,
+                boolean hangChunkLoad,
+                boolean deferPreparationHandoff) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             Block block =
                     proxy(
@@ -289,7 +336,11 @@ final class BatchedBlockEditorTest {
                                             throw new IllegalStateException(
                                                     "test scheduler handoff failure");
                                         }
-                                        ((Runnable) arguments[1]).run();
+                                        if (deferPreparationHandoff) {
+                                            preparationHandoff.set((Runnable) arguments[1]);
+                                        } else {
+                                            ((Runnable) arguments[1]).run();
+                                        }
                                         yield task;
                                     }
                                     case "runTaskLater" -> {
