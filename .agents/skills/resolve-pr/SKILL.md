@@ -39,6 +39,7 @@ do not load `.env` files or service-manager configuration implicitly.
    canonical repository as the fallback:
 
    ```sh
+   set -euo pipefail
    command -v gh
    GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
    [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
@@ -46,13 +47,21 @@ do not load `.env` files or service-manager configuration implicitly.
    GH_MAJOR="${GH_VERSION%%.*}"
    GH_REMAINDER="${GH_VERSION#*.}"
    GH_MINOR="${GH_REMAINDER%%.*}"
-   test "${GH_MAJOR}" -gt 2 ||
-     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }
-   gh auth status
-   gh pr merge --help | grep -q -- '--match-head-commit'
+   if ! { test "${GH_MAJOR}" -gt 2 ||
+     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }; }; then
+     printf 'gh 2.49.0 or newer is required\n' >&2
+     exit 1
+   fi
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
+   gh auth status
+   gh api user >/dev/null
+   PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
+   [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
+     { printf 'Pull-request write access is required\n' >&2; exit 1; }
+   gh api "repos/${REPO}/actions/runs?per_page=1" >/dev/null
+   gh pr merge --help | grep -q -- '--match-head-commit'
    gh repo view "${REPO}" --json nameWithOwner
    test -z "$(git status --porcelain)"
    gh pr checkout <P> --repo "${REPO}"
@@ -81,14 +90,23 @@ do not load `.env` files or service-manager configuration implicitly.
 3. If CI is pending, wait 60 seconds and reinspect it until terminal or until the
    end-to-end budget in `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800
    seconds, which covers runner queue time separately from the job's own timeout; the
-   operator may override it with a positive integer. Escalate if the budget expires. If CI
-   is red, read the failing job's logs and fix the cause rather than the symptom. Run
+   operator may override it with a positive integer. Validate it before use:
+
+   ```sh
+   SCENARIOCRAFT_CI_WAIT_SECONDS="${SCENARIOCRAFT_CI_WAIT_SECONDS:-1800}"
+   [[ "${SCENARIOCRAFT_CI_WAIT_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
+     { printf 'Invalid CI wait seconds\n' >&2; exit 1; }
+   ```
+
+   Escalate if the budget expires. If CI is red, read the failing job's logs and fix the
+   cause rather than the symptom. Run
    `make ci-fast` locally, commit, push, then return to step 2 so the replacement head's
    checks are inspected. Track repair attempts by failing check and root cause. Increment
    the matching counter when the replacement head fails for the same cause; on the third
    failure, post an escalation comment with the check name, root cause, and three attempted
-   fixes, then stop. Reset a counter only when that check becomes green or the diagnosed
-   root cause changes.
+   fixes, then stop. The escalation may contain only the check name, job URL, and a redacted
+   one-line cause; never paste raw logs, environment dumps, tokens, or credentials. Reset a
+   counter only when that check becomes green or the diagnosed root cause changes.
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -137,9 +155,11 @@ do not load `.env` files or service-manager configuration implicitly.
    Repeat until `comments.pageInfo.hasNextPage` is false so every comment author is
    considered. Accumulate comment nodes across pages and retain the first comment's
    `databaseId` as the thread's reply target. After an initial REST or GraphQL failure,
-   retry at most three times with delays of 5, 15, and 45 seconds. If a complete inventory
-   still cannot be fetched, post an escalation comment and stop. Never continue with a
-   partial response.
+   retry at most three times. Use base delays of 5, 15, and 45 seconds plus 0–4 seconds of
+   random jitter so concurrent agents do not synchronize retries.
+   If a complete inventory still cannot be fetched, post an escalation comment and stop.
+   Never continue with a partial response. When repeated throttling is suspected, inspect
+   `gh api rate_limit` before retrying more work.
 
 5. Classify every feedback item:
 
@@ -191,11 +211,27 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)"
-   ALL_REVIEWS_JSON="$(
-     gh api --paginate --slurp \
-       "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
-       jq 'add // []'
-   )"
+   REVIEW_INVENTORY_OK=0
+   for REVIEW_DELAY in 0 5 15 45; do
+     if test "${REVIEW_DELAY}" -gt 0; then
+       sleep $((REVIEW_DELAY + RANDOM % 5))
+     fi
+     if ALL_REVIEWS_JSON="$(
+       gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
+         jq -s -e '
+           if all(.[]; type == "array") then add // []
+           else error("invalid review page")
+           end'
+     )"; then
+       REVIEW_INVENTORY_OK=1
+       break
+     fi
+   done
+   test "${REVIEW_INVENTORY_OK}" -eq 1 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: complete formal-review inventory failed after three retries."
+     exit 1
+   }
    printf '%s' "${ALL_REVIEWS_JSON}" |
      jq --arg sha "${REVIEWED_SHA}" \
        'map(select(.commit_id == $sha))
@@ -236,10 +272,11 @@ do not load `.env` files or service-manager configuration implicitly.
          ] | length'
    )"
    ```
-   A nonempty `reviewRequests` list means review is pending. When the repository has no
-   required or requested reviewer, wait one full cycle for asynchronous findings; after
-   that, absence of a formal review is non-blocking and only posted findings, unresolved
-   threads, review decisions, and checks gate merge.
+   A nonempty `reviewRequests` list means review is pending. Because GitHub hides another
+   author's draft review, absence of a visible GraphQL `PENDING` review is not clearance.
+   Require at least one submitted `APPROVED` or `COMMENTED` review whose commit is the
+   current head before merging, even when `reviewRequests` is empty. If none posts after
+   three wait cycles, escalate the unfinished current-head review instead of merging.
 
    After every wait or newly posted current-SHA review, return to step 4 and rebuild the
    complete thread and comment inventory before considering the merge gate.
@@ -256,12 +293,15 @@ do not load `.env` files or service-manager configuration implicitly.
    ```
 
    The default interval is the observed 600-second reviewer latency. The operator may
-   override it with a positive integer. Before each wait, replace a single
-   `<!-- resolve-pr-checkpoint head=<SHA> cycle=<N> timestamp=<ISO-8601> -->` marker in the
-   PR description while preserving its other content. The wait may be taken by ending the
-   turn and resuming after 600 seconds rather than blocking an agent session. On resume,
-   read the checkpoint, verify the head is unchanged, and return to step 4; if it changed,
-   reset to step 2 and cycle one. A long-lived terminal may use `sleep` directly.
+   override it with a positive integer. Before each wait, replace a single full line in the
+   PR description using this versioned marker:
+   `<!-- resolve-pr-checkpoint:v1 head=<SHA> cycle=<N> timestamp=<ISO-8601> -->`. Match only
+   a line anchored from `^<!-- resolve-pr-checkpoint:v1 ` through ` -->$`; if none exists,
+   append one. Never use an unanchored or greedy match, and preserve all other description
+   content. The wait may be taken by ending the turn and resuming after 600 seconds rather
+   than blocking an agent session. On resume, read the checkpoint, verify the head is
+   unchanged, and return to step 4; if it changed, reset to step 2 and cycle one. A
+   long-lived terminal may use `sleep` directly.
    Wait at most three cycles for the same head SHA, for a default total timeout of 1,800
    seconds. If a required or requested reviewer is known to be unavailable, or remains
    pending after the third cycle, post an escalation comment naming the head SHA and
@@ -275,7 +315,8 @@ do not load `.env` files or service-manager configuration implicitly.
    change request on that SHA was dismissed or superseded by a later approving review.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
    inventory. Derive `UNRESOLVED_THREAD_COUNT`,
-   `CURRENT_HEAD_PENDING_REVIEW_COUNT`, and
+   `CURRENT_HEAD_PENDING_REVIEW_COUNT`,
+   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT`, and
    `OUTSTANDING_CHANGES_REQUESTED_COUNT` from that fresh GraphQL result. For change requests,
    apply step 8's cross-head rule; do not rely on `reviewDecision`, which can be empty
    without branch protection. Then verify all reported checks, the head, review requests,
@@ -284,6 +325,7 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
+   test "${CURRENT_HEAD_COMPLETED_REVIEW_COUNT}" -gt 0
    test "${OUTSTANDING_CHANGES_REQUESTED_COUNT}" -eq 0
    CHECKS_STATUS=0
    CHECKS_JSON="$(gh pr checks <P> --repo "${REPO}" --json name,bucket)" ||
@@ -342,8 +384,9 @@ Comment on the PR with the evidence and the decision a human must make, then sto
 
 ## Guardrails
 
-- Name the resolved `REPO` explicitly on every `gh` call. For `gh api graphql`, bind its
-  `OWNER` and `NAME` variables explicitly as shown above.
+- Name the resolved `REPO` explicitly on every repository-scoped `gh` call. The global
+  `gh api user` and `gh api rate_limit` probes are the only exceptions. For
+  `gh api graphql`, bind its `OWNER` and `NAME` variables explicitly as shown above.
 - Never force-push.
 - Never commit secrets.
 - Keep changes scoped to the PR's issue. Open a follow-up issue for anything else.

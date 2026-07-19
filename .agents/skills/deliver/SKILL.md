@@ -33,7 +33,13 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    remote, verify it with `gh repo view "${REPO}"`, and read the working agreement with
    `gh issue view 2 --repo "${REPO}"`. Fail fast if `Makefile`, `code_review.md`, or the
    working agreement is absent, and run `make -n ci-fast >/dev/null` to verify the CI target
-   before beginning delivery.
+   before beginning delivery. Initialize and validate the CI budget:
+
+   ```sh
+   SCENARIOCRAFT_CI_WAIT_SECONDS="${SCENARIOCRAFT_CI_WAIT_SECONDS:-1800}"
+   [[ "${SCENARIOCRAFT_CI_WAIT_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
+     { printf 'Invalid CI wait seconds\n' >&2; exit 1; }
+   ```
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
    Decision Log. If the repository-local template is missing, create the plan with the same
@@ -57,8 +63,10 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
 7. Run `/review` against `code_review.md` while the PR is still a draft and fix every P1.
    Run `make ci-fast` after each fix. If the same correction has now been needed twice,
    append a dated rule to `AGENTS.md` → Corrections before the final commit. Put the issue
-   number, the acceptance evidence each criterion asks for, and the Codex session ID in the
-   PR description. Commit and push the completed implementation, tests, conditional
+   number and the acceptance evidence each criterion asks for in the PR description. Create
+   a `## Codex sessions` section containing this session ID as a list item so `resolve-pr`
+   can append later unique session IDs idempotently. Commit and push the implementation,
+   tests, conditional
    ExecPlan update, correction entry, and P1 fixes; verify local `HEAD` equals the PR's
    `headRefOid`.
    Confirm local CI and that pushed head's GitHub checks are green. If checks are pending,
