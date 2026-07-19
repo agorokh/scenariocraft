@@ -160,6 +160,33 @@ do not load `.env` files or service-manager configuration implicitly.
    If a complete inventory still cannot be fetched, post an escalation comment and stop.
    Never continue with a partial response. When repeated throttling is suspected, inspect
    `gh api rate_limit` before retrying more work.
+   Apply this concrete retry wrapper to every REST or GraphQL page fetch. It stores a
+   successful response in `PAGE_JSON`; pass the complete `gh api` invocation as arguments:
+
+   ```sh
+   fetch_page_with_retry() {
+     local page_attempt
+     for page_attempt in 1 2 3 4; do
+       if PAGE_JSON="$("$@")"; then
+         return 0
+       fi
+       case "${page_attempt}" in
+         1) sleep $((5 + RANDOM % 5)) ;;
+         2) sleep $((15 + RANDOM % 5)) ;;
+         3) sleep $((45 + RANDOM % 5)) ;;
+         4) break ;;
+       esac
+     done
+     return 1
+   }
+
+   fetch_page_with_retry gh api graphql \
+     -f query='<QUERY_FROM_ABOVE>' -f o="${OWNER}" -f n="${NAME}" -F p=<P> || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: complete feedback inventory failed after three retries."
+     exit 1
+   }
+   ```
 
 5. Classify every feedback item:
 
@@ -299,10 +326,30 @@ do not load `.env` files or service-manager configuration implicitly.
    `<!-- resolve-pr-checkpoint:v1 head=<SHA> cycle=<N> timestamp=<ISO-8601> -->`. Match only
    a line anchored from `^<!-- resolve-pr-checkpoint:v1 ` through ` -->$`; if none exists,
    append one. Never use an unanchored or greedy match, and preserve all other description
-   content. The wait may be taken by ending the turn and resuming after 600 seconds rather
-   than blocking an agent session. On resume, read the checkpoint, verify the head is
-   unchanged, and return to step 4; if it changed, reset to step 2 and cycle one. A
-   long-lived terminal may use `sleep` directly.
+   content. Use an exact line-oriented update:
+
+   ```sh
+   CHECKPOINT="<!-- resolve-pr-checkpoint:v1 head=${REVIEWED_SHA} cycle=<CYCLE> timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+   BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+   NEXT_BODY="$(
+     printf '%s\n' "${BODY}" |
+       awk -v checkpoint="${CHECKPOINT}" '
+         BEGIN { replaced = 0 }
+         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9TZ:+-]+ -->$/ {
+           if (!replaced) { print checkpoint; replaced = 1 }
+           next
+         }
+         { print }
+         END { if (!replaced) print checkpoint }
+       '
+   )"
+   gh pr edit <P> --repo "${REPO}" --body "${NEXT_BODY}"
+   ```
+
+   The wait may be taken by ending the turn and resuming after 600 seconds rather than
+   blocking an agent session. On resume, read the checkpoint, verify the head is unchanged,
+   and return to step 4; if it changed, reset to step 2 and cycle one. A long-lived terminal
+   may use `sleep` directly.
    Wait at most three cycles for the same head SHA, for a default total timeout of 1,800
    seconds. If a required or requested reviewer is known to be unavailable, or remains
    pending after the third cycle, post an escalation comment naming the head SHA and
@@ -371,6 +418,10 @@ do not load `.env` files or service-manager configuration implicitly.
    assertion; stop immediately for a non-transient policy or authorization failure. After
    the third transient failure, post
    `Escalation: squash merge failed three times for <REVIEWED_SHA>.` and stop.
+   Do not put `gh pr merge` in a tight shell loop. A transient failure starts a new step 9
+   pass: after the 10-second delay, rederive `REVIEWED_SHA` with `gh pr view`; if it differs
+   from the failed attempt's SHA, return to step 2. Otherwise rebuild both complete
+   inventories and rerun every gate command above before issuing the next merge attempt.
 
 ## Escalate
 

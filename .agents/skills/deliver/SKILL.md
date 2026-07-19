@@ -50,6 +50,10 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
      printf 'gh 2.49.0 or newer is required\n' >&2
      exit 1
    fi
+   gh auth status
+   PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
+   [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
+     { printf 'Repository write access is required\n' >&2; exit 1; }
    test -f .github/workflows/ci.yml
    SCENARIOCRAFT_CI_WAIT_SECONDS="${SCENARIOCRAFT_CI_WAIT_SECONDS:-1800}"
    [[ "${SCENARIOCRAFT_CI_WAIT_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
