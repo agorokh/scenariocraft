@@ -15,7 +15,8 @@ description: Drive one open ScenarioCraft pull request through CI repair, review
 
 `gh auth status` must succeed, with repository access, pull-request write scope, and
 Actions/checks read access. The installed `gh` must expose `--match-head-commit`; verify it
-with `gh pr merge --help`.
+with `gh pr merge --help`. The workflow requires the GitHub CLI; fail fast when `gh` is
+absent instead of attempting installation during PR resolution.
 
 ## Steps
 
@@ -25,6 +26,8 @@ with `gh pr merge --help`.
    canonical repository as the fallback:
 
    ```sh
+   command -v gh
+   gh --version
    gh auth status
    gh pr merge --help | grep -q -- '--match-head-commit'
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
@@ -48,9 +51,11 @@ with `gh pr merge --help`.
    `deliver` owns the draft-to-ready transition after CI is green; `resolve-pr` starts once
    external review has begun.
 
-3. If CI is pending, wait 60 seconds and reinspect it, for at most three cycles; if it is
-   still pending after the third cycle, escalate instead of guessing. If CI is red, read
-   the failing job's logs, fix the cause rather than the symptom, commit, and push.
+3. If CI is pending, wait 60 seconds and reinspect it, for at most ten cycles, matching the
+   workflow's 10-minute job timeout; if it is still non-terminal after the tenth cycle,
+   escalate instead of guessing. If CI is red, read the failing job's logs and fix the
+   cause rather than the symptom. Run `make ci-fast` locally, commit, push, then return to
+   step 2 so the replacement head's checks are inspected.
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -80,7 +85,9 @@ with `gh pr merge --help`.
    ```
 
    Repeat until `comments.pageInfo.hasNextPage` is false so every comment author is
-   considered.
+   considered. Treat any REST or GraphQL failure as retryable at most three times; if a
+   complete inventory still cannot be fetched, post an escalation comment and stop. Never
+   continue with a partial response.
 
 5. Classify every feedback item:
 
@@ -102,9 +109,12 @@ with `gh pr merge --help`.
    "Never silently resolve" means never resolve without a visible fix or factual reply; it
    does not mean leaving an addressed thread unresolved. Verify `isResolved` after the
    mutation. If it remains false after three attempts, post an escalation comment naming
-   the thread and stop.
+   the thread and stop. Before pushing any fix, run `make ci-fast`; after pushing, return to
+   step 2 for checks and a fresh inventory.
 
-7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR.
+7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR. For every
+   fix, run `make ci-fast`, commit, push, and return to step 2 for a fresh CI and review pass;
+   never enter the merge gate with an unpushed local fix.
 
 8. On entry and after any push, record the current `headRefOid`. Fetch every formal-review
    page and filter it to that SHA:
@@ -124,6 +134,9 @@ with `gh pr merge --help`.
    required or requested reviewer, wait one full cycle for asynchronous findings; after
    that, absence of a formal review is non-blocking and only posted findings, unresolved
    threads, review decisions, and checks gate merge.
+
+   After every wait or newly posted current-SHA review, return to step 4 and rebuild the
+   complete thread and comment inventory before considering the merge gate.
 
    Before each wait, report the head SHA and cycle number so the operator can see progress
    and cancel the sleep with an interrupt:
@@ -151,7 +164,9 @@ with `gh pr merge --help`.
    the merge to the reviewed SHA:
 
    ```sh
-   gh pr checks <P> --repo "${REPO}"
+   if ! gh pr checks <P> --repo "${REPO}"; then
+     exit 1
+   fi
    test "$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
    test "$(gh pr view <P> --repo "${REPO}" \
