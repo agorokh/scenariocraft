@@ -1,7 +1,9 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.bukkit.Material;
 
 /** Pure clear-and-wall plan that is later consumed by the per-tick block queue. */
@@ -104,6 +106,23 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                             WALL_MATERIAL);
         }
         return new ArenaFillPlan(fills, total);
+    }
+
+    public List<ChunkCoordinate> chunkCoordinates() {
+        Set<ChunkCoordinate> chunks = new LinkedHashSet<>();
+        for (BlockFill fill : fills) {
+            Cuboid bounds = fill.bounds();
+            int minChunkX = Math.floorDiv(bounds.minX(), 16);
+            int maxChunkX = Math.floorDiv(bounds.maxX(), 16);
+            int minChunkZ = Math.floorDiv(bounds.minZ(), 16);
+            int maxChunkZ = Math.floorDiv(bounds.maxZ(), 16);
+            for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                    chunks.add(new ChunkCoordinate(chunkX, chunkZ));
+                }
+            }
+        }
+        return List.copyOf(chunks);
     }
 
     private static long add(

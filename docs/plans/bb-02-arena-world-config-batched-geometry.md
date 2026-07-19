@@ -19,6 +19,8 @@ real server boot.
 - [x] Implement with tests.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
+- [x] Resolve external review findings about pre-existing worlds, chunk preparation, and
+      smoke fast-failure.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -29,6 +31,8 @@ real server boot.
 | 2026-07-19 | Represent clears and walls as lazy cuboid fill operations consumed by one bounded queue. | The command can enqueue a constant number of operations while every tick performs at most `blocks-per-tick` block mutations. |
 | 2026-07-19 | Place plots on deterministic concentric square rings using `plot-spacing` as the grid pitch. | This makes bounds, spacing, and non-overlap directly testable while reserving the hub for gathering and later chest work. |
 | 2026-07-19 | Treat packaged `config.yml` as the source of numeric and timing defaults, then validate all values while loading. | Defaults remain operator-visible and no gameplay timing, deck, plot, or batch values are hidden in code. |
+| 2026-07-19 | Asynchronously prepare every chunk touched by the fill plan and hold plugin chunk tickets until mutation completes. | Synchronous chunk generation inside a scheduled mutation tick can violate the apparent block budget even when the number of `setType` calls is bounded. |
+| 2026-07-19 | Reject a pre-existing `battle_world` unless Paper reports `WorldType.FLAT`. | Loading an arbitrary same-named world would make the single sampled floor height unsafe for plots away from the hub. |
 
 ## Surprises & Discoveries
 
@@ -40,13 +44,18 @@ real server boot.
 - A nested review sandbox could compile the final sources but could not bind a Paper server
   port. The delivery session therefore reran the pinned Paper server directly and captured
   the command evidence below.
+- Final review caught that the first edit of an outlying plot could synchronously generate
+  its chunk during a mutation tick. Chunk coordinates are now derived from the pure fill
+  plan, loaded asynchronously, and ticketed for the lifetime of the edit.
+- Kimi's HIGH claim that `/battle` was absent from `plugin.yml` was false: the packaged
+  descriptor already declared the command, and the real-server smoke had executed it.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 13 tests covering packaged configuration,
+- `make ci-fast` completed successfully with 18 tests covering packaged configuration,
   plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
-  batching limits and arithmetic, command authorization settings, and protection-plugin
-  detection.
+  batching limits and arithmetic, asynchronous chunk preparation and ticket cleanup,
+  existing-world validation, command authorization settings, and protection-plugin detection.
 - Pinned Paper `1.21.11` build `132` enabled the final plugin jar and logged:
   `Loaded or created superflat world battle_world.`
 - The same boot logged:

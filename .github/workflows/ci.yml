@@ -14,6 +14,7 @@ env:
   PAPER_BUILD: '132'
   PAPER_SHA256: '5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba'
   PAPER_BOOT_TIMEOUT_SECONDS: ${{ vars.PAPER_BOOT_TIMEOUT_SECONDS || '300' }}
+  BATTLE_QUEUE_TIMEOUT_SECONDS: ${{ vars.BATTLE_QUEUE_TIMEOUT_SECONDS || '30' }}
 
 jobs:
   build:
@@ -156,6 +157,10 @@ jobs:
             printf 'PAPER_BOOT_TIMEOUT_SECONDS must be a positive integer.\n'
             exit 1
           }
+          [[ "${BATTLE_QUEUE_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] || {
+            printf 'BATTLE_QUEUE_TIMEOUT_SECONDS must be a positive integer.\n'
+            exit 1
+          }
           # shellcheck disable=SC2016
           timeout --signal=TERM --kill-after=10s \
             "${PAPER_BOOT_TIMEOUT_SECONDS}s" bash -c '
@@ -184,11 +189,36 @@ jobs:
               fi
               sleep 1
             done
+            queue_seen=0
+            for ((attempt = 0; attempt < BATTLE_QUEUE_TIMEOUT_SECONDS; attempt++)); do
+              if test -f logs/latest.log &&
+                grep -q "Arena build queued: 2 plots in battle_world" logs/latest.log; then
+                queue_seen=1
+                break
+              fi
+              if ! kill -0 "${server_pid}" 2>/dev/null ||
+                { test -f logs/latest.log &&
+                  grep -Eq "Unknown (or incomplete )?command|Arena build preparation failed" \
+                    logs/latest.log; }; then
+                break
+              fi
+              sleep 1
+            done
+            if test "${queue_seen}" -ne 1; then
+              printf "battle start did not queue within %s seconds.\n" \
+                "${BATTLE_QUEUE_TIMEOUT_SECONDS}" >&2
+              exit 1
+            fi
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
                 grep -q "Arena build complete: 2 plots in battle_world" logs/latest.log; then
                 printf "stop\n" >&3
                 break
+              fi
+              if test -f logs/latest.log &&
+                grep -q "Arena build preparation failed" logs/latest.log; then
+                printf "Arena chunk preparation failed before completion.\n" >&2
+                exit 1
               fi
               sleep 1
             done

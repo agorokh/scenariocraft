@@ -58,7 +58,8 @@ public final class BattleCommand implements CommandExecutor {
                         arena.floorY(),
                         arenaSettings.wallHeight(),
                         completedMutations ->
-                                announceCompletion(sender, completedMutations));
+                                announceCompletion(sender, completedMutations),
+                        failure -> announcePreparationFailure(sender, failure));
         long ticks =
                 BatchedWorkQueue.ticksRequired(mutations, arenaSettings.blocksPerTick());
         sender.sendMessage(
@@ -89,5 +90,10 @@ public final class BattleCommand implements CommandExecutor {
                         + " block mutations).";
         logger.info(message);
         sender.sendMessage("Two build plots are ready. Let the creativity begin!");
+    }
+
+    private void announcePreparationFailure(CommandSender sender, Throwable ignored) {
+        sender.sendMessage(
+                "The arena could not get ready this time. Please ask a grown-up helper to check the server.");
     }
 }

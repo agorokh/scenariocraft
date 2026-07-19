@@ -35,8 +35,9 @@ public final class ArenaWorldService {
             world =
                     Objects.requireNonNull(
                             server.createWorld(creator), "Paper could not create battle_world");
-            logger.info("Loaded or created superflat world battle_world.");
         }
+        requireFlat(world.getWorldType());
+        logger.info("Loaded or created superflat world battle_world.");
 
         world.setGameRule(GameRules.ADVANCE_TIME, false);
         world.setGameRule(GameRules.SPAWN_MOBS, false);
@@ -65,5 +66,12 @@ public final class ArenaWorldService {
                         + floorY
                         + ".");
         return new ArenaWorld(world, floorY);
+    }
+
+    static void requireFlat(WorldType worldType) {
+        if (worldType != WorldType.FLAT) {
+            throw new IllegalStateException(
+                    "Existing battle_world is not superflat; move or replace it before enabling ScenarioCraft");
+        }
     }
 }
