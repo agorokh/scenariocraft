@@ -45,6 +45,7 @@ do not load `.env` files or service-manager configuration implicitly.
    command -v sleep
    command -v awk
    command -v date
+   command -v grep
    GH_VERSION="$(
      gh --version |
        awk '/gh version/ {
@@ -132,36 +133,89 @@ do not load `.env` files or service-manager configuration implicitly.
    THREAD_COMMENTS_BY_ID_JSON='{}'
    THREAD_PAGE_COUNT=0
    REVIEW_PAGE_COUNT=0
-   CONVERSATION_LEDGER_JSON="${CONVERSATION_LEDGER_JSON:-[]}"
-   REVIEW_LEDGER_JSON="${REVIEW_LEDGER_JSON:-[]}"
-   GRAPHQL_REMAINING="$(gh api rate_limit --jq .resources.graphql.remaining)"
+   PR_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+   if printf '%s\n' "${PR_BODY}" |
+     grep -q '^<!-- resolve-pr-ledgers:v1$'; then
+     LEDGERS_JSON="$(
+       printf '%s\n' "${PR_BODY}" |
+         awk '
+           /^<!-- resolve-pr-ledgers:v1$/ { capture = 1; next }
+           capture && /^-->$/ { exit }
+           capture { print }
+         '
+     )"
+     printf '%s' "${LEDGERS_JSON}" |
+       jq -e '.conversation | type == "array"' >/dev/null
+     printf '%s' "${LEDGERS_JSON}" |
+       jq -e '.reviews | type == "array"' >/dev/null
+     CONVERSATION_LEDGER_JSON="$(
+       printf '%s' "${LEDGERS_JSON}" | jq '.conversation'
+     )"
+     REVIEW_LEDGER_JSON="$(
+       printf '%s' "${LEDGERS_JSON}" | jq '.reviews'
+     )"
+   else
+     CONVERSATION_LEDGER_JSON='[]'
+     REVIEW_LEDGER_JSON='[]'
+   fi
+   RATE_LIMIT_JSON="$(gh api rate_limit)"
+   GRAPHQL_REMAINING="$(
+     printf '%s' "${RATE_LIMIT_JSON}" | jq -r .resources.graphql.remaining
+   )"
    test "${GRAPHQL_REMAINING}" -ge 100 || {
-     GRAPHQL_RESET="$(gh api rate_limit --jq .resources.graphql.reset)"
+     GRAPHQL_RESET="$(
+       printf '%s' "${RATE_LIMIT_JSON}" |
+         jq -r '.resources.graphql.reset | todateiso8601'
+     )"
      gh pr comment <P> --repo "${REPO}" \
-       --body "Escalation: GraphQL rate limit is below 100; reset epoch ${GRAPHQL_RESET}."
+       --body "Escalation: GraphQL rate limit is below 100; resets at ${GRAPHQL_RESET}."
      exit 1
    }
-   CONVERSATION_COMMENTS_JSON="$(
-     gh api --paginate "repos/${REPO}/issues/<P>/comments?per_page=100" |
-       jq -s -e 'if all(.[]; type == "array") then add // [] else error("invalid comment page") end'
-   )"
+   fetch_rest_collection() {
+     local endpoint="$1" page=1 page_length
+     REST_COLLECTION_JSON='[]'
+     while test "${page}" -le 50; do
+       PAGE_JSON="$(gh api "${endpoint}&page=${page}")"
+       printf '%s' "${PAGE_JSON}" | jq -e 'type == "array"' >/dev/null
+       page_length="$(printf '%s' "${PAGE_JSON}" | jq 'length')"
+       REST_COLLECTION_JSON="$(
+         jq -cn --argjson accumulated "${REST_COLLECTION_JSON}" \
+           --argjson page "${PAGE_JSON}" '$accumulated + $page'
+       )"
+       test "${page_length}" -eq 100 || return 0
+       page=$((page + 1))
+     done
+     return 1
+   }
+   fetch_rest_collection \
+     "repos/${REPO}/issues/<P>/comments?per_page=100" || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: conversation-comment inventory exceeded 50 pages."
+     exit 1
+   }
+   CONVERSATION_COMMENTS_JSON="${REST_COLLECTION_JSON}"
    CONVERSATION_LEDGER_JSON="$(
      jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
        --argjson comments "${CONVERSATION_COMMENTS_JSON}" '
        [$comments[] as $comment |
-         ([$ledger[] | select(.id == $comment.id)][0] //
+         ([$ledger[] |
+             select((.id | tonumber) == ($comment.id | tonumber))][0] //
           {id: $comment.id, status: "UNADDRESSED"})
        ]'
    )"
-   FORMAL_REVIEWS_JSON="$(
-     gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
-       jq -s -e 'if all(.[]; type == "array") then add // [] else error("invalid review page") end'
-   )"
+   fetch_rest_collection \
+     "repos/${REPO}/pulls/<P>/reviews?per_page=100" || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: formal-review inventory exceeded 50 pages."
+     exit 1
+   }
+   FORMAL_REVIEWS_JSON="${REST_COLLECTION_JSON}"
    REVIEW_LEDGER_JSON="$(
      jq -cn --argjson ledger "${REVIEW_LEDGER_JSON}" \
        --argjson reviews "${FORMAL_REVIEWS_JSON}" '
        [$reviews[] as $review |
-         ([$ledger[] | select(.id == $review.id)][0] //
+         ([$ledger[] |
+             select((.id | tonumber) == ($review.id | tonumber))][0] //
           {id: $review.id, status: "UNADDRESSED"})
        ]'
    )"
@@ -396,10 +450,11 @@ do not load `.env` files or service-manager configuration implicitly.
    )"
    ```
 
-   Persist both ledgers in the PR description's `## Comment Ledger` section after every
-   assessment, using IDs and statuses only. On resume, reconstruct both JSON variables from
-   that section before step 4; never rely on shell variables surviving a wait. Re-sync the
-   persisted ledgers against each fresh inventory as shown in step 4.
+   Persist both ledgers in the PR description's `## Comment Ledger` section as a JSON object
+   between exact `<!-- resolve-pr-ledgers:v1` and `-->` lines, using IDs and statuses only.
+   On resume, reconstruct both variables with step 4's parser; if the marker exists but does
+   not parse, stop instead of defaulting to empty ledgers. Re-sync the persisted ledgers
+   against each fresh inventory as shown in step 4.
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR. For every
    fix, run `make ci-fast`, commit, push, and return to step 2 for a fresh CI and review pass;
@@ -509,25 +564,62 @@ do not load `.env` files or service-manager configuration implicitly.
 
    ```sh
    CHECKPOINT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-   [[ "${CHECKPOINT_TIMESTAMP}" =~ ^[0-9TZ:+.-]+$ ]] ||
+   [[ "${CHECKPOINT_TIMESTAMP}" =~ ^[-0-9TZ:+.]+$ ]] ||
      { printf 'Unsupported UTC timestamp format\n' >&2; exit 1; }
    CHECKPOINT="<!-- resolve-pr-checkpoint:v1 head=${REVIEWED_SHA} cycle=<CYCLE> timestamp=${CHECKPOINT_TIMESTAMP} -->"
+   LEDGERS_JSON="$(
+     jq -cn --argjson conversation "${CONVERSATION_LEDGER_JSON}" \
+       --argjson reviews "${REVIEW_LEDGER_JSON}" \
+       '{conversation: $conversation, reviews: $reviews}'
+   )"
    BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
    NEXT_BODY="$(
      printf '%s\n' "${BODY}" |
-       awk -v checkpoint="${CHECKPOINT}" '
-         BEGIN { replaced = 0 }
-         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9TZ:+.-]+ -->$/ {
-           if (!replaced) { print checkpoint; replaced = 1 }
+       awk -v checkpoint="${CHECKPOINT}" -v ledgers="${LEDGERS_JSON}" '
+         BEGIN { checkpoint_replaced = 0; ledger_replaced = 0; skip_ledger = 0 }
+         /^<!-- resolve-pr-ledgers:v1$/ {
+           if (!ledger_replaced) {
+             print "<!-- resolve-pr-ledgers:v1"
+             print ledgers
+             print "-->"
+             ledger_replaced = 1
+           }
+           skip_ledger = 1
+           next
+         }
+         skip_ledger && /^-->$/ { skip_ledger = 0; next }
+         skip_ledger { next }
+         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[-0-9TZ:+.]+ -->$/ {
+           if (!checkpoint_replaced) {
+             print checkpoint
+             checkpoint_replaced = 1
+           }
            next
          }
          { print }
-         END { if (!replaced) print checkpoint }
+         END {
+           if (!ledger_replaced) {
+             print "<!-- resolve-pr-ledgers:v1"
+             print ledgers
+             print "-->"
+           }
+           if (!checkpoint_replaced) print checkpoint
+         }
        '
    )"
+   CURRENT_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
+   test "${CURRENT_BODY}" = "${BODY}" || {
+     printf 'PR body changed; recompute the combined update\n' >&2
+     exit 1
+   }
    printf '%s\n' "${NEXT_BODY}" |
      gh pr edit <P> --repo "${REPO}" --body-file -
    ```
+
+   Apply the ledger-section replacement and checkpoint-line replacement to the same freshly
+   read `BODY`, then perform one `gh pr edit`. Confirm the body is unchanged immediately
+   before that edit; if another writer changed it, discard `NEXT_BODY`, re-read, and
+   recompute both replacements. Never issue independent ledger and checkpoint body writes.
 
    The wait may be taken by ending the turn and resuming after 600 seconds rather than
    blocking an agent session. On resume, read the checkpoint, verify the head is unchanged,
@@ -643,7 +735,27 @@ do not load `.env` files or service-manager configuration implicitly.
          test "${MERGEABLE}" = "UNKNOWN" || break
          test "${MERGEABLE_ATTEMPT}" -eq 3 || sleep 10
        done
-       test "${MERGEABLE}" = "MERGEABLE"
+       case "${MERGEABLE}" in
+         MERGEABLE)
+           ;;
+         CONFLICTING)
+           BASE_REF="$(gh pr view <P> --repo "${REPO}" \
+             --json baseRefName --jq .baseRefName)"
+           git fetch origin "${BASE_REF}"
+           CONFLICT_FILES="$(
+             git merge-tree --write-tree --name-only \
+               HEAD "origin/${BASE_REF}" 2>&1 || true
+           )"
+           gh pr comment <P> --repo "${REPO}" \
+             --body "Escalation: PR is conflicting. Merge-tree output: ${CONFLICT_FILES}"
+           exit 1
+           ;;
+         *)
+           gh pr comment <P> --repo "${REPO}" \
+             --body "Escalation: mergeability remained ${MERGEABLE} after three checks."
+           exit 1
+           ;;
+       esac
        test "$(gh pr view <P> --repo "${REPO}" \
          --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
        test "$(gh pr view <P> --repo "${REPO}" \
