@@ -11,6 +11,7 @@ framework boundary.
 - `src/test/java/` — unit tests.
 - `docs/plans/` — ExecPlans for multi-hour work.
 - `evals/` — judge regression cases added by BB-11.
+- `.agents/skills/` — repository-local agent procedures for issue delivery and PR resolution.
 
 Keep scenario-specific code in a scenario-named package when it arrives. Do not build a
 general scenario framework before BB-14.
@@ -27,6 +28,8 @@ make ci-fast
 ```
 
 `make ci-fast` is the local CI-parity gate. The build jar is written to `build/libs/`.
+PR resolution requires a GitHub CLI exposing `--match-head-commit` and `--body-file`.
+Verify both flags from `gh pr merge --help` and `gh pr edit --help` before starting.
 
 ## Conventions
 
@@ -43,8 +46,12 @@ make ci-fast
 
 ## Pull requests
 
-- One issue → one Codex session → one pull request.
-- Include the issue number and Codex session ID in the pull request description.
+- Use `.agents/skills/deliver/SKILL.md` as the delivery procedure for every issue.
+- Use `.agents/skills/resolve-pr/SKILL.md` to drive an open pull request through CI, review,
+  and merge.
+- One issue → one delivery session plus resolution sessions as needed → one pull request.
+- Include the issue number and every Codex session ID that changed the pull request in its
+  description.
 - Include tests and the issue's requested acceptance evidence.
 - Run `/review` and fix every P1 before merge.
 - Never merge with failing CI.
@@ -58,3 +65,9 @@ Entries in this section must be dated and trace to a repeated operator correctio
   Tier-3 workspace, a code-edit gate, a self-hosted reviewer, and a resolve-gate — none of
   which exist here. Durable memory in this repository is: the issue backlog, `docs/plans/`
   ExecPlans, and this Corrections section. Nothing else.
+
+- 2026-07-19 — Ported procedures lose the edge cases that made them work. The public
+  resolve-pr skill was written from a longer internal one and silently dropped GraphQL
+  pagination, full thread-comment scanning, the head-SHA review-completion gate, and the
+  retry bound. Multi-model review found all four. When porting a procedure, port its
+  failure handling first — that is the part experience paid for.

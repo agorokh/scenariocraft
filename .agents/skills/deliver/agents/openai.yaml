@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deliver ScenarioCraft Issue"
+  short_description: "Take an issue to external review"
+  default_prompt: "Use $deliver to take issue <ISSUE_NUMBER> to a pull request ready for external review."
