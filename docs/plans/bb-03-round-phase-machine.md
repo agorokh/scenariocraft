@@ -2,7 +2,7 @@
 
 Issue: #5
 Owner: Codex
-Status: In progress
+Status: Complete
 
 ## Purpose
 
@@ -18,7 +18,7 @@ state, scheduled timers, cancellable arena work, and real-server acceptance evid
 - [x] Implement with tests.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -68,7 +68,15 @@ session.
   `PREPARING`, `GATHERING`, `NOTE_PICK`, `BUILDING`, and `REVEAL`.
 - The acceptance log contained no watchdog, arena mutation failure, plugin enable failure,
   or plugin disable failure signature and ended with `All dimensions are saved`.
+- GitHub's build and pinned real-Paper smoke jobs passed on the pushed implementation head.
 
 ## Retrospective
 
-Pending completion.
+BB-03 now turns the BB-02 arena primitives into a playable, timer-driven round without
+pulling later chest, anti-peek, or judging work forward. Separating the phase graph and
+timer arithmetic from Paper effects made the required transition table precise, while one
+runtime controller kept reconnect, command, bossbar, teleport, and restoration behavior
+coherent. Reusing the existing editor for reveal work also preserved the main-thread block
+budget instead of introducing a second mutation path. The real protocol client was useful
+beyond a boot smoke: it proved the one-player-plus-practice-plot path and observed actual
+bossbar packets, chat countdowns, task feedback, and completion.
