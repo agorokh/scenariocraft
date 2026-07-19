@@ -27,6 +27,7 @@ real server boot.
       mutation-tick exceptions.
 - [x] Bound asynchronous chunk preparation, clear every failed build, and make smoke
       correlate its queued and completed mutation totals.
+- [x] Scope smoke command detection to log bytes written after `battle start`.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -68,6 +69,9 @@ real server boot.
 - The final review pass identified a hung-future recovery gap and a partial-enqueue path
   that could retain orphaned mutations. Preparation now has a cancellable deadline with
   generation guards, and every build failure clears the shared queue.
+- A post-cooldown review caught that smoke fast-failure signatures were searched across
+  the whole log. The harness now snapshots a byte cursor before `battle start`, checks only
+  later output, and reports command, preparation, server-exit, and timeout failures distinctly.
 
 ## Acceptance evidence
 

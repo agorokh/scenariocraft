@@ -181,43 +181,72 @@ jobs:
               fi
             }
             trap cleanup EXIT TERM INT
+            battle_log_offset=0
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
                 grep -q "Done (" logs/latest.log; then
+                battle_log_offset=$(wc -c <logs/latest.log)
                 printf "battle start\n" >&3
                 break
               fi
               sleep 1
             done
             queue_seen=0
+            queue_failure=timeout
             for ((attempt = 0; attempt < BATTLE_QUEUE_TIMEOUT_SECONDS; attempt++)); do
-              if test -f logs/latest.log &&
-                grep -q "Arena build queued: 2 plots in battle_world" logs/latest.log; then
+              new_battle_log=$(
+                tail -c "+$((battle_log_offset + 1))" logs/latest.log 2>/dev/null ||
+                  true
+              )
+              if grep -q "Arena build queued: 2 plots in battle_world" \
+                <<<"${new_battle_log}"; then
                 queue_seen=1
                 break
               fi
-              if ! kill -0 "${server_pid}" 2>/dev/null ||
-                { test -f logs/latest.log &&
-                  grep -Eq "Unknown (or incomplete )?command|Arena chunk preparation failed" \
-                    logs/latest.log; }; then
+              if ! kill -0 "${server_pid}" 2>/dev/null; then
+                queue_failure=server-exited
+                break
+              fi
+              if grep -Eq "Unknown (or incomplete )?command" <<<"${new_battle_log}"; then
+                queue_failure=unknown-command
+                break
+              fi
+              if grep -q "Arena chunk preparation failed" <<<"${new_battle_log}"; then
+                queue_failure=preparation-failed
                 break
               fi
               sleep 1
             done
             if test "${queue_seen}" -ne 1; then
-              printf "battle start did not queue within %s seconds.\n" \
-                "${BATTLE_QUEUE_TIMEOUT_SECONDS}" >&2
+              case "${queue_failure}" in
+                unknown-command)
+                  printf "Paper rejected battle start as an unknown command.\n" >&2
+                  ;;
+                preparation-failed)
+                  printf "Arena chunk preparation failed before the build queued.\n" >&2
+                  ;;
+                server-exited)
+                  printf "Paper exited before battle start queued.\n" >&2
+                  ;;
+                *)
+                  printf "battle start did not queue within %s seconds.\n" \
+                    "${BATTLE_QUEUE_TIMEOUT_SECONDS}" >&2
+                  ;;
+              esac
               exit 1
             fi
             while kill -0 "${server_pid}" 2>/dev/null; do
-              if test -f logs/latest.log &&
-                grep -q "Arena build complete: 2 plots in battle_world" logs/latest.log; then
+              new_battle_log=$(
+                tail -c "+$((battle_log_offset + 1))" logs/latest.log 2>/dev/null ||
+                  true
+              )
+              if grep -q "Arena build complete: 2 plots in battle_world" \
+                <<<"${new_battle_log}"; then
                 printf "stop\n" >&3
                 break
               fi
-              if test -f logs/latest.log &&
-                grep -Eq "Arena (chunk preparation|block mutation) failed" \
-                  logs/latest.log; then
+              if grep -Eq "Arena (chunk preparation|block mutation) failed" \
+                <<<"${new_battle_log}"; then
                 printf "Arena build failed before completion.\n" >&2
                 exit 1
               fi
