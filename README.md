@@ -38,7 +38,7 @@ can build the scaffold now with Java 21:
 
 The plugin jar is written to `build/libs/`.
 
-## How Codex built this
+## How this was built
 
 ScenarioCraft is being built in the open for **OpenAI Build Week (July 2026)**. Every change
 starts from a GitHub issue and is implemented by Codex.
@@ -47,12 +47,6 @@ The engineering discipline used here was not invented for Build Week. It is a pu
 a privately evolved, multi-model agentic engineering system: pitfall ledgers, decision logs,
 eval gates, and session handoffs. ScenarioCraft is the first public project built with that
 method and Codex as its sole software builder.
-
-The repository's [delivery skill](.agents/skills/deliver/SKILL.md) and
-[PR-resolution skill](.agents/skills/resolve-pr/SKILL.md) are a public port of the author's
-private multi-repo delivery procedure, stripped of private infrastructure. They work in
-tandem: delivery owns issue → branch → draft PR → implementation → tests → ready for review;
-PR resolution owns CI repair → external feedback → final checks → merge.
 
 ## License
 
