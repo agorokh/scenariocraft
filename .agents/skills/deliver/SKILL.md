@@ -26,18 +26,23 @@ ExecPlan updated and the session ID recorded.
    `codex/<issue>-<slug>`; verify that the new branch contains no unexpected commits. Make
    and push the first scoped commit — the ExecPlan for multi-hour work, or the smallest
    implementation slice otherwise — before opening a draft PR so GitHub has a branch
-   difference to review. Keep the PR in draft while implementation and verification
-   continue.
+   difference to review. Run `make ci-fast` before pushing an implementation slice; an
+   ExecPlan-only commit does not require the code gate. Keep the PR in draft while
+   implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
    the issue and stop; do not silently expand scope.
-5. Write tests alongside the change. Run `make ci-fast` locally before pushing.
+5. Write tests alongside the change. Verify the checked-in Makefile exposes `ci-fast`, then
+   run `make ci-fast` locally before every code push.
 6. If an ExecPlan was created, update it: check off Progress and record anything that failed
    or surprised you under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Put the issue number, the acceptance evidence each criterion asks for, and the Codex
-   session ID in the PR description. Confirm local CI and the latest pushed head's GitHub
-   checks are green. If checks are pending, wait 60 seconds and reinspect them, for at most
-   three cycles; do not push merely to restart healthy pending checks. If checks fail, push
-   fixes while the PR remains a draft. Then mark the PR ready for review.
+   session ID in the PR description. Commit and push the completed implementation, tests,
+   and conditional ExecPlan update; verify local `HEAD` equals the PR's `headRefOid`.
+   Confirm local CI and that pushed head's GitHub checks are green. If checks are pending,
+   wait 60 seconds and reinspect them, for at most three cycles; do not push merely to
+   restart healthy pending checks. If they remain pending after the third cycle, escalate
+   and stop without marking the PR ready. If checks fail, push fixes while the PR remains a
+   draft. Then mark the PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR

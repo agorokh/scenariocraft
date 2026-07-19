@@ -14,25 +14,34 @@ description: Drive one open ScenarioCraft pull request through CI repair, review
 ## Prerequisites
 
 `gh auth status` must succeed, with repository access, pull-request write scope, and
-Actions/checks read access.
+Actions/checks read access. The installed `gh` must expose `--match-head-commit`; verify it
+with `gh pr merge --help`.
 
 ## Steps
 
-1. Confirm that the worktree has no unrelated changes, check out the requested PR head, and
-   verify that local `HEAD` matches it before editing or pushing:
+1. Authenticate, resolve the repository target, reject a dirty worktree, check out the
+   requested PR head, and verify that local `HEAD` matches it before editing or pushing.
+   `SCENARIOCRAFT_REPO` supports an intentional fork or renamed remote while retaining the
+   canonical repository as the fallback:
 
    ```sh
-   git status --short
-   gh pr checkout <P> --repo agorokh/scenariocraft
+   gh auth status
+   gh pr merge --help | grep -q -- '--match-head-commit'
+   REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
+   OWNER="${REPO%%/*}"
+   NAME="${REPO#*/}"
+   gh repo view "${REPO}" --json nameWithOwner
+   test -z "$(git status --porcelain)"
+   gh pr checkout <P> --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
-     "$(gh pr view <P> --repo agorokh/scenariocraft --json headRefOid --jq .headRefOid)"
+     "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
    ```
 
 2. Inspect the PR:
 
    ```sh
-   gh pr view <P> --repo agorokh/scenariocraft \
-     --json number,state,isDraft,headRefOid,statusCheckRollup,mergeable,reviewDecision,comments,reviews
+   gh pr view <P> --repo "${REPO}" \
+     --json number,state,isDraft,headRefOid,statusCheckRollup,mergeable,reviewDecision,reviewRequests,comments,reviews
    ```
 
    If `isDraft` is true, stop and hand it back to its author or the `deliver` skill.
@@ -47,15 +56,15 @@ Actions/checks read access.
    reviews, and inline comments:
 
    ```sh
-   gh api --paginate 'repos/agorokh/scenariocraft/issues/<P>/comments?per_page=100'
-   gh api --paginate 'repos/agorokh/scenariocraft/pulls/<P>/reviews?per_page=100'
-   gh api --paginate 'repos/agorokh/scenariocraft/pulls/<P>/comments?per_page=100'
+   gh api --paginate "repos/${REPO}/issues/<P>/comments?per_page=100"
+   gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100"
+   gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
    ```
 
    Check review threads with GraphQL because REST does not report resolution state:
 
    ```sh
-   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{author{login} body}}}}}}}' -f o=agorokh -f n=scenariocraft -F p=<P>
+   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{author{login} body}}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
    ```
 
    Use `-F` for the PR number. `-f` sends a string and fails the GraphQL integer
@@ -97,21 +106,27 @@ Actions/checks read access.
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR.
 
-8. After any push, record the new `headRefOid`. This repository's external reviewer is
-   `ws-ops-cursor-reviewer[bot]`; its authoritative signal is a formal review whose
-   `commit_id` equals that SHA. Fetch every review page and filter it explicitly:
+8. On entry and after any push, record the current `headRefOid`. Fetch every formal-review
+   page and filter it to that SHA:
 
    ```sh
-   REVIEWED_SHA="$(gh pr view <P> --repo agorokh/scenariocraft \
+   REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)"
    gh api --paginate --slurp \
-     'repos/agorokh/scenariocraft/pulls/<P>/reviews?per_page=100' |
+     "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
      jq --arg sha "${REVIEWED_SHA}" \
-       'add | map(select(.user.login == "ws-ops-cursor-reviewer[bot]" and .commit_id == $sha))'
+       'add | map(select(.commit_id == $sha)) | map({user: .user.login, state, body})'
    ```
 
-   An empty result means the review is pending. Before each wait, report the head SHA and
-   cycle number so the operator can see progress and cancel the sleep with an interrupt:
+   Reject `DISMISSED` and `CHANGES_REQUESTED` as completion signals. `APPROVED` or
+   `COMMENTED` means the pass posted, but every finding in its body still must be addressed.
+   A nonempty `reviewRequests` list means review is pending. When the repository has no
+   required or requested reviewer, wait one full cycle for asynchronous findings; after
+   that, absence of a formal review is non-blocking and only posted findings, unresolved
+   threads, review decisions, and checks gate merge.
+
+   Before each wait, report the head SHA and cycle number so the operator can see progress
+   and cancel the sleep with an interrupt:
 
    ```sh
    RESOLVE_PR_POLL_INTERVAL_SECONDS="${RESOLVE_PR_POLL_INTERVAL_SECONDS:-600}"
@@ -121,28 +136,27 @@ Actions/checks read access.
    ```
 
    The default interval is the observed 600-second reviewer latency. The operator may
-   override it with a positive integer. Wait at most three cycles for the same head SHA, so
-   the default total timeout is 1,800 seconds. End the turn and resume later only when the
-   host provides a scheduled-resume mechanism; otherwise keep a long-lived session and run
-   the sleep. If the reviewer is known to be unavailable, or the review is still pending
-   after the third cycle, post an escalation comment naming the head SHA and the reviewer or
-   review result that is stuck, then stop.
+   override it with a positive integer. This repository has no scheduler or automatic
+   session-resume mechanism, so keep a long-lived terminal session for the sleep. Wait at
+   most three cycles for the same head SHA, for a default total timeout of 1,800 seconds. If
+   a required or requested reviewer is known to be unavailable, or remains pending after
+   the third cycle, post an escalation comment naming the head SHA and reviewer, then stop.
 
 9. Squash-merge only when required checks are green on the head SHA, no gating thread is
-   unresolved, every P1 is fixed, the external reviewer has posted a completed review for
-   that head SHA, and `reviewDecision` is not `CHANGES_REQUESTED`. Confirm every change
-   request on that SHA was dismissed or superseded by a later approving review. A green
-   check with no posted review for the current head SHA is unfinished, not clean, and must
-   not be merged. Immediately before merging, verify all reported checks, re-read the head
-   and review decision, and pin the merge to the reviewed SHA:
+   unresolved, every P1 is fixed, no current-SHA review is `CHANGES_REQUESTED`, no review
+   request is pending, and `reviewDecision` is not `CHANGES_REQUESTED`. A `DISMISSED` review
+   does not count as a completed pass but does not itself gate merge. Confirm every change
+   request on that SHA was dismissed or superseded by a later approving review. Immediately
+   before merging, verify all reported checks, re-read the head and review decision, and pin
+   the merge to the reviewed SHA:
 
    ```sh
-   gh pr checks <P> --repo agorokh/scenariocraft
-   test "$(gh pr view <P> --repo agorokh/scenariocraft \
+   gh pr checks <P> --repo "${REPO}"
+   test "$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
-   test "$(gh pr view <P> --repo agorokh/scenariocraft \
+   test "$(gh pr view <P> --repo "${REPO}" \
      --json reviewDecision --jq .reviewDecision)" != "CHANGES_REQUESTED"
-   gh pr merge <P> --repo agorokh/scenariocraft --squash \
+   gh pr merge <P> --repo "${REPO}" --squash \
      --match-head-commit "${REVIEWED_SHA}"
    ```
 
@@ -158,9 +172,8 @@ Comment on the PR with the evidence and the decision a human must make, then sto
 
 ## Guardrails
 
-- Name the repository explicitly on every `gh` call. Pass
-  `--repo agorokh/scenariocraft` to commands that support it; for `gh api graphql`, bind the
-  `agorokh/scenariocraft` owner and repository variables explicitly as shown above.
+- Name the resolved `REPO` explicitly on every `gh` call. For `gh api graphql`, bind its
+  `OWNER` and `NAME` variables explicitly as shown above.
 - Never force-push.
 - Never commit secrets.
 - Keep changes scoped to the PR's issue. Open a follow-up issue for anything else.
