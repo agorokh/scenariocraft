@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongConsumer;
@@ -18,16 +19,21 @@ import org.bukkit.scheduler.BukkitTask;
 
 /** Owns the single per-tick queue used to clear plots and build their walls. */
 public final class BatchedBlockEditor implements AutoCloseable {
+    private static final long CHUNK_PREPARATION_TIMEOUT_TICKS = 20L * 30L;
+
     private final Plugin plugin;
     private final World world;
     private final BatchedWorkQueue queue;
     private final Logger logger;
     private final BukkitTask task;
     private final Set<ChunkCoordinate> chunkTickets = new HashSet<>();
-    private final AtomicReference<Throwable> pendingPreparationFailure = new AtomicReference<>();
+    private final AtomicReference<PendingPreparationFailure> pendingPreparationFailure =
+            new AtomicReference<>();
     private Runnable completion;
     private Consumer<Throwable> preparationFailure;
-    private boolean preparingChunks;
+    private BukkitTask preparationTimeoutTask;
+    private volatile long preparationGeneration;
+    private volatile boolean preparingChunks;
     private volatile boolean closed;
 
     public BatchedBlockEditor(Plugin plugin, World world, int blocksPerTick, Logger logger) {
@@ -57,10 +63,13 @@ public final class BatchedBlockEditor implements AutoCloseable {
                 Objects.requireNonNull(onPreparationFailure, "onPreparationFailure");
         completion = () -> completionConsumer.accept(scheduledBlocks);
         preparingChunks = true;
-        prepareChunks(plan);
-        Throwable synchronousHandoffFailure = pendingPreparationFailure.getAndSet(null);
-        if (synchronousHandoffFailure != null) {
-            reportPreparationFailure(synchronousHandoffFailure);
+        long generation = ++preparationGeneration;
+        prepareChunks(plan, generation);
+        PendingPreparationFailure synchronousHandoffFailure =
+                pendingPreparationFailure.getAndSet(null);
+        if (synchronousHandoffFailure != null
+                && synchronousHandoffFailure.generation() == generation) {
+            reportPreparationFailure(synchronousHandoffFailure.failure());
         }
         return scheduledBlocks;
     }
@@ -81,13 +90,14 @@ public final class BatchedBlockEditor implements AutoCloseable {
         completion = null;
         preparationFailure = null;
         pendingPreparationFailure.set(null);
+        cancelPreparationTimeout();
         releaseChunkTickets();
     }
 
     private void runTick() {
-        Throwable handoffFailure = pendingPreparationFailure.getAndSet(null);
-        if (handoffFailure != null) {
-            reportPreparationFailure(handoffFailure);
+        PendingPreparationFailure handoffFailure = pendingPreparationFailure.getAndSet(null);
+        if (handoffFailure != null && isActivePreparation(handoffFailure.generation())) {
+            reportPreparationFailure(handoffFailure.failure());
             return;
         }
         boolean hadWork = queue.hasWork();
@@ -111,21 +121,33 @@ public final class BatchedBlockEditor implements AutoCloseable {
         }
     }
 
-    private void prepareChunks(ArenaFillPlan plan) {
+    private void prepareChunks(ArenaFillPlan plan, long generation) {
         List<CompletableFuture<Chunk>> futures = new ArrayList<>();
         try {
             for (ChunkCoordinate chunk : plan.chunkCoordinates()) {
                 futures.add(world.getChunkAtAsync(chunk.x(), chunk.z(), true));
             }
         } catch (RuntimeException exception) {
-            finishPreparation(plan, futures, exception);
+            finishPreparation(plan, futures, exception, generation);
             return;
         }
 
+        try {
+            preparationTimeoutTask =
+                    plugin.getServer()
+                            .getScheduler()
+                            .runTaskLater(
+                                    plugin,
+                                    () -> timeOutPreparation(futures, generation),
+                                    CHUNK_PREPARATION_TIMEOUT_TICKS);
+        } catch (RuntimeException exception) {
+            finishPreparation(plan, futures, exception, generation);
+            return;
+        }
         CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
                 .whenComplete(
                         (ignored, failure) -> {
-                            if (closed) {
+                            if (closed || !isActivePreparation(generation)) {
                                 return;
                             }
                             try {
@@ -133,20 +155,38 @@ public final class BatchedBlockEditor implements AutoCloseable {
                                         .getScheduler()
                                         .runTask(
                                                 plugin,
-                                                () -> finishPreparation(plan, futures, failure));
+                                                () ->
+                                                        finishPreparation(
+                                                                plan,
+                                                                futures,
+                                                                failure,
+                                                                generation));
                             } catch (RuntimeException exception) {
-                                if (!closed) {
-                                    pendingPreparationFailure.compareAndSet(null, exception);
+                                if (!closed && isActivePreparation(generation)) {
+                                    PendingPreparationFailure displaced =
+                                            pendingPreparationFailure.getAndSet(
+                                                    new PendingPreparationFailure(
+                                                            generation, exception));
+                                    if (displaced != null) {
+                                        logger.log(
+                                                Level.SEVERE,
+                                                "Replacing an undelivered arena preparation failure",
+                                                displaced.failure());
+                                    }
                                 }
                             }
                         });
     }
 
     private void finishPreparation(
-            ArenaFillPlan plan, List<CompletableFuture<Chunk>> futures, Throwable failure) {
-        if (closed) {
+            ArenaFillPlan plan,
+            List<CompletableFuture<Chunk>> futures,
+            Throwable failure,
+            long generation) {
+        if (closed || !isActivePreparation(generation)) {
             return;
         }
+        cancelPreparationTimeout();
         if (failure != null) {
             reportPreparationFailure(failure);
             return;
@@ -175,9 +215,11 @@ public final class BatchedBlockEditor implements AutoCloseable {
 
     private void reportBuildFailure(String message, Throwable failure) {
         Consumer<Throwable> failureConsumer = preparationFailure;
+        queue.clear();
         preparingChunks = false;
         completion = null;
         preparationFailure = null;
+        cancelPreparationTimeout();
         releaseChunkTickets();
         logger.log(Level.SEVERE, message, failure);
         if (failureConsumer != null) {
@@ -186,6 +228,29 @@ public final class BatchedBlockEditor implements AutoCloseable {
             } catch (RuntimeException exception) {
                 logger.log(Level.SEVERE, "Arena preparation failure callback failed", exception);
             }
+        }
+    }
+
+    private void timeOutPreparation(
+            List<CompletableFuture<Chunk>> futures, long generation) {
+        if (!isActivePreparation(generation)) {
+            return;
+        }
+        reportPreparationFailure(
+                new TimeoutException("Arena chunk preparation exceeded 30 seconds"));
+        for (CompletableFuture<Chunk> future : futures) {
+            future.cancel(true);
+        }
+    }
+
+    private boolean isActivePreparation(long generation) {
+        return preparingChunks && preparationGeneration == generation;
+    }
+
+    private void cancelPreparationTimeout() {
+        if (preparationTimeoutTask != null) {
+            preparationTimeoutTask.cancel();
+            preparationTimeoutTask = null;
         }
     }
 
@@ -199,4 +264,6 @@ public final class BatchedBlockEditor implements AutoCloseable {
         }
         chunkTickets.clear();
     }
+
+    private record PendingPreparationFailure(long generation, Throwable failure) {}
 }

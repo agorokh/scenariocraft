@@ -10,6 +10,7 @@ import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -108,6 +109,32 @@ final class BatchedBlockEditorTest {
     }
 
     @Test
+    void timesOutHungChunkPreparationAndAllowsRetry() {
+        TestRig rig = new TestRig(false, false, false, true);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        BatchedBlockEditor editor =
+                new BatchedBlockEditor(
+                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
+
+        editor.enqueueArena(
+                List.of(new PlotBounds(0, 0, 0, 0)),
+                0,
+                1,
+                ignored -> {},
+                failure::set);
+        assertTrue(editor.isBusy());
+        assertNotNull(rig.preparationTimeout.get());
+
+        rig.preparationTimeout.get().run();
+
+        assertFalse(editor.isBusy());
+        assertTrue(failure.get() instanceof TimeoutException);
+        assertEquals(0, editor.pendingBlocks());
+        assertEquals(0, rig.blockMutations.get());
+        editor.close();
+    }
+
+    @Test
     void recoversFromMutationFailureAndReleasesTickets() {
         TestRig rig = new TestRig(false, false, true);
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -180,6 +207,7 @@ final class BatchedBlockEditorTest {
         private final AtomicInteger ticketsAdded = new AtomicInteger();
         private final AtomicInteger ticketsRemoved = new AtomicInteger();
         private final AtomicReference<Runnable> tick = new AtomicReference<>();
+        private final AtomicReference<Runnable> preparationTimeout = new AtomicReference<>();
         private final Plugin plugin;
         private final World world;
 
@@ -187,6 +215,18 @@ final class BatchedBlockEditorTest {
                 boolean failChunkLoad,
                 boolean failPreparationHandoff,
                 boolean failFirstBlockMutation) {
+            this(
+                    failChunkLoad,
+                    failPreparationHandoff,
+                    failFirstBlockMutation,
+                    false);
+        }
+
+        private TestRig(
+                boolean failChunkLoad,
+                boolean failPreparationHandoff,
+                boolean failFirstBlockMutation,
+                boolean hangChunkLoad) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             Block block =
                     proxy(
@@ -210,6 +250,9 @@ final class BatchedBlockEditorTest {
                                         int loadNumber = chunkLoads.incrementAndGet();
                                         int chunkX = (int) arguments[0];
                                         int chunkZ = (int) arguments[1];
+                                        if (hangChunkLoad) {
+                                            yield new CompletableFuture<>();
+                                        }
                                         if (failChunkLoad && loadNumber == 1) {
                                             yield CompletableFuture.failedFuture(
                                                     new IllegalStateException(
@@ -247,6 +290,10 @@ final class BatchedBlockEditorTest {
                                                     "test scheduler handoff failure");
                                         }
                                         ((Runnable) arguments[1]).run();
+                                        yield task;
+                                    }
+                                    case "runTaskLater" -> {
+                                        preparationTimeout.set((Runnable) arguments[1]);
                                         yield task;
                                     }
                                     default -> defaultValue(method.getReturnType());

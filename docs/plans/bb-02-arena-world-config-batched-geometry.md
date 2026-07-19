@@ -25,6 +25,8 @@ real server boot.
       failure detection with the runtime log contract.
 - [x] Prevent false queued announcements after synchronous failure and recover cleanly from
       mutation-tick exceptions.
+- [x] Bound asynchronous chunk preparation, clear every failed build, and make smoke
+      correlate its queued and completed mutation totals.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -39,6 +41,7 @@ real server boot.
 | 2026-07-19 | Reject a pre-existing `battle_world` unless Paper reports `WorldType.FLAT`. | Loading an arbitrary same-named world would make the single sampled floor height unsafe for plots away from the hub. |
 | 2026-07-19 | Hand scheduler-rejection failures back to the editor tick through an atomic slot. | The async completion thread must never mutate editor state or call a command sender when Paper rejects the normal main-thread handoff. |
 | 2026-07-19 | Treat synchronous preparation and mutation-tick exceptions as failed builds, not queued or permanently busy builds. | Operators and CI must not see a false success line, and a transient world mutation failure must release tickets and permit a later retry. |
+| 2026-07-19 | Time out chunk preparation after 30 seconds and invalidate late callbacks by generation. | A lost Paper chunk future must not leave `/battle start` permanently busy, and an old callback must never populate a newer build. |
 
 ## Surprises & Discoveries
 
@@ -62,10 +65,13 @@ real server boot.
   emit both failure and success, while a `setType` exception left queued work permanently
   busy. The command now checks editor state before announcing, and the tick failure path
   clears work, releases tickets, and invokes the contained failure callback.
+- The final review pass identified a hung-future recovery gap and a partial-enqueue path
+  that could retain orphaned mutations. Preparation now has a cancellable deadline with
+  generation guards, and every build failure clears the shared queue.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 21 tests covering packaged configuration,
+- `make ci-fast` completed successfully with 22 tests covering packaged configuration,
   plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
   batching limits and arithmetic, asynchronous chunk preparation and ticket cleanup,
   existing-world validation, command authorization settings, and protection-plugin detection.

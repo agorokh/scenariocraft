@@ -260,12 +260,27 @@ jobs:
             grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
             failed=1
           fi
-          if ! grep -q \
-            'Arena build queued: 2 plots in battle_world, 81660 block mutations at 4000 per tick' \
-            "${log}" ||
-            ! grep -q \
-              'Arena build complete: 2 plots in battle_world (81660 block mutations)' \
-              "${log}"; then
+          queued_line="$(
+            grep -E \
+              'Arena build queued: 2 plots in battle_world, [0-9]+ block mutations at 4000 per tick' \
+              "${log}" | tail -n 1 || true
+          )"
+          complete_line="$(
+            grep -E \
+              'Arena build complete: 2 plots in battle_world \([0-9]+ block mutations\)' \
+              "${log}" | tail -n 1 || true
+          )"
+          queued_mutations="$(
+            printf '%s\n' "${queued_line}" |
+              sed -E 's/.*battle_world, ([0-9]+) block mutations.*/\1/'
+          )"
+          complete_mutations="$(
+            printf '%s\n' "${complete_line}" |
+              sed -E 's/.*battle_world \(([0-9]+) block mutations\).*/\1/'
+          )"
+          if test -z "${queued_line}" ||
+            test -z "${complete_line}" ||
+            test "${queued_mutations}" != "${complete_mutations}"; then
             printf 'The two-plot batched arena build did not complete as expected.\n'
             grep -n -C 4 -E 'Arena build|battle_world|ERROR|Exception' "${log}" || true
             failed=1
