@@ -11,6 +11,7 @@ framework boundary.
 - `src/test/java/` — unit tests.
 - `docs/plans/` — ExecPlans for multi-hour work.
 - `evals/` — judge regression cases added by BB-11.
+- `.agents/skills/` — repository-local agent procedures for issue delivery and PR resolution.
 
 Keep scenario-specific code in a scenario-named package when it arrives. Do not build a
 general scenario framework before BB-14.

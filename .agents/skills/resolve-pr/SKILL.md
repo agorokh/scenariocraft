@@ -74,35 +74,46 @@ workflow exists before relying on check state.
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
    ```
 
-   Check review threads with GraphQL because REST does not report resolution state. Also
-   page the GraphQL `reviews` connection: unlike a submitted-review-only inventory, this
-   can expose a visible `PENDING` draft review that must block merge:
+   Check review threads with GraphQL because REST does not report resolution state:
 
    ```sh
-   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$threadAfter:String,$reviewAfter:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$threadAfter){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{databaseId author{login} body}}}} reviews(first:100,after:$reviewAfter){pageInfo{hasNextPage endCursor} nodes{id state submittedAt author{login} commit{oid}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
+   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:50,after:$after){pageInfo{hasNextPage endCursor} nodes{id isResolved isOutdated path line comments(first:100){pageInfo{hasNextPage endCursor} nodes{databaseId author{login} body}}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
    ```
 
    Use `-F` for the PR number. `-f` sends a string and fails the GraphQL integer
-   validation. Omit the applicable cursor flag entirely on the first call; never pass a
-   literal `null`. Page `reviewThreads` with `threadAfter` and `reviews` with `reviewAfter`
-   independently until both connections report `hasNextPage: false`.
+   validation. Omit the cursor flag entirely on the first call; never pass a literal
+   `null`.
    If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
-   `-f threadAfter=<END_CURSOR>` using the returned cursor string and continue until it is
-   false.
-   When `hasNextPage` is true, require a nonempty `endCursor`; an empty cursor is an
-   incomplete response that must be retried or escalated, never passed as `after=`.
+   `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
+   Accumulate every page's `nodes` in a running set keyed by thread `id`; never replace an
+   earlier page with a later one.
+
+   Separately page the GraphQL `reviews` connection. Unlike a submitted-review-only REST
+   inventory, this can expose a visible `PENDING` draft review that must block merge:
+
+   ```sh
+   gh api graphql -f query='query($o:String!,$n:String!,$p:Int!,$after:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviews(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{id state submittedAt author{login} commit{oid}}}}}}' -f o="${OWNER}" -f n="${NAME}" -F p=<P>
+   ```
+
+   Page with `-f after=<END_CURSOR>` and accumulate every page's `nodes` in a separate
+   running set keyed by review `id`. An inventory is complete only after both connections
+   independently report `hasNextPage: false` and all accumulated pages are retained. For
+   either connection, when `hasNextPage` is true, require a nonempty `endCursor`; an empty
+   cursor is an incomplete response that must be retried or escalated, never passed as
+   `after=`.
 
    Page every thread's comments before classifying it. When
    `comments.pageInfo.hasNextPage` is true, use the thread `id` and comment cursor:
 
    ```sh
-   gh api graphql -f query='query($id:ID!,$after:String!){node(id:$id){... on PullRequestReviewThread{comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{author{login} body}}}}}' -f id=<THREAD_ID> -f after=<END_CURSOR>
+   gh api graphql -f query='query($id:ID!,$after:String!){node(id:$id){... on PullRequestReviewThread{comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{databaseId author{login} body}}}}}' -f id=<THREAD_ID> -f after=<END_CURSOR>
    ```
 
    Repeat until `comments.pageInfo.hasNextPage` is false so every comment author is
-   considered. Treat any REST or GraphQL failure as retryable at most three times; if a
-   complete inventory still cannot be fetched, post an escalation comment and stop. Never
-   continue with a partial response.
+   considered. Accumulate comment nodes across pages and retain the first comment's
+   `databaseId` as the thread's reply target. Treat any REST or GraphQL failure as retryable
+   at most three times; if a complete inventory still cannot be fetched, post an escalation
+   comment and stop. Never continue with a partial response.
 
 5. Classify every feedback item:
 
@@ -202,10 +213,15 @@ workflow exists before relying on check state.
    `reviewDecision` is neither `CHANGES_REQUESTED` nor `REVIEW_REQUIRED`. A `DISMISSED`
    review does not count as a completed pass but does not itself gate merge. Confirm every
    change request on that SHA was dismissed or superseded by a later approving review.
-   Immediately before merging, verify all reported checks, re-read the head, GraphQL review
-   states, review requests, and review decision, and pin the merge to the reviewed SHA:
+   Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
+   inventory. Derive `UNRESOLVED_THREAD_COUNT` and
+   `CURRENT_HEAD_PENDING_REVIEW_COUNT` from that fresh GraphQL result, then verify all
+   reported checks, the head, review requests, and review decision. Pin the merge to the
+   reviewed SHA:
 
    ```sh
+   test "${UNRESOLVED_THREAD_COUNT}" -eq 0
+   test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
    CHECKS_STATUS=0
    CHECKS_JSON="$(gh pr checks <P> --repo "${REPO}" --json name,bucket)" ||
      CHECKS_STATUS=$?
