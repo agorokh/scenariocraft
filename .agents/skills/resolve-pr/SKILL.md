@@ -120,6 +120,8 @@ calling any helper; do not assume shell functions are exported across processes.
    ```sh
    REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)"
+   [[ "${REVIEWED_SHA}" =~ ^[0-9a-f]{40}$ ]] ||
+     { printf 'GitHub returned an invalid full head OID\n' >&2; exit 1; }
    RESOLVE_PR_DEFAULT_POLL_INTERVAL_SECONDS=600
    CONVERSATION_LEDGER_JSON='[]'
    REVIEW_LEDGER_JSON='[]'
@@ -549,7 +551,13 @@ calling any helper; do not assume shell functions are exported across processes.
        ]'
    )"
    LEDGER_INVENTORY_AUTHORITATIVE=1
-   gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
+   fetch_rest_collection \
+     "repos/${REPO}/pulls/<P>/comments?per_page=100" || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: inline-comment inventory exceeded 50 pages."
+     exit 1
+   }
+   INLINE_COMMENTS_JSON="$(jq -s 'add // []' "${REST_PAGES_FILE}")"
    ```
 
    Check review threads with GraphQL because REST does not report resolution state:
@@ -563,6 +571,10 @@ calling any helper; do not assume shell functions are exported across processes.
    `null`.
    If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
    `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
+   Before every follow-up, derive `END_CURSOR` with
+   `jq -er '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor |
+   select(type == "string" and length > 0)'`; if that fails, retry the page or escalate
+   instead of issuing `after=`.
    Increment a `THREAD_PAGE_COUNT` for every fetched page and escalate if it exceeds 50.
    Accumulate every page's `nodes` in a running set keyed by thread `id`; never replace an
    earlier page with a later one. After each successful page fetch, execute:
@@ -635,6 +647,8 @@ calling any helper; do not assume shell functions are exported across processes.
    `comments.pageInfo.hasNextPage` is true, use the thread `id` and comment cursor:
 
    ```sh
+   [[ "${THREAD_ID}" =~ ^[A-Za-z0-9_-]+$ ]] ||
+     { printf 'Invalid review-thread node ID\n' >&2; exit 1; }
    gh api graphql -f query='query($id:ID!,$after:String!){node(id:$id){... on PullRequestReviewThread{comments(first:100,after:$after){pageInfo{hasNextPage endCursor} nodes{databaseId author{login} body}}}}}' -f id=<THREAD_ID> -f after=<END_CURSOR>
    ```
 
@@ -761,6 +775,8 @@ calling any helper; do not assume shell functions are exported across processes.
    ```sh
    REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)"
+   [[ "${REVIEWED_SHA}" =~ ^[0-9a-f]{40}$ ]] ||
+     { printf 'GitHub returned an invalid full head OID\n' >&2; exit 1; }
    test "$(git rev-parse HEAD)" = "${REVIEWED_SHA}"
    COMMENT_ID=<ASSESSED_COMMENT_ID>
    EVIDENCE_COMMENT_ID=<POSTED_EVIDENCE_COMMENT_ID>
@@ -1175,7 +1191,6 @@ calling any helper; do not assume shell functions are exported across processes.
          if any(.[]; .bucket == "pending") then "wait"
          elif any(.[]; .bucket == "fail" or .bucket == "cancel") then "repair"
          elif any(.[]; .bucket != "pass" and .bucket != "skipping") then "escalate"
-         elif (any(.[]; .bucket == "pass") | not) then "escalate"
          else "merge"
          end'
    )"
@@ -1194,6 +1209,8 @@ calling any helper; do not assume shell functions are exported across processes.
      merge)
        test "${CHECKS_STATUS}" -eq 0
        MERGEABLE="UNKNOWN"
+       # This loop only waits for GitHub to compute mergeability. A merge API
+       # retry is a new full step-9 pass, as required below.
        for MERGEABLE_ATTEMPT in 1 2 3; do
          MERGEABLE="$(gh pr view <P> --repo "${REPO}" \
            --json mergeable --jq .mergeable)"

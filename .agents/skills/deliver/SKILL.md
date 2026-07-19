@@ -128,14 +128,19 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    SLUG="<DERIVED_SAFE_SLUG>"
    PR_TITLE="<VERIFIED_PR_TITLE>"
    DESCRIPTION_FILE="<CREATED_DESCRIPTION_FILE>"
+   CODEX_SESSION_ID="<SESSION_ID>"
+   [[ "${CODEX_SESSION_ID}" =~ ^[0-9a-f-]+$ ]] ||
+     { printf 'Invalid Codex session ID\n' >&2; exit 1; }
    [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
      { printf 'Unsafe branch slug\n' >&2; exit 1; }
    [[ "${BASE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] ||
      { printf 'Unsafe base ref\n' >&2; exit 1; }
    test -s "${DESCRIPTION_FILE}"
+   grep -Fqx '## Codex sessions' "${DESCRIPTION_FILE}"
+   grep -Fqx -- "- \`${CODEX_SESSION_ID}\`" "${DESCRIPTION_FILE}"
    DESCRIPTION_BODY="$(<"${DESCRIPTION_FILE}")"
    PR_JSON="$(
-     jq -cn --arg title "${PR_TITLE}" --arg head "codex/<issue>-${SLUG}" \
+     jq -cn --arg title "${PR_TITLE}" --arg head "codex/${ISSUE}-${SLUG}" \
        --arg base "${BASE_REF}" --arg body "${DESCRIPTION_BODY}" \
        '{title: $title, head: $head, base: $base, body: $body, draft: true}' |
        gh api --method POST "repos/${REPO}/pulls" --input -
@@ -144,8 +149,10 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    PR_VIEW_JSON="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
      --json isDraft,headRefName,baseRefName)"
    printf '%s' "${PR_VIEW_JSON}" |
-     jq -e --arg head "codex/<issue>-${SLUG}" --arg base "${BASE_REF}" \
+     jq -e --arg head "codex/${ISSUE}-${SLUG}" --arg base "${BASE_REF}" \
        '.isDraft and .headRefName == $head and .baseRefName == $base' >/dev/null
+   gh pr comment "${PR_NUMBER}" --repo "${REPO}" \
+     --body "deliver CI repair ledger: initialized at zero attempts."
    ```
 
    `PR_TITLE`, the description, and refs are serialized as JSON data and never evaluated as
@@ -165,9 +172,12 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
 7. Run `/review` against `code_review.md` while the PR is still a draft and fix every P1.
    Run `make ci-fast` after each fix. If the same correction has now been needed twice,
    append a dated rule to `AGENTS.md` → Corrections before the final commit. Put the issue
-   number and the acceptance evidence each criterion asks for in the PR description. Create
-   a `## Codex sessions` section containing this session ID as a list item so `resolve-pr`
-   can append later unique session IDs idempotently. Commit and push the implementation,
+   number and the acceptance evidence each criterion asks for in the PR description. For a
+   new PR, the prepared `DESCRIPTION_FILE` already contains the `## Codex sessions` section
+   and current session ID verified in step 3. For a resumed draft, first require that its
+   body has no `<!-- resolve-pr-ledgers:v1` marker, then preserve the complete current body
+   while adding the exact session list item through one `gh pr edit --body-file` update and
+   verify the result. Commit and push the implementation,
    tests, conditional
    ExecPlan update, correction entry, and P1 fixes; verify local `HEAD` equals the PR's
    `headRefOid`.
@@ -180,14 +190,18 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    stop without marking the PR ready. If checks fail, push fixes while the PR remains a
    draft, then repeat the pushed-SHA and GitHub-check verification for the replacement head.
    Bound this pre-review repair loop to three pushed fixes for the same check and root cause.
-   Track the count in the ExecPlan when one exists, or in a PR comment otherwise; if the
-   replacement head fails for the same cause after the third fix, post an escalation comment
-   naming the check and redacted cause, then stop.
+   Before each fix push, page all PR conversation comments, count exact
+   `deliver CI repair: <CHECK>:<REDACTED_ROOT_CAUSE>, attempt <N>/3` markers, and post the
+   next marker. The initialization comment created in step 3 makes the zero state explicit.
+   If the replacement head fails for the same cause after the third recorded fix, post an
+   escalation comment naming the check and redacted cause, then stop.
    This pre-review CI repair belongs to `deliver`; only then mark the PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
    Run `gh pr ready "${PR_NUMBER}" --repo "${REPO}"`, then verify
    `gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isDraft --jq .isDraft` is `false`.
+   If CI fails after the PR is marked ready, push fixes rather than leaving a red PR sitting
+   under review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
    to merged; do not run the post-review CI-repair, review-resolution, or merge loop here.
 ## Do not
