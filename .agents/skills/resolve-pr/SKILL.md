@@ -39,8 +39,9 @@ Actions/checks read access.
    `deliver` owns the draft-to-ready transition after CI is green; `resolve-pr` starts once
    external review has begun.
 
-3. If CI is red, read the failing job's logs, fix the cause rather than the symptom,
-   commit, and push.
+3. If CI is pending, wait 60 seconds and reinspect it, for at most three cycles; if it is
+   still pending after the third cycle, escalate instead of guessing. If CI is red, read
+   the failing job's logs, fix the cause rather than the symptom, commit, and push.
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -58,8 +59,9 @@ Actions/checks read access.
    ```
 
    Use `-F` for the PR number. `-f` sends a string and fails the GraphQL integer
-   validation. If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
-   `-f after=<END_CURSOR>` and continue until it is false.
+   validation. Omit the `after` flag entirely on the first call; never pass a literal
+   `null`. If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
+   `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
 
    Page every thread's comments before classifying it. When
    `comments.pageInfo.hasNextPage` is true, use the thread `id` and comment cursor:
@@ -95,13 +97,26 @@ Actions/checks read access.
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR.
 
-8. After any push, record the new `headRefOid`. A review is pending until the configured
-   reviewer has posted its review result for that exact head SHA; match the paginated formal
-   review's `commit_id` or the configured review result's explicit SHA. Wait for the
-   reviewer's end-to-end pass and then return to step 1:
+8. After any push, record the new `headRefOid`. This repository's external reviewer is
+   `ws-ops-cursor-reviewer[bot]`; its authoritative signal is a formal review whose
+   `commit_id` equals that SHA. Fetch every review page and filter it explicitly:
+
+   ```sh
+   REVIEWED_SHA="$(gh pr view <P> --repo agorokh/scenariocraft \
+     --json headRefOid --jq .headRefOid)"
+   gh api --paginate --slurp \
+     'repos/agorokh/scenariocraft/pulls/<P>/reviews?per_page=100' |
+     jq --arg sha "${REVIEWED_SHA}" \
+       'add | map(select(.user.login == "ws-ops-cursor-reviewer[bot]" and .commit_id == $sha))'
+   ```
+
+   An empty result means the review is pending. Before each wait, report the head SHA and
+   cycle number so the operator can see progress and cancel the sleep with an interrupt:
 
    ```sh
    RESOLVE_PR_POLL_INTERVAL_SECONDS="${RESOLVE_PR_POLL_INTERVAL_SECONDS:-600}"
+   printf 'Waiting for review of %s (cycle %s/3; interrupt to cancel)\n' \
+     "${REVIEWED_SHA}" "<CYCLE>"
    sleep "${RESOLVE_PR_POLL_INTERVAL_SECONDS}"
    ```
 
@@ -114,14 +129,21 @@ Actions/checks read access.
    review result that is stuck, then stop.
 
 9. Squash-merge only when required checks are green on the head SHA, no gating thread is
-   unresolved, every P1 is fixed, and the configured reviewer has posted a completed
-   review for that head SHA. A green check with no posted review for the current head SHA
-   is unfinished, not clean, and must not be merged. Immediately before merging, verify that
-   all reported checks pass and that `headRefOid` still equals the reviewed SHA:
+   unresolved, every P1 is fixed, the external reviewer has posted a completed review for
+   that head SHA, and `reviewDecision` is not `CHANGES_REQUESTED`. Confirm every change
+   request on that SHA was dismissed or superseded by a later approving review. A green
+   check with no posted review for the current head SHA is unfinished, not clean, and must
+   not be merged. Immediately before merging, verify all reported checks, re-read the head
+   and review decision, and pin the merge to the reviewed SHA:
 
    ```sh
    gh pr checks <P> --repo agorokh/scenariocraft
-   gh pr merge <P> --repo agorokh/scenariocraft --squash
+   test "$(gh pr view <P> --repo agorokh/scenariocraft \
+     --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
+   test "$(gh pr view <P> --repo agorokh/scenariocraft \
+     --json reviewDecision --jq .reviewDecision)" != "CHANGES_REQUESTED"
+   gh pr merge <P> --repo agorokh/scenariocraft --squash \
+     --match-head-commit "${REVIEWED_SHA}"
    ```
 
 ## Escalate
