@@ -20,21 +20,23 @@ ExecPlan updated and the session ID recorded.
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
    Decision Log.
-3. Create branch `codex/<issue>-<slug>`. Open a draft PR early so CI runs while work
-   continues.
+3. Create branch `codex/<issue>-<slug>`. Make and push the first scoped commit — the
+   ExecPlan for multi-hour work, or the smallest implementation slice otherwise — before
+   opening a draft PR so GitHub has a branch difference to review. Keep the PR in draft
+   while implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
    the issue and stop; do not silently expand scope.
 5. Write tests alongside the change. Run `make ci-fast` locally before pushing.
 6. Update the ExecPlan: check off Progress and record anything that failed or surprised you
    under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Put the issue number, the acceptance evidence each criterion asks for, and the Codex
-   session ID in the PR description. Mark the PR ready for review.
+   session ID in the PR description. Confirm local CI and the latest pushed head's GitHub
+   checks are green; if they are not, push fixes while the PR remains a draft. Then mark the
+   PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
-   to merged; do not run the review-and-merge loop here.
-   If CI fails after the PR is marked ready, push fixes rather than leaving a red PR sitting
-   under review.
+   to merged; do not run the CI-repair, review-resolution, or merge loop here.
 8. If the same correction has now been needed twice, append a dated rule to
     `AGENTS.md` → Corrections in this PR.
 
