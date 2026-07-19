@@ -38,18 +38,8 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
 
    ```sh
    set -euo pipefail
+   REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
    command -v gh
-   GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
-   [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
-     { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
-   GH_MAJOR="${GH_VERSION%%.*}"
-   GH_REMAINDER="${GH_VERSION#*.}"
-   GH_MINOR="${GH_REMAINDER%%.*}"
-   if ! { test "${GH_MAJOR}" -gt 2 ||
-     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }; }; then
-     printf 'gh 2.49.0 or newer is required\n' >&2
-     exit 1
-   fi
    gh auth status
    PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
    [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
@@ -58,6 +48,9 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    SCENARIOCRAFT_CI_WAIT_SECONDS="${SCENARIOCRAFT_CI_WAIT_SECONDS:-1800}"
    [[ "${SCENARIOCRAFT_CI_WAIT_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
      { printf 'Invalid CI wait seconds\n' >&2; exit 1; }
+   test -f Makefile
+   make -n ci-fast >/dev/null
+   test -f code_review.md
    ```
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the

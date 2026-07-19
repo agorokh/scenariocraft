@@ -208,7 +208,8 @@ do not load `.env` files or service-manager configuration implicitly.
    reply:
 
    ```sh
-   jq -n --arg body "${FACTUAL_REPLY}" '{body:$body}' |
+   printf '%s' "${FACTUAL_REPLY}" |
+     jq -Rs '{body: .}' |
      gh api --method POST \
        "repos/${REPO}/pulls/<P>/comments/<COMMENT_ID>/replies" \
        --input -
@@ -303,8 +304,11 @@ do not load `.env` files or service-manager configuration implicitly.
    A nonempty `reviewRequests` list means review is pending. Because GitHub hides another
    author's draft review, absence of a visible GraphQL `PENDING` review is not clearance.
    Require at least one submitted `APPROVED` or `COMMENTED` review whose commit is the
-   current head before merging, even when `reviewRequests` is empty. If none posts after
-   three wait cycles, escalate the unfinished current-head review instead of merging.
+   current head and whose author is neither the PR author nor the authenticated resolver.
+   Derive those identities with `gh pr view --json author` and `gh api user`; a self-review
+   cannot satisfy external review. Apply this rule even when `reviewRequests` is empty. If
+   no qualifying review posts after three wait cycles, escalate the unfinished current-head
+   review instead of merging.
 
    After every wait or newly posted current-SHA review, return to step 4 and rebuild the
    complete thread and comment inventory before considering the merge gate.
@@ -343,7 +347,8 @@ do not load `.env` files or service-manager configuration implicitly.
          END { if (!replaced) print checkpoint }
        '
    )"
-   gh pr edit <P> --repo "${REPO}" --body "${NEXT_BODY}"
+   printf '%s\n' "${NEXT_BODY}" |
+     gh pr edit <P> --repo "${REPO}" --body-file -
    ```
 
    The wait may be taken by ending the turn and resuming after 600 seconds rather than
@@ -362,10 +367,30 @@ do not load `.env` files or service-manager configuration implicitly.
    review does not count as a completed pass but does not itself gate merge. Confirm every
    change request on that SHA was dismissed or superseded by a later approving review.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
-   inventory. Derive `UNRESOLVED_THREAD_COUNT`,
-   `CURRENT_HEAD_PENDING_REVIEW_COUNT`, and
-   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT` from the fresh GraphQL result. Separately refresh
-   the complete paginated REST review inventory and derive
+   inventory. Derive `UNRESOLVED_THREAD_COUNT` and
+   `CURRENT_HEAD_PENDING_REVIEW_COUNT` from the fresh GraphQL result. Derive
+   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT` from that result only after excluding
+   `PR_AUTHOR_LOGIN` and `RESOLVER_LOGIN`:
+
+   ```sh
+   PR_AUTHOR_LOGIN="$(gh pr view <P> --repo "${REPO}" \
+     --json author --jq .author.login)"
+   RESOLVER_LOGIN="$(gh api user --jq .login)"
+   CURRENT_HEAD_COMPLETED_REVIEW_COUNT="$(
+     printf '%s' "${GRAPHQL_REVIEWS_JSON}" |
+       jq --arg sha "${REVIEWED_SHA}" \
+          --arg pr_author "${PR_AUTHOR_LOGIN}" \
+          --arg resolver "${RESOLVER_LOGIN}" '
+         [.[] |
+           select(.commit.oid == $sha and
+                  (.state == "APPROVED" or .state == "COMMENTED") and
+                  .author.login != $pr_author and
+                  .author.login != $resolver)
+         ] | length'
+   )"
+   ```
+
+   Separately refresh the complete paginated REST review inventory and derive
    `OUTSTANDING_CHANGES_REQUESTED_COUNT` with step 8's REST-shaped jq. Do not apply that jq
    to GraphQL nodes, whose field names differ, and do not rely on `reviewDecision`, which can
    be empty without branch protection. Then verify all reported checks, the head, review
