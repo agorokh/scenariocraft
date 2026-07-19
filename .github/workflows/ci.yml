@@ -59,12 +59,19 @@ jobs:
           path: .paper-cache/paper-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}.jar
           key: paper-${{ runner.os }}-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}-${{ env.PAPER_SHA256 }}
 
-      - name: Download pinned Paper server
-        if: steps.paper-cache.outputs.cache-hit != 'true'
+      - name: Ensure pinned Paper server
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p .paper-cache
+          paper_jar=".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar"
+          if test -f "${paper_jar}" &&
+            echo "${PAPER_SHA256}  ${paper_jar}" | sha256sum --check --status; then
+            printf 'Using checksum-verified cached Paper jar.\n'
+            exit 0
+          fi
+
+          rm -f "${paper_jar}"
           builds="$(
             curl --fail --silent --show-error --location \
               --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
@@ -86,15 +93,9 @@ jobs:
           }
           curl --fail --show-error --location \
             --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
-            --output ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
+            --output "${paper_jar}" \
             "${url}"
-
-      - name: Verify Paper server checksum
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "${PAPER_SHA256}  .paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" |
-            sha256sum --check -
+          echo "${PAPER_SHA256}  ${paper_jar}" | sha256sum --check -
 
       - name: Boot Paper and stop after startup
         id: paper-smoke
@@ -102,6 +103,7 @@ jobs:
         run: |
           set -euo pipefail
           server_dir="${RUNNER_TEMP}/paper-smoke"
+          echo "server_dir=${server_dir}" >>"${GITHUB_OUTPUT}"
           mkdir -p "${server_dir}/plugins"
           cp ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
             "${server_dir}/paper.jar"
@@ -198,6 +200,6 @@ jobs:
         with:
           name: paper-smoke-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}
           path: |
-            ${{ runner.temp }}/paper-smoke/logs/latest.log
-            ${{ runner.temp }}/paper-smoke/server-console.log
+            ${{ steps.paper-smoke.outputs.server_dir }}/logs/latest.log
+            ${{ steps.paper-smoke.outputs.server_dir }}/server-console.log
           if-no-files-found: warn
