@@ -64,8 +64,15 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    evidence, and Retrospective.
 3. First check whether the input identifies an existing draft PR for this issue. If it
    does, verify its issue reference, base, and `isDraft: true`; reject a dirty worktree,
-   check out that PR with `gh pr checkout`, verify local `HEAD` equals its `headRefOid`, and
-   resume at step 4 without creating a branch or PR.
+   then check out and verify that exact PR:
+
+   ```sh
+   gh pr checkout <P> --repo "${REPO}"
+   test "$(git rev-parse HEAD)" = \
+     "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
+   ```
+
+   Resume at step 4 without creating a branch or PR.
 
    For a new delivery, resolve the intended base branch from the target issue, defaulting
    to the repository's remote default branch. Reject a nonempty `git status --porcelain`

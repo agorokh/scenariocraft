@@ -129,9 +129,11 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    GRAPHQL_THREADS_JSON='[]'
    GRAPHQL_REVIEWS_JSON='[]'
+   THREAD_COMMENTS_BY_ID_JSON='{}'
    THREAD_PAGE_COUNT=0
    REVIEW_PAGE_COUNT=0
    CONVERSATION_LEDGER_JSON="${CONVERSATION_LEDGER_JSON:-[]}"
+   REVIEW_LEDGER_JSON="${REVIEW_LEDGER_JSON:-[]}"
    GRAPHQL_REMAINING="$(gh api rate_limit --jq .resources.graphql.remaining)"
    test "${GRAPHQL_REMAINING}" -ge 100 || {
      GRAPHQL_RESET="$(gh api rate_limit --jq .resources.graphql.reset)"
@@ -151,7 +153,18 @@ do not load `.env` files or service-manager configuration implicitly.
           {id: $comment.id, status: "UNADDRESSED"})
        ]'
    )"
-   gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100"
+   FORMAL_REVIEWS_JSON="$(
+     gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
+       jq -s -e 'if all(.[]; type == "array") then add // [] else error("invalid review page") end'
+   )"
+   REVIEW_LEDGER_JSON="$(
+     jq -cn --argjson ledger "${REVIEW_LEDGER_JSON}" \
+       --argjson reviews "${FORMAL_REVIEWS_JSON}" '
+       [$reviews[] as $review |
+         ([$ledger[] | select(.id == $review.id)][0] //
+          {id: $review.id, status: "UNADDRESSED"})
+       ]'
+   )"
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
    ```
 
@@ -180,6 +193,11 @@ do not load `.env` files or service-manager configuration implicitly.
        --argjson page "${THREAD_PAGE_NODES}" \
        '$accumulated + $page | unique_by(.id)'
    )"
+   THREAD_COMMENTS_BY_ID_JSON="$(
+     printf '%s' "${GRAPHQL_THREADS_JSON}" |
+       jq 'reduce .[] as $thread
+         ({}; .[$thread.id] = ($thread.comments.nodes // []))'
+   )"
    ```
 
    Separately page the GraphQL `reviews` connection. Unlike a submitted-review-only REST
@@ -195,16 +213,20 @@ do not load `.env` files or service-manager configuration implicitly.
    either connection, when `hasNextPage` is true, require a nonempty `endCursor`; an empty
    cursor is an incomplete response that must be retried or escalated, never passed as
    `after=`. Increment a separate `REVIEW_PAGE_COUNT` for every fetched review page and
-   escalate if it exceeds 50. After each successful page fetch, increment and check the
-   applicable counter:
+   escalate if it exceeds 50.
 
    ```sh
+   # Run only after a review-thread page fetch.
    THREAD_PAGE_COUNT=$((THREAD_PAGE_COUNT + 1))
    test "${THREAD_PAGE_COUNT}" -le 50 || {
      gh pr comment <P> --repo "${REPO}" \
        --body "Escalation: review-thread inventory exceeded 50 pages."
      exit 1
    }
+   ```
+
+   ```sh
+   # Run only after a formal-review page fetch.
    REVIEW_PAGE_COUNT=$((REVIEW_PAGE_COUNT + 1))
    test "${REVIEW_PAGE_COUNT}" -le 50 || {
      gh pr comment <P> --repo "${REPO}" \
@@ -234,7 +256,26 @@ do not load `.env` files or service-manager configuration implicitly.
 
    Repeat until `comments.pageInfo.hasNextPage` is false so every comment author is
    considered. Accumulate comment nodes across pages and retain the first comment's
-   `databaseId` as the thread's reply target. After an initial REST or GraphQL failure,
+   `databaseId` as the thread's reply target. Merge every comment page into a map keyed by
+   thread ID, then classify authors from that complete map:
+
+   ```sh
+   COMMENT_PAGE_NODES="$(
+     printf '%s' "${PAGE_JSON}" |
+       jq -e '.data.node.comments.nodes'
+   )"
+   THREAD_COMMENTS_BY_ID_JSON="$(
+     jq -cn --argjson by_thread "${THREAD_COMMENTS_BY_ID_JSON}" \
+       --arg thread_id "${THREAD_ID}" \
+       --argjson page "${COMMENT_PAGE_NODES}" '
+       $by_thread +
+       {($thread_id):
+         ((($by_thread[$thread_id] // []) + $page) | unique_by(.databaseId))}
+       '
+   )"
+   ```
+
+   After an initial REST or GraphQL failure,
    retry at most three times. Use base delays of 5, 15, and 45 seconds plus 0–4 seconds of
    random jitter so concurrent agents do not synchronize retries.
    If a complete inventory still cannot be fetched, post an escalation comment and stop.
@@ -328,6 +369,12 @@ do not load `.env` files or service-manager configuration implicitly.
    at the merge gate; GitHub provides no resolved flag for this comment type.
 
    ```sh
+   COMMENT_ID=<ASSESSED_COMMENT_ID>
+   CONVERSATION_LEDGER_JSON="$(
+     printf '%s' "${CONVERSATION_LEDGER_JSON}" |
+       jq --argjson id "${COMMENT_ID}" '
+         map(if .id == $id then .status = "ADDRESSED" else . end)'
+   )"
    test "$(printf '%s' "${CONVERSATION_LEDGER_JSON}" | jq 'length')" -eq \
      "$(printf '%s' "${CONVERSATION_COMMENTS_JSON}" | jq 'length')"
    UNADDRESSED_CONVERSATION_COMMENT_COUNT="$(
@@ -335,6 +382,24 @@ do not load `.env` files or service-manager configuration implicitly.
        jq '[.[] | select(.status != "ADDRESSED")] | length'
    )"
    ```
+
+   Assess every formal review body too, including a `COMMENTED` summary with no inline
+   thread. Fix or factually acknowledge each finding, then make that review's ledger
+   transition explicit:
+
+   ```sh
+   REVIEW_ID=<ASSESSED_REVIEW_ID>
+   REVIEW_LEDGER_JSON="$(
+     printf '%s' "${REVIEW_LEDGER_JSON}" |
+       jq --argjson id "${REVIEW_ID}" '
+         map(if .id == $id then .status = "ADDRESSED" else . end)'
+   )"
+   ```
+
+   Persist both ledgers in the PR description's `## Comment Ledger` section after every
+   assessment, using IDs and statuses only. On resume, reconstruct both JSON variables from
+   that section before step 4; never rely on shell variables surviving a wait. Re-sync the
+   persisted ledgers against each fresh inventory as shown in step 4.
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR. For every
    fix, run `make ci-fast`, commit, push, and return to step 2 for a fresh CI and review pass;
@@ -351,7 +416,7 @@ do not load `.env` files or service-manager configuration implicitly.
    REVIEW_INVENTORY_OK=0
    for REVIEW_DELAY in 0 5 15 45; do
      if test "${REVIEW_DELAY}" -gt 0; then
-       sleep $((REVIEW_DELAY + RANDOM % 5))
+       sleep $((REVIEW_DELAY + $(awk 'BEGIN { srand(); print int(rand() * 5) }')))
      fi
      if ALL_REVIEWS_JSON="$(
        gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
@@ -530,8 +595,15 @@ do not load `.env` files or service-manager configuration implicitly.
      printf '%s' "${CONVERSATION_LEDGER_JSON}" |
        jq '[.[] | select(.status != "ADDRESSED")] | length'
    )"
+   test "$(printf '%s' "${REVIEW_LEDGER_JSON}" | jq 'length')" -eq \
+     "$(printf '%s' "${FORMAL_REVIEWS_JSON}" | jq 'length')"
+   UNADDRESSED_FORMAL_REVIEW_COUNT="$(
+     printf '%s' "${REVIEW_LEDGER_JSON}" |
+       jq '[.[] | select(.status != "ADDRESSED")] | length'
+   )"
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
    test "${UNADDRESSED_CONVERSATION_COMMENT_COUNT}" -eq 0
+   test "${UNADDRESSED_FORMAL_REVIEW_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
    test "${CURRENT_HEAD_COMPLETED_REVIEW_COUNT}" -gt 0
    test "${OUTSTANDING_CHANGES_REQUESTED_COUNT}" -eq 0
