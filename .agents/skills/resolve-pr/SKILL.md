@@ -68,7 +68,9 @@ calling any helper; do not assume shell functions are exported across processes.
    command -v head
    command -v mktemp
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
-   [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+   [[ "${REPO}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] &&
+     test "${REPO%%/*}" != "." && test "${REPO%%/*}" != ".." &&
+     test "${REPO#*/}" != "." && test "${REPO#*/}" != ".." ||
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
@@ -81,8 +83,10 @@ calling any helper; do not assume shell functions are exported across processes.
    [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
      { printf 'Pull-request write access is required\n' >&2; exit 1; }
    gh api "repos/${REPO}/actions/runs?per_page=1" >/dev/null
-   gh pr merge --help | grep -q -- '--match-head-commit'
-   gh pr edit --help | grep -q -- '--body-file'
+   GH_PR_MERGE_HELP="$(gh pr merge --help)"
+   grep -q -- '--match-head-commit' <<<"${GH_PR_MERGE_HELP}"
+   GH_PR_EDIT_HELP="$(gh pr edit --help)"
+   grep -q -- '--body-file' <<<"${GH_PR_EDIT_HELP}"
    gh repo view "${REPO}" --json nameWithOwner
    test -z "$(git status --porcelain)"
    gh pr checkout <P> --repo "${REPO}"
@@ -179,17 +183,22 @@ calling any helper; do not assume shell functions are exported across processes.
        ' >/dev/null
    }
    persist_resolution_state() {
-     local update_attempt body current_body next_body post_update_body
+     local update_attempt body current_body next_body post_update_body state_dir
      local body_ledgers desired_conversation desired_reviews desired_repairs
      local ledger_marker_present ledgers_json update_ok=0 update_delay
+     state_dir="$(mktemp -d)"
      desired_conversation="${CONVERSATION_LEDGER_JSON}"
      desired_reviews="${REVIEW_LEDGER_JSON}"
      desired_repairs="${REPAIR_ATTEMPTS_JSON}"
+     printf '%s' "${desired_conversation}" >"${state_dir}/desired-conversation.json"
+     printf '%s' "${desired_reviews}" >"${state_dir}/desired-reviews.json"
+     printf '%s' "${desired_repairs}" >"${state_dir}/desired-repairs.json"
      for update_attempt in 1 2 3; do
        body="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)" ||
          { sleep "$((update_attempt * 5))"; continue; }
        validate_managed_ledger "${body}" || {
          printf 'Malformed or duplicate managed ledger block\n' >&2
+         rm -rf "${state_dir}"
          return 1
        }
        ledger_marker_present="$(
@@ -208,62 +217,75 @@ calling any helper; do not assume shell functions are exported across processes.
              '
          )"
        fi
+       printf '%s' "${body_ledgers}" >"${state_dir}/body-ledgers.json"
        CONVERSATION_LEDGER_JSON="$(
-         jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
-             jq '.conversation')" \
-           --argjson desired "${desired_conversation}" \
+         jq -cn --slurpfile current "${state_dir}/body-ledgers.json" \
+           --slurpfile desired "${state_dir}/desired-conversation.json" \
            --arg authoritative "${LEDGER_INVENTORY_AUTHORITATIVE}" '
            if $authoritative == "1" then
-             $desired | sort_by(.id)
+             $desired[0] | sort_by(.id)
            else
-             ([$current[] |
-                select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+             ([$current[0].conversation[] |
+                select(.id as $id | all($desired[0][]; .id != $id))] +
+              $desired[0]) |
              sort_by(.id)
            end
          '
        )"
+       printf '%s' "${CONVERSATION_LEDGER_JSON}" \
+         >"${state_dir}/merged-conversation.json"
        REVIEW_LEDGER_JSON="$(
-         jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
-             jq '.reviews')" \
-           --argjson desired "${desired_reviews}" \
+         jq -cn --slurpfile current "${state_dir}/body-ledgers.json" \
+           --slurpfile desired "${state_dir}/desired-reviews.json" \
            --arg authoritative "${LEDGER_INVENTORY_AUTHORITATIVE}" '
            if $authoritative == "1" then
-             $desired | sort_by(.id)
+             $desired[0] | sort_by(.id)
            else
-             ([$current[] |
-                select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+             ([$current[0].reviews[] |
+                select(.id as $id | all($desired[0][]; .id != $id))] +
+              $desired[0]) |
              sort_by(.id)
            end
          '
        )"
+       printf '%s' "${REVIEW_LEDGER_JSON}" >"${state_dir}/merged-reviews.json"
        REPAIR_ATTEMPTS_JSON="$(
-         jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
-             jq '.repair_attempts // {}')" \
-           --argjson desired "${desired_repairs}" '
-           reduce (($current + $desired) | keys_unsorted[]) as $key
-             ({}; .[$key] = ([($current[$key] // 0),
-                              ($desired[$key] // 0)] | max))
+         jq -cn --slurpfile current "${state_dir}/body-ledgers.json" \
+           --slurpfile desired "${state_dir}/desired-repairs.json" '
+           reduce ((($current[0].repair_attempts // {}) + $desired[0]) |
+             keys_unsorted[]) as $key
+             ({}; .[$key] = ([($current[0].repair_attempts[$key] // 0),
+                              ($desired[0][$key] // 0)] | max))
          '
        )"
+       printf '%s' "${REPAIR_ATTEMPTS_JSON}" >"${state_dir}/merged-repairs.json"
        ledgers_json="$(
-         jq -cn --argjson conversation "${CONVERSATION_LEDGER_JSON}" \
-           --argjson reviews "${REVIEW_LEDGER_JSON}" \
-           --argjson repair_attempts "${REPAIR_ATTEMPTS_JSON}" \
-           '{conversation: $conversation, reviews: $reviews,
-             repair_attempts: $repair_attempts}'
+         jq -cn \
+           --slurpfile conversation "${state_dir}/merged-conversation.json" \
+           --slurpfile reviews "${state_dir}/merged-reviews.json" \
+           --slurpfile repair_attempts "${state_dir}/merged-repairs.json" \
+           '{conversation: $conversation[0], reviews: $reviews[0],
+             repair_attempts: $repair_attempts[0]}'
        )"
+       printf '%s' "${ledgers_json}" >"${state_dir}/ledgers.json"
        next_body="$(
          printf '%s\n' "${body}" |
-           LEDGERS_FOR_AWK="${ledgers_json}" \
+           LEDGERS_PATH_FOR_AWK="${state_dir}/ledgers.json" \
            LEDGER_MARKER_PRESENT_FOR_AWK="${ledger_marker_present}" awk '
-             BEGIN { replaced = 0; skipping = 0; header_seen = 0 }
+             BEGIN {
+               replaced = 0
+               skipping = 0
+               header_seen = 0
+               getline ledgers < ENVIRON["LEDGERS_PATH_FOR_AWK"]
+               close(ENVIRON["LEDGERS_PATH_FOR_AWK"])
+             }
              /^## Comment Ledger$/ {
                header_seen = 1
                print
                if (ENVIRON["LEDGER_MARKER_PRESENT_FOR_AWK"] == "0") {
                  print ""
                  print "<!-- resolve-pr-ledgers:v1"
-                 print ENVIRON["LEDGERS_FOR_AWK"]
+                 print ledgers
                  print "-->"
                  replaced = 1
                }
@@ -271,7 +293,7 @@ calling any helper; do not assume shell functions are exported across processes.
              }
              /^<!-- resolve-pr-ledgers:v1$/ {
                print "<!-- resolve-pr-ledgers:v1"
-               print ENVIRON["LEDGERS_FOR_AWK"]
+               print ledgers
                print "-->"
                replaced = 1
                skipping = 1
@@ -288,13 +310,16 @@ calling any helper; do not assume shell functions are exported across processes.
                    print ""
                  }
                  print "<!-- resolve-pr-ledgers:v1"
-                 print ENVIRON["LEDGERS_FOR_AWK"]
+                 print ledgers
                  print "-->"
                }
              }
            '
        )"
-       validate_managed_ledger "${next_body}" || return 1
+       validate_managed_ledger "${next_body}" || {
+         rm -rf "${state_dir}"
+         return 1
+       }
        current_body="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)" ||
          { sleep "$((update_attempt * 5))"; continue; }
        if test "${current_body}" = "${body}" &&
@@ -310,6 +335,7 @@ calling any helper; do not assume shell functions are exported across processes.
        update_delay="$((update_attempt * 5))"
        sleep "${update_delay}"
      done
+     rm -rf "${state_dir}"
      test "${update_ok}" -eq 1
    }
    ensure_session_receipt() {
@@ -998,7 +1024,7 @@ calling any helper; do not assume shell functions are exported across processes.
              }
              next
            }
-           /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z -->$/ {
+           /^<!-- resolve-pr-checkpoint:v1 .* -->$/ {
              if (!checkpoint_replaced) {
                print ENVIRON["CHECKPOINT_FOR_AWK"]
                checkpoint_replaced = 1
@@ -1225,8 +1251,27 @@ calling any helper; do not assume shell functions are exported across processes.
            test "$(git rev-parse HEAD)" = "${REVIEWED_SHA}"
            BASE_SHA="$(gh pr view <P> --repo "${REPO}" \
              --json baseRefOid --jq .baseRefOid)"
-           PR_REMOTE_URL="$(gh repo view "${REPO}" --json url --jq .url)"
-           git fetch "${PR_REMOTE_URL}.git" "${BASE_SHA}"
+           PR_REMOTE_NAME="$(
+             git remote -v |
+               awk -v repo="${REPO}" '
+                 $3 == "(fetch)" {
+                   url = $2
+                   sub(/\.git$/, "", url)
+                   suffix = "/" repo
+                   if (length(url) >= length(suffix) &&
+                       substr(url, length(url) - length(suffix) + 1) == suffix) {
+                     print $1
+                     exit
+                   }
+                 }
+               '
+           )"
+           test -n "${PR_REMOTE_NAME}" || {
+             gh pr comment <P> --repo "${REPO}" \
+               --body "Escalation: no authenticated repository remote was available for conflict diagnosis."
+             exit 1
+           }
+           git fetch "${PR_REMOTE_NAME}" "${BASE_SHA}"
            CONFLICT_FILES="$(
              git merge-tree --write-tree --name-only \
                HEAD "${BASE_SHA}" 2>&1 || true
@@ -1250,7 +1295,8 @@ calling any helper; do not assume shell functions are exported across processes.
          --json reviewDecision --jq .reviewDecision)"
        test "${REVIEW_DECISION}" != "CHANGES_REQUESTED"
        test "${REVIEW_DECISION}" != "REVIEW_REQUIRED"
-       gh pr merge --help | grep -q -- '--match-head-commit'
+       GH_PR_MERGE_HELP="$(gh pr merge --help)"
+       grep -q -- '--match-head-commit' <<<"${GH_PR_MERGE_HELP}"
        gh pr merge <P> --repo "${REPO}" --squash \
          --match-head-commit "${REVIEWED_SHA}"
        ;;

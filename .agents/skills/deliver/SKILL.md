@@ -40,7 +40,9 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    ```sh
    set -euo pipefail
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
-   [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+   [[ "${REPO}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] &&
+     test "${REPO%%/*}" != "." && test "${REPO%%/*}" != ".." &&
+     test "${REPO#*/}" != "." && test "${REPO#*/}" != ".." ||
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
    ISSUE=<ISSUE_NUMBER>
    [[ "${ISSUE}" =~ ^[1-9][0-9]*$ ]] ||
@@ -133,7 +135,11 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
      { printf 'Invalid Codex session ID\n' >&2; exit 1; }
    [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
      { printf 'Unsafe branch slug\n' >&2; exit 1; }
-   [[ "${BASE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+   [[ "${BASE_REF}" =~ ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] &&
+     case "/${BASE_REF}/" in
+       */../*|*/./*) false ;;
+       *) true ;;
+     esac ||
      { printf 'Unsafe base ref\n' >&2; exit 1; }
    test -s "${DESCRIPTION_FILE}"
    grep -Fqx '## Codex sessions' "${DESCRIPTION_FILE}"

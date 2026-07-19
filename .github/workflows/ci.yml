@@ -31,7 +31,7 @@ jobs:
           cache: gradle
 
       - name: Build and test
-        run: ./gradlew build --no-daemon
+        run: make ci-fast
 
       - name: Stage tested plugin jar
         shell: bash
@@ -146,7 +146,7 @@ jobs:
 
           set +e
           # shellcheck disable=SC2016
-          timeout --signal=TERM --kill-after=10s 120s bash -c '
+          timeout --signal=TERM --kill-after=10s 300s bash -c '
             set -euo pipefail
             cd "$1"
             exec 3<>server.stdin
@@ -232,4 +232,4 @@ jobs:
           path: |
             ${{ steps.paper-smoke.outputs.server_dir }}/logs/latest.log
             ${{ steps.paper-smoke.outputs.server_dir }}/server-console.log
-          if-no-files-found: warn
+          if-no-files-found: error
