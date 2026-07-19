@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resolve ScenarioCraft PR"
+  short_description: "Drive a ScenarioCraft PR to green and merge"
+  default_prompt: "Use $resolve-pr to drive pull request #17 to green, clean, and merged."

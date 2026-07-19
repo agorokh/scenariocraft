@@ -44,6 +44,8 @@ make ci-fast
 ## Pull requests
 
 - Use `.agents/skills/deliver/SKILL.md` as the delivery procedure for every issue.
+- Use `.agents/skills/resolve-pr/SKILL.md` to drive an open pull request through CI, review,
+  and merge.
 - One issue → one Codex session → one pull request.
 - Include the issue number and Codex session ID in the pull request description.
 - Include tests and the issue's requested acceptance evidence.
