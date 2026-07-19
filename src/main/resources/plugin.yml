@@ -1,0 +1,14 @@
+name: ScenarioCraft
+version: '0.1.0-SNAPSHOT'
+main: io.github.agorokh.scenariocraft.ScenarioCraftPlugin
+description: Kid-invented game scenarios for Paper servers, warmly judged by AI.
+api-version: '1.21.11'
+author: ScenarioCraft contributors
+website: https://github.com/agorokh/scenariocraft
+commands:
+  battle:
+    description: Controls the current ScenarioCraft Build Battle round.
+    usage: /battle
+    aliases:
+      - buildbattle
+      - bb
