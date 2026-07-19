@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -14,9 +15,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
@@ -25,7 +28,7 @@ import org.junit.jupiter.api.Test;
 final class BatchedBlockEditorTest {
     @Test
     void preparesAndTicketsChunksBeforeRunningBudgetedBlockEdits() {
-        TestRig rig = new TestRig(false, false);
+        TestRig rig = new TestRig(false, false, false);
         AtomicLong completedMutations = new AtomicLong();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         BatchedBlockEditor editor =
@@ -63,7 +66,7 @@ final class BatchedBlockEditorTest {
 
     @Test
     void reportsChunkPreparationFailureWithoutStartingMutations() {
-        TestRig rig = new TestRig(true, false);
+        TestRig rig = new TestRig(true, false, false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         BatchedBlockEditor editor =
                 new BatchedBlockEditor(
@@ -84,8 +87,8 @@ final class BatchedBlockEditorTest {
     }
 
     @Test
-    void defersSchedulerHandoffFailureToTheEditorTick() {
-        TestRig rig = new TestRig(false, true);
+    void reportsSynchronousSchedulerHandoffFailureBeforeReturning() {
+        TestRig rig = new TestRig(false, true, false);
         AtomicReference<Throwable> failure = new AtomicReference<>();
         BatchedBlockEditor editor =
                 new BatchedBlockEditor(
@@ -98,12 +101,76 @@ final class BatchedBlockEditorTest {
                 ignored -> {},
                 failure::set);
 
-        assertTrue(editor.isBusy());
-        assertNull(failure.get());
-        rig.tick.get().run();
         assertFalse(editor.isBusy());
         assertNotNull(failure.get());
         assertEquals(0, rig.blockMutations.get());
+        editor.close();
+    }
+
+    @Test
+    void recoversFromMutationFailureAndReleasesTickets() {
+        TestRig rig = new TestRig(false, false, true);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        AtomicLong completedMutations = new AtomicLong();
+        BatchedBlockEditor editor =
+                new BatchedBlockEditor(
+                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
+
+        editor.enqueueArena(
+                List.of(new PlotBounds(0, 0, 0, 0)),
+                0,
+                1,
+                completedMutations::set,
+                failure::set);
+        rig.tick.get().run();
+
+        assertFalse(editor.isBusy());
+        assertEquals(0, editor.pendingBlocks());
+        assertNotNull(failure.get());
+        assertEquals(0, completedMutations.get());
+        assertEquals(4, rig.ticketsRemoved.get());
+        editor.close();
+    }
+
+    @Test
+    void commandDoesNotAnnounceSuccessAfterSynchronousPreparationFailure() {
+        TestRig rig = new TestRig(true, false, false);
+        BatchedBlockEditor editor =
+                new BatchedBlockEditor(
+                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
+        BattleSettings settings =
+                new BattleSettings(
+                        new ArenaSettings(33, 30, 64, 8, 4_000),
+                        new PhaseTimings(30, 60, 1_200, 900),
+                        List.of("Treehouse"),
+                        List.of(),
+                        true);
+        BattleCommand command =
+                new BattleCommand(
+                        settings,
+                        new ArenaWorld(rig.world, -61),
+                        editor,
+                        Logger.getAnonymousLogger());
+        List<String> messages = new ArrayList<>();
+        CommandSender sender =
+                proxy(
+                        CommandSender.class,
+                        (ignored, method, arguments) ->
+                                switch (method.getName()) {
+                                    case "getName" -> "BuilderKid";
+                                    case "isOp" -> false;
+                                    case "sendMessage" -> {
+                                        messages.add(String.valueOf(arguments[0]));
+                                        yield null;
+                                    }
+                                    default -> defaultValue(method.getReturnType());
+                                });
+
+        assertTrue(command.onCommand(sender, null, "battle", new String[] {"start"}));
+        assertEquals(
+                List.of(
+                        "The arena could not get ready this time. Please ask a grown-up helper to check the server."),
+                messages);
         editor.close();
     }
 
@@ -116,14 +183,21 @@ final class BatchedBlockEditorTest {
         private final Plugin plugin;
         private final World world;
 
-        private TestRig(boolean failChunkLoad, boolean failPreparationHandoff) {
+        private TestRig(
+                boolean failChunkLoad,
+                boolean failPreparationHandoff,
+                boolean failFirstBlockMutation) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             Block block =
                     proxy(
                             Block.class,
                             (ignored, method, arguments) -> {
                                 if (method.getName().equals("setType")) {
-                                    blockMutations.incrementAndGet();
+                                    int mutation = blockMutations.incrementAndGet();
+                                    if (failFirstBlockMutation && mutation == 1) {
+                                        throw new IllegalStateException(
+                                                "test block mutation failure");
+                                    }
                                 }
                                 return defaultValue(method.getReturnType());
                             });
@@ -153,6 +227,8 @@ final class BatchedBlockEditorTest {
                                         yield true;
                                     }
                                     case "getBlockAt" -> block;
+                                    case "getSpawnLocation" -> new Location(null, 0, 0, 0);
+                                    case "getName" -> ArenaWorldService.WORLD_NAME;
                                     default -> defaultValue(method.getReturnType());
                                 };
                             });

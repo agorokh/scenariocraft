@@ -46,6 +46,11 @@ public final class BatchedWorkQueue {
         return pendingSteps;
     }
 
+    void clear() {
+        work.clear();
+        pendingSteps = 0L;
+    }
+
     public static long ticksRequired(long operations, int workPerTick) {
         if (operations < 0 || workPerTick <= 0) {
             throw new IllegalArgumentException(

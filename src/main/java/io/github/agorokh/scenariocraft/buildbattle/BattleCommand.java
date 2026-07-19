@@ -60,6 +60,9 @@ public final class BattleCommand implements CommandExecutor {
                         completedMutations ->
                                 announceCompletion(sender, completedMutations),
                         failure -> announcePreparationFailure(sender, failure));
+        if (!blockEditor.isBusy()) {
+            return true;
+        }
         long ticks =
                 BatchedWorkQueue.ticksRequired(mutations, arenaSettings.blocksPerTick());
         sender.sendMessage(

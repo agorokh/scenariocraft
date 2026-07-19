@@ -216,8 +216,9 @@ jobs:
                 break
               fi
               if test -f logs/latest.log &&
-                grep -q "Arena chunk preparation failed" logs/latest.log; then
-                printf "Arena chunk preparation failed before completion.\n" >&2
+                grep -Eq "Arena (chunk preparation|block mutation) failed" \
+                  logs/latest.log; then
+                printf "Arena build failed before completion.\n" >&2
                 exit 1
               fi
               sleep 1

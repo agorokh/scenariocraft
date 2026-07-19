@@ -23,6 +23,8 @@ real server boot.
       smoke fast-failure.
 - [x] Keep asynchronous preparation failures on the Paper main thread and align smoke
       failure detection with the runtime log contract.
+- [x] Prevent false queued announcements after synchronous failure and recover cleanly from
+      mutation-tick exceptions.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -36,6 +38,7 @@ real server boot.
 | 2026-07-19 | Asynchronously prepare every chunk touched by the fill plan and hold plugin chunk tickets until mutation completes. | Synchronous chunk generation inside a scheduled mutation tick can violate the apparent block budget even when the number of `setType` calls is bounded. |
 | 2026-07-19 | Reject a pre-existing `battle_world` unless Paper reports `WorldType.FLAT`. | Loading an arbitrary same-named world would make the single sampled floor height unsafe for plots away from the hub. |
 | 2026-07-19 | Hand scheduler-rejection failures back to the editor tick through an atomic slot. | The async completion thread must never mutate editor state or call a command sender when Paper rejects the normal main-thread handoff. |
+| 2026-07-19 | Treat synchronous preparation and mutation-tick exceptions as failed builds, not queued or permanently busy builds. | Operators and CI must not see a false success line, and a transient world mutation failure must release tickets and permit a later retry. |
 
 ## Surprises & Discoveries
 
@@ -55,10 +58,14 @@ real server boot.
 - A current-head review found that CI's preparation-failure grep did not match the runtime
   message and that scheduler rejection could take an off-thread callback path. The log
   contract now matches exactly, and the editor tick owns that failure transition.
+- The next current-head review exposed two recovery holes: synchronous preparation could
+  emit both failure and success, while a `setType` exception left queued work permanently
+  busy. The command now checks editor state before announcing, and the tick failure path
+  clears work, releases tickets, and invokes the contained failure callback.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 19 tests covering packaged configuration,
+- `make ci-fast` completed successfully with 21 tests covering packaged configuration,
   plot bounds, ring spacing, hub reservation, non-overlap, clear-and-wall fill bounds,
   batching limits and arithmetic, asynchronous chunk preparation and ticket cleanup,
   existing-world validation, command authorization settings, and protection-plugin detection.

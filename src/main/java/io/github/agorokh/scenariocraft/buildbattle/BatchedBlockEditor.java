@@ -58,6 +58,10 @@ public final class BatchedBlockEditor implements AutoCloseable {
         completion = () -> completionConsumer.accept(scheduledBlocks);
         preparingChunks = true;
         prepareChunks(plan);
+        Throwable synchronousHandoffFailure = pendingPreparationFailure.getAndSet(null);
+        if (synchronousHandoffFailure != null) {
+            reportPreparationFailure(synchronousHandoffFailure);
+        }
         return scheduledBlocks;
     }
 
@@ -87,7 +91,13 @@ public final class BatchedBlockEditor implements AutoCloseable {
             return;
         }
         boolean hadWork = queue.hasWork();
-        queue.runTick();
+        try {
+            queue.runTick();
+        } catch (RuntimeException exception) {
+            queue.clear();
+            reportBuildFailure("Arena block mutation failed", exception);
+            return;
+        }
         if (hadWork && !queue.hasWork() && completion != null) {
             Runnable finished = completion;
             completion = null;
@@ -160,12 +170,16 @@ public final class BatchedBlockEditor implements AutoCloseable {
     }
 
     private void reportPreparationFailure(Throwable failure) {
+        reportBuildFailure("Arena chunk preparation failed", failure);
+    }
+
+    private void reportBuildFailure(String message, Throwable failure) {
         Consumer<Throwable> failureConsumer = preparationFailure;
         preparingChunks = false;
         completion = null;
         preparationFailure = null;
         releaseChunkTickets();
-        logger.log(Level.SEVERE, "Arena chunk preparation failed", failure);
+        logger.log(Level.SEVERE, message, failure);
         if (failureConsumer != null) {
             try {
                 failureConsumer.accept(failure);
