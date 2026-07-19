@@ -27,6 +27,8 @@ workflow exists before relying on check state.
   `1800`.
 - `RESOLVE_PR_POLL_INTERVAL_SECONDS` is an optional positive integer in seconds; it defaults
   to `600`.
+- `SCENARIOCRAFT_REVIEW_APP_LOGIN` is the GraphQL login of the repository's configured
+  review app; it defaults to `ws-ops-cursor-reviewer`.
 
 Set overrides with `export NAME=value` in the shell that launches the agent. These skills
 do not load `.env` files or service-manager configuration implicitly.
@@ -74,6 +76,9 @@ calling any helper; do not assume shell functions are exported across processes.
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
+   REVIEW_APP_LOGIN="${SCENARIOCRAFT_REVIEW_APP_LOGIN:-ws-ops-cursor-reviewer}"
+   [[ "${REVIEW_APP_LOGIN}" =~ ^[A-Za-z0-9-]+$ ]] ||
+     { printf 'Invalid review app login\n' >&2; exit 1; }
    PR=<P>
    [[ "${PR}" =~ ^[1-9][0-9]*$ ]] ||
      { printf 'PR number must be a positive integer\n' >&2; exit 1; }
@@ -421,17 +426,59 @@ calling any helper; do not assume shell functions are exported across processes.
    fixes, then stop. The escalation may contain only the check name, job URL, and a redacted
    one-line cause; never paste raw logs, environment dumps, tokens, or credentials. Reset a
    counter only when that check becomes green or the diagnosed root cause changes.
-   Load `REPAIR_ATTEMPTS_JSON` from the durable ledger block before incrementing a
-   redacted, stable `<CHECK>:<ROOT_CAUSE>` key:
+   Treat append-only resolver evidence comments as the authoritative strike count; the
+   PR-body repair ledger is only a cache and cannot reset that history. Use a redacted,
+   stable `<CHECK>:<ROOT_CAUSE>` key:
 
    ```sh
    # Run this counter block only when a pushed repair's replacement head has
    # failed for the same root cause, never on the initial pre-repair failure.
    REPAIR_KEY="<CHECK>:<REDACTED_ROOT_CAUSE>"
+   REPAIR_MARKER_PREFIX="resolve-pr evidence: CI repair ${REPAIR_KEY}, attempt "
+   REPAIR_INVENTORY_OK=0
+   for REPAIR_INVENTORY_DELAY in 0 5 15 45; do
+     if test "${REPAIR_INVENTORY_DELAY}" -gt 0; then
+       sleep "${REPAIR_INVENTORY_DELAY}"
+     fi
+     if REPAIR_COMMENTS_JSON="$(
+       gh api --paginate \
+         "repos/${REPO}/issues/<P>/comments?per_page=100" |
+         jq -s -e '
+           if all(.[]; type == "array") then add // []
+           else error("invalid repair comment page")
+           end'
+     )"; then
+       REPAIR_INVENTORY_OK=1
+       break
+     fi
+   done
+   test "${REPAIR_INVENTORY_OK}" -eq 1 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: authoritative CI repair history could not be fetched."
+     exit 1
+   }
+   COMPLETED_FAILED_REPAIR_COUNT="$(
+     printf '%s' "${REPAIR_COMMENTS_JSON}" |
+       jq --arg resolver "${RESOLVER_LOGIN}" \
+          --arg prefix "${REPAIR_MARKER_PREFIX}" '
+         [.[] |
+           select(.user.login == $resolver) |
+           .body as $body |
+           select($body | startswith($prefix)) |
+           ($body[($prefix | length):] |
+             select(test("^[1-3]/3$")) |
+             split("/")[0] |
+             tonumber)
+         ] | unique | max // 0'
+   )"
+   NEXT_REPAIR_ATTEMPT="$((COMPLETED_FAILED_REPAIR_COUNT + 1))"
+   test "${NEXT_REPAIR_ATTEMPT}" -le 3
+   printf '%s%s/3\n' "${REPAIR_MARKER_PREFIX}" "${NEXT_REPAIR_ATTEMPT}" |
+     gh pr comment <P> --repo "${REPO}" --body-file -
    REPAIR_ATTEMPTS_JSON="$(
      printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
-       jq --arg key "${REPAIR_KEY}" \
-         '.[$key] = ((.[$key] // 0) + 1)'
+       jq --arg key "${REPAIR_KEY}" --argjson count "${NEXT_REPAIR_ATTEMPT}" \
+         '.[$key] = $count'
    )"
    persist_resolution_state || {
      printf '%s\n' \
@@ -439,11 +486,7 @@ calling any helper; do not assume shell functions are exported across processes.
        gh pr comment <P> --repo "${REPO}" --body-file -
      exit 1
    }
-   COMPLETED_FAILED_REPAIR_COUNT="$(
-     printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
-       jq --arg key "${REPAIR_KEY}" '.[$key]'
-   )"
-   test "${COMPLETED_FAILED_REPAIR_COUNT}" -lt 3 || {
+   test "${NEXT_REPAIR_ATTEMPT}" -lt 3 || {
      printf 'Escalation: %s failed after three repair attempts.\n' \
        "${REPAIR_KEY}" |
        gh pr comment <P> --repo "${REPO}" --body-file -
@@ -955,9 +998,9 @@ calling any helper; do not assume shell functions are exported across processes.
    A nonempty `reviewRequests` list means review is pending. Because GitHub hides another
    author's draft review, absence of a visible GraphQL `PENDING` review is not clearance.
    Require at least one submitted `APPROVED` or `COMMENTED` review whose commit is the
-   current head and whose author is neither the PR author nor the authenticated resolver.
-   Derive those identities with `gh pr view --json author` and `gh api user`; a self-review
-   cannot satisfy external review. Apply this rule even when `reviewRequests` is empty. If
+   current head and whose author is exactly `REVIEW_APP_LOGIN`. An arbitrary bot, app,
+   PR author, or resolver review cannot satisfy completion. Apply this rule even when
+   `reviewRequests` is empty. If
    no qualifying review posts after three wait cycles, escalate the unfinished current-head
    review instead of merging.
 
@@ -1096,8 +1139,8 @@ calling any helper; do not assume shell functions are exported across processes.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
    inventory. Derive `UNRESOLVED_THREAD_COUNT` and
    `CURRENT_HEAD_PENDING_REVIEW_COUNT` from the fresh GraphQL result. Derive
-   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT` from that result only after excluding
-   `PR_AUTHOR_LOGIN` and `RESOLVER_LOGIN`:
+   `CURRENT_HEAD_COMPLETED_REVIEW_COUNT` from that result only for the configured review
+   app:
 
    ```sh
    UNRESOLVED_THREAD_COUNT="$(
@@ -1112,21 +1155,15 @@ calling any helper; do not assume shell functions are exported across processes.
                   (.commit.oid // "") == $sha)
          ] | length'
    )"
-   PR_AUTHOR_LOGIN="$(gh pr view <P> --repo "${REPO}" \
-     --json author --jq .author.login)"
-   RESOLVER_LOGIN="$(gh api user --jq .login)"
    CURRENT_HEAD_COMPLETED_REVIEW_COUNT="$(
      printf '%s' "${GRAPHQL_REVIEWS_JSON}" |
        jq --arg sha "${REVIEWED_SHA}" \
-          --arg pr_author "${PR_AUTHOR_LOGIN}" \
-          --arg resolver "${RESOLVER_LOGIN}" '
+          --arg review_app "${REVIEW_APP_LOGIN}" '
          [.[] |
            (.author.login // "") as $login |
-           select($login != "" and
+           select($login == $review_app and
                   .commit.oid == $sha and
-                  (.state == "APPROVED" or .state == "COMMENTED") and
-                  $login != $pr_author and
-                  $login != $resolver)
+                  (.state == "APPROVED" or .state == "COMMENTED"))
          ] | length'
    )"
    ```

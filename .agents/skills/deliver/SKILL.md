@@ -78,6 +78,7 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    test -f Makefile
    make -n ci-fast >/dev/null
    test -f code_review.md
+   test -f docs/plans/TEMPLATE.md
    ```
 2. Determine whether the issue is multi-hour and identify its intended ExecPlan path, but
    do not edit the plan before switching to the delivery branch in step 3.
@@ -102,9 +103,9 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
        --json headRefOid --jq .headRefOid)"
    ```
 
-   Re-run `test -f Makefile`, `make -n ci-fast >/dev/null`, `test -f code_review.md`, and
-   `test -f .github/workflows/ci.yml` against the checked-out draft head. Resume at step 4
-   without creating a branch or PR.
+   Re-run `test -f Makefile`, `make -n ci-fast >/dev/null`, `test -f code_review.md`,
+   `test -f docs/plans/TEMPLATE.md`, and `test -f .github/workflows/ci.yml` against the
+   checked-out draft head. Resume at step 4 without creating a branch or PR.
 
    For a new delivery, resolve the intended base branch from the target issue, defaulting
    to the repository's remote default branch. Reject a nonempty `git status --porcelain`
@@ -121,7 +122,7 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    Only after creating that plan, make and push the first scoped commit — the ExecPlan for
    multi-hour work, or the smallest implementation slice otherwise — so GitHub has a branch
    difference to review.
-   Re-run the same four repository-contract checks immediately after creating the branch.
+   Re-run the same repository-contract checks immediately after creating the branch.
    Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
    not require the code gate. Then explicitly create the draft against the verified base:
 

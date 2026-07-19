@@ -13,6 +13,7 @@ env:
   PAPER_VERSION: '1.21.11'
   PAPER_BUILD: '132'
   PAPER_SHA256: '5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba'
+  PAPER_BOOT_TIMEOUT_SECONDS: ${{ vars.PAPER_BOOT_TIMEOUT_SECONDS || '300' }}
 
 jobs:
   build:
@@ -105,7 +106,13 @@ jobs:
           }
           url="$(
             jq -er --argjson build "${PAPER_BUILD}" \
-              '.[] | select(.id == $build) | .downloads["server:default"].url' \
+              '.[] |
+               select(.id == $build) |
+               .downloads["server:default"] |
+               select(type == "object") |
+               .url |
+               select(type == "string" and
+                      test("^https://[^[:space:]]+$"))' \
               <<<"${builds}"
           )"
           test -n "${url}" || {
@@ -145,8 +152,13 @@ jobs:
           mkfifo "${server_dir}/server.stdin"
 
           set +e
+          [[ "${PAPER_BOOT_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]] || {
+            printf 'PAPER_BOOT_TIMEOUT_SECONDS must be a positive integer.\n'
+            exit 1
+          }
           # shellcheck disable=SC2016
-          timeout --signal=TERM --kill-after=10s 300s bash -c '
+          timeout --signal=TERM --kill-after=10s \
+            "${PAPER_BOOT_TIMEOUT_SECONDS}s" bash -c '
             set -euo pipefail
             cd "$1"
             exec 3<>server.stdin
