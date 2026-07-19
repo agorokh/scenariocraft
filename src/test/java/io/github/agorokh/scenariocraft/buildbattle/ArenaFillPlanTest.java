@@ -72,4 +72,29 @@ class ArenaFillPlanTest {
                         new ChunkCoordinate(1, 1)),
                 Set.copyOf(plan.chunkCoordinates()));
     }
+
+    @Test
+    void revealPlanRemovesOnlyTheFourBudgetedWallsPerPlot() {
+        List<PlotBounds> plots = PlotGeometry.aroundHub(0, 0, 2, 33, 64);
+
+        ArenaFillPlan plan = ArenaFillPlan.forWallRemoval(plots, -61, 30);
+
+        assertEquals(8, plan.fills().size());
+        assertEquals(8_160, plan.totalBlockMutations());
+        assertEquals(
+                new BlockFill(
+                        new Cuboid(-17, 17, -60, -31, -81, -81),
+                        Material.AIR),
+                plan.fills().get(0));
+        assertEquals(
+                new BlockFill(
+                        new Cuboid(17, 17, -60, -31, -80, -48),
+                        Material.AIR),
+                plan.fills().get(3));
+        assertEquals(
+                new BlockFill(
+                        new Cuboid(-17, 17, -60, -31, 47, 47),
+                        Material.AIR),
+                plan.fills().get(4));
+    }
 }

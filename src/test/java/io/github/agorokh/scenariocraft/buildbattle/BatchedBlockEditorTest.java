@@ -191,44 +191,40 @@ final class BatchedBlockEditorTest {
     }
 
     @Test
-    void commandDoesNotAnnounceSuccessAfterSynchronousPreparationFailure() {
-        TestRig rig = new TestRig(true, false, false);
+    void cancelAbortsQueuedWorkAndAllowsAReplacement() {
+        TestRig rig = new TestRig(false, false, false);
+        AtomicLong completedMutations = new AtomicLong();
         BatchedBlockEditor editor =
                 new BatchedBlockEditor(
-                        rig.plugin, rig.world, 5, Logger.getAnonymousLogger());
-        BattleSettings settings =
-                new BattleSettings(
-                        new ArenaSettings(33, 30, 64, 8, 4_000),
-                        new PhaseTimings(30, 60, 1_200, 900),
-                        List.of("Treehouse"),
-                        List.of(),
-                        true);
-        BattleCommand command =
-                new BattleCommand(
-                        settings,
-                        new ArenaWorld(rig.world, -61),
-                        editor,
-                        Logger.getAnonymousLogger());
-        List<String> messages = new ArrayList<>();
-        CommandSender sender =
-                proxy(
-                        CommandSender.class,
-                        (ignored, method, arguments) ->
-                                switch (method.getName()) {
-                                    case "getName" -> "BuilderKid";
-                                    case "isOp" -> false;
-                                    case "sendMessage" -> {
-                                        messages.add(String.valueOf(arguments[0]));
-                                        yield null;
-                                    }
-                                    default -> defaultValue(method.getReturnType());
-                                });
+                        rig.plugin, rig.world, 1, Logger.getAnonymousLogger());
 
-        assertTrue(command.onCommand(sender, null, "battle", new String[] {"start"}));
-        assertEquals(
-                List.of(
-                        "The arena could not get ready this time. Please ask a grown-up helper to check the server."),
-                messages);
+        editor.enqueueArena(
+                List.of(new PlotBounds(0, 0, 0, 0)),
+                0,
+                1,
+                completedMutations::set,
+                ignored -> {});
+        rig.tick.get().run();
+        editor.cancel();
+
+        assertFalse(editor.isBusy());
+        assertEquals(0, editor.pendingBlocks());
+        assertEquals(0, completedMutations.get());
+        assertEquals(4, rig.ticketsRemoved.get());
+
+        long revealMutations =
+                editor.enqueueWallRemoval(
+                        List.of(new PlotBounds(0, 0, 0, 0)),
+                        0,
+                        1,
+                        completedMutations::set,
+                        ignored -> {});
+        while (editor.isBusy()) {
+            rig.tick.get().run();
+        }
+
+        assertEquals(8, revealMutations);
+        assertEquals(revealMutations, completedMutations.get());
         editor.close();
     }
 

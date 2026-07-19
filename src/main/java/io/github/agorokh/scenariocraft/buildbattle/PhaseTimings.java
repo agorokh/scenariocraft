@@ -1,6 +1,6 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
-/** Configuration-backed phase durations reserved for the phase controller in BB-03. */
+/** Configuration-backed durations consumed by the Build Battle round controller. */
 public record PhaseTimings(
         int gatherSeconds, int noteSeconds, int buildSeconds, int revealLingerSeconds) {
     public PhaseTimings {

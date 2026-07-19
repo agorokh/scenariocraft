@@ -3,7 +3,7 @@ package io.github.agorokh.scenariocraft.buildbattle;
 import java.util.List;
 import org.bukkit.configuration.file.FileConfiguration;
 
-/** Loads every BB-02 setting from config.yml and rejects unusable values early. */
+/** Loads Build Battle settings from config.yml and rejects unusable values early. */
 public final class ArenaConfigLoader {
     private static final int DEBUG_PLOT_COUNT = 2;
 

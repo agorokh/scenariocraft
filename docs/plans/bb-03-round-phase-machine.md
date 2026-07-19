@@ -15,7 +15,7 @@ state, scheduled timers, cancellable arena work, and real-server acceptance evid
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
+- [x] Implement with tests.
 - [ ] Capture the issue's acceptance evidence.
 - [ ] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
@@ -38,6 +38,11 @@ session.
 - The delivery worktree began detached at the already-current `origin/main`; after fetching
   and verifying the SHA, the issue branch could be created directly without carrying
   unrelated worktree state.
+- GitHub's HTTPS credential reported repository admin access through the API but rejected
+  Git pushes and PR creation with HTTP 403. The already-authorized SSH key published the
+  branch, and the connected GitHub app created the exact verified draft PR.
+- The desktop shell did not expose its installed Java runtime through `JAVA_HOME`; local
+  Gradle gates use the repository-required Homebrew Java 21 installation explicitly.
 
 ## Acceptance evidence
 

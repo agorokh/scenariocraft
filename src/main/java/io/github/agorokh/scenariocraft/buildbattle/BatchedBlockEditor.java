@@ -17,7 +17,7 @@ import org.bukkit.World;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 
-/** Owns the single per-tick queue used to clear plots and build their walls. */
+/** Owns the single per-tick queue used for arena reset and reveal mutations. */
 public final class BatchedBlockEditor implements AutoCloseable {
     private static final long CHUNK_PREPARATION_TIMEOUT_TICKS = 20L * 30L;
 
@@ -53,10 +53,42 @@ public final class BatchedBlockEditor implements AutoCloseable {
             int wallHeight,
             LongConsumer onComplete,
             Consumer<Throwable> onPreparationFailure) {
+        return enqueuePlan(
+                ArenaFillPlan.forPlots(plots, floorY, wallHeight),
+                onComplete,
+                onPreparationFailure);
+    }
+
+    public long enqueueWallRemoval(
+            List<PlotBounds> plots,
+            int floorY,
+            int wallHeight,
+            LongConsumer onComplete,
+            Consumer<Throwable> onPreparationFailure) {
+        return enqueuePlan(
+                ArenaFillPlan.forWallRemoval(plots, floorY, wallHeight),
+                onComplete,
+                onPreparationFailure);
+    }
+
+    public void cancel() {
+        preparationGeneration++;
+        queue.clear();
+        preparingChunks = false;
+        completion = null;
+        preparationFailure = null;
+        pendingPreparationFailure.set(null);
+        cancelPreparationTimeout();
+        releaseChunkTickets();
+    }
+
+    private long enqueuePlan(
+            ArenaFillPlan plan,
+            LongConsumer onComplete,
+            Consumer<Throwable> onPreparationFailure) {
         if (isBusy()) {
             throw new IllegalStateException("an arena build is already queued");
         }
-        ArenaFillPlan plan = ArenaFillPlan.forPlots(plots, floorY, wallHeight);
         long scheduledBlocks = plan.totalBlockMutations();
         LongConsumer completionConsumer = Objects.requireNonNull(onComplete, "onComplete");
         preparationFailure =
@@ -86,12 +118,7 @@ public final class BatchedBlockEditor implements AutoCloseable {
     public void close() {
         closed = true;
         task.cancel();
-        preparingChunks = false;
-        completion = null;
-        preparationFailure = null;
-        pendingPreparationFailure.set(null);
-        cancelPreparationTimeout();
-        releaseChunkTickets();
+        cancel();
     }
 
     private void runTick() {
