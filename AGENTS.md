@@ -27,7 +27,10 @@ make ci-fast
 ./gradlew test --tests 'io.github.agorokh.scenariocraft.PluginDescriptorTest'
 ```
 
-`make ci-fast` is the local CI-parity gate. The build jar is written to `build/libs/`.
+`make ci-fast` is the fast local build-and-test gate. The build jar is written to
+`build/libs/`.
+Smoke: every PR boots a real Paper server and asserts the plugin enables. A compile-and-test
+green is not evidence the plugin loads.
 PR resolution requires a GitHub CLI exposing `--match-head-commit` and `--body-file`.
 Verify both flags from `gh pr merge --help` and `gh pr edit --help` before starting.
 

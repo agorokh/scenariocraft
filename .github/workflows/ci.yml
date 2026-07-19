@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+env:
+  PAPER_VERSION: '1.21.11'
+  PAPER_BUILD: '132'
+  PAPER_SHA256: '5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,3 +32,204 @@ jobs:
 
       - name: Build and test
         run: ./gradlew build --no-daemon
+
+      - name: Stage tested plugin jar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t plugin_jars < <(
+            find build/libs -maxdepth 1 -type f -name 'ScenarioCraft-*.jar' \
+              ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print
+          )
+          test "${#plugin_jars[@]}" -eq 1
+          mkdir -p "${RUNNER_TEMP}/plugin-artifact"
+          cp "${plugin_jars[0]}" "${RUNNER_TEMP}/plugin-artifact/ScenarioCraft.jar"
+
+      - name: Upload tested plugin jar
+        uses: actions/upload-artifact@v6
+        with:
+          name: scenariocraft-plugin
+          path: ${{ runner.temp }}/plugin-artifact/ScenarioCraft.jar
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download tested plugin jar
+        uses: actions/download-artifact@v6
+        with:
+          name: scenariocraft-plugin
+          path: ${{ runner.temp }}/plugin-artifact
+
+      - name: Cache Paper server jar
+        id: paper-cache
+        uses: actions/cache@v5
+        with:
+          path: .paper-cache/paper-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}.jar
+          key: paper-${{ runner.os }}-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}-${{ env.PAPER_SHA256 }}
+
+      - name: Ensure pinned Paper server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .paper-cache
+          paper_jar=".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar"
+          if test -f "${paper_jar}" &&
+            echo "${PAPER_SHA256}  ${paper_jar}" | sha256sum --check --status; then
+            printf 'Using checksum-verified cached Paper jar.\n'
+            exit 0
+          fi
+
+          rm -f "${paper_jar}"
+          builds="$(
+            curl --fail --silent --show-error --location \
+              --retry 3 --retry-all-errors --retry-delay 2 \
+              --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
+              "https://fill.papermc.io/v3/projects/paper/versions/${PAPER_VERSION}/builds"
+          )"
+          jq -e 'type == "array"' <<<"${builds}" >/dev/null || {
+            printf 'Paper builds API returned an unexpected payload.\n'
+            exit 1
+          }
+          url="$(
+            jq -er --argjson build "${PAPER_BUILD}" \
+              '.[] | select(.id == $build) | .downloads["server:default"].url' \
+              <<<"${builds}"
+          )"
+          test -n "${url}" || {
+            printf 'Paper %s build %s has no server download URL.\n' \
+              "${PAPER_VERSION}" "${PAPER_BUILD}"
+            exit 1
+          }
+          curl --fail --show-error --location \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
+            --output "${paper_jar}" \
+            "${url}"
+          echo "${PAPER_SHA256}  ${paper_jar}" | sha256sum --check -
+
+      - name: Boot Paper and stop after startup
+        id: paper-smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          server_dir="${RUNNER_TEMP}/paper-smoke"
+          echo "server_dir=${server_dir}" >>"${GITHUB_OUTPUT}"
+          mkdir -p "${server_dir}/plugins"
+          cp ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
+            "${server_dir}/paper.jar"
+          cp "${RUNNER_TEMP}/plugin-artifact/ScenarioCraft.jar" \
+            "${server_dir}/plugins/ScenarioCraft.jar"
+          printf 'eula=true\n' >"${server_dir}/eula.txt"
+          printf '%s\n' \
+            'allow-nether=false' \
+            'generate-structures=false' \
+            'level-type=minecraft:flat' \
+            'online-mode=false' \
+            'simulation-distance=2' \
+            'spawn-monsters=false' \
+            'view-distance=2' >"${server_dir}/server.properties"
+          printf 'settings:\n  allow-end: false\n' >"${server_dir}/bukkit.yml"
+          mkfifo "${server_dir}/server.stdin"
+
+          set +e
+          # shellcheck disable=SC2016
+          timeout --signal=TERM --kill-after=10s 120s bash -c '
+            set -euo pipefail
+            cd "$1"
+            exec 3<>server.stdin
+            java -Xms512M -Xmx1G -jar paper.jar --nogui <&3 >server-console.log 2>&1 &
+            server_pid=$!
+            cleanup() {
+              if kill -0 "${server_pid}" 2>/dev/null; then
+                printf "stop\n" >&3 || true
+                kill -TERM "${server_pid}" 2>/dev/null || true
+                for _ in 1 2 3 4 5; do
+                  kill -0 "${server_pid}" 2>/dev/null || return
+                  sleep 1
+                done
+                kill -KILL "${server_pid}" 2>/dev/null || true
+              fi
+            }
+            trap cleanup EXIT TERM INT
+            while kill -0 "${server_pid}" 2>/dev/null; do
+              if test -f logs/latest.log &&
+                grep -q "Done (" logs/latest.log; then
+                printf "stop\n" >&3
+                break
+              fi
+              sleep 1
+            done
+            wait "${server_pid}"
+          ' bash "${server_dir}"
+          server_status=$?
+          set -e
+          sleep 2
+          sync
+
+          log="${server_dir}/logs/latest.log"
+          test -f "${log}" || {
+            printf 'Paper did not create logs/latest.log (exit %s).\n' "${server_status}"
+            test -f "${server_dir}/server-console.log" &&
+              tail -n 80 "${server_dir}/server-console.log"
+            exit 1
+          }
+
+          failed=0
+          if test "${server_status}" -ne 0; then
+            printf 'Paper wrapper exited with status %s; log assertions remain authoritative.\n' \
+              "${server_status}"
+            tail -n 80 "${server_dir}/server-console.log"
+          fi
+          if ! grep -Eq '\[ScenarioCraft\] Enabling ScenarioCraft v' "${log}"; then
+            printf 'ScenarioCraft enable line was not found.\n'
+            grep -n -C 4 -E 'ScenarioCraft|Enabling|Disabling' "${log}" || true
+            failed=1
+          fi
+          if ! grep -q 'ScenarioCraft enabled' "${log}"; then
+            printf 'ScenarioCraft post-onEnable readiness line was not found.\n'
+            grep -n -C 4 -E 'ScenarioCraft|Enabling|Disabling|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
+          if ! grep -q 'Done (' "${log}"; then
+            printf 'Paper did not reach Done.\n'
+            grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
+            failed=1
+          fi
+          if ! grep -q 'Stopping server' "${log}" ||
+            ! grep -q 'All dimensions are saved' "${log}"; then
+            printf 'Paper did not complete the expected clean shutdown path.\n'
+            grep -n -C 4 -E 'Stopping|Saving|saved|Disabling|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
+          if grep -n -C 4 -E \
+            'Could not load|Ambiguous plugin name|Unsupported api-version|Error occurred while enabling|Error occurred while disabling' \
+            "${log}"; then
+            printf 'Paper reported a plugin loading or compatibility error.\n'
+            failed=1
+          fi
+          exit "${failed}"
+
+      - name: Upload Paper smoke log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: paper-smoke-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}
+          path: |
+            ${{ steps.paper-smoke.outputs.server_dir }}/logs/latest.log
+            ${{ steps.paper-smoke.outputs.server_dir }}/server-console.log
+          if-no-files-found: warn
