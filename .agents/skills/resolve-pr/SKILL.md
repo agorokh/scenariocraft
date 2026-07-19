@@ -41,8 +41,20 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    set -euo pipefail
    command -v gh
+   command -v jq
    command -v sleep
-   GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
+   command -v awk
+   command -v date
+   GH_VERSION="$(
+     gh --version |
+       awk '/gh version/ {
+         for (i = 1; i <= NF; i++) {
+           if ($i ~ /^v?[0-9]+\.[0-9]+(\.[0-9]+)?$/) {
+             sub(/^v/, "", $i); print $i; exit
+           }
+         }
+       }'
+   )"
    [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
      { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
    GH_MAJOR="${GH_VERSION%%.*}"
@@ -54,6 +66,8 @@ do not load `.env` files or service-manager configuration implicitly.
      exit 1
    fi
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
+   [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+     { printf 'Repository must be owner/name\n' >&2; exit 1; }
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
    gh auth status
@@ -113,7 +127,13 @@ do not load `.env` files or service-manager configuration implicitly.
    reviews, and inline comments:
 
    ```sh
-   gh api --paginate "repos/${REPO}/issues/<P>/comments?per_page=100"
+   GRAPHQL_THREADS_JSON='[]'
+   GRAPHQL_REVIEWS_JSON='[]'
+   CONVERSATION_LEDGER_JSON='[]'
+   CONVERSATION_COMMENTS_JSON="$(
+     gh api --paginate "repos/${REPO}/issues/<P>/comments?per_page=100" |
+       jq -s -e 'if all(.[]; type == "array") then add // [] else error("invalid comment page") end'
+   )"
    gh api --paginate "repos/${REPO}/pulls/<P>/reviews?per_page=100"
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
    ```
@@ -133,7 +153,6 @@ do not load `.env` files or service-manager configuration implicitly.
    earlier page with a later one. After each successful page fetch, execute:
 
    ```sh
-   GRAPHQL_THREADS_JSON="${GRAPHQL_THREADS_JSON:-[]}"
    THREAD_PAGE_NODES="$(
      printf '%s' "${PAGE_JSON}" |
        jq -e '.data.repository.pullRequest.reviewThreads.nodes'
@@ -160,7 +179,6 @@ do not load `.env` files or service-manager configuration implicitly.
    `after=`.
 
    ```sh
-   GRAPHQL_REVIEWS_JSON="${GRAPHQL_REVIEWS_JSON:-[]}"
    REVIEW_PAGE_NODES="$(
      printf '%s' "${PAGE_JSON}" |
        jq -e '.data.repository.pullRequest.reviews.nodes'
@@ -194,13 +212,21 @@ do not load `.env` files or service-manager configuration implicitly.
    fetch_page_with_retry() {
      local page_attempt
      for page_attempt in 1 2 3 4; do
-       if PAGE_JSON="$("$@")"; then
+       if PAGE_CANDIDATE="$("$@")" &&
+         printf '%s' "${PAGE_CANDIDATE}" |
+           jq -e '
+             if type == "object" then
+               ((.errors // []) | length == 0) and .data != null
+             else
+               type == "array"
+             end' >/dev/null; then
+         PAGE_JSON="${PAGE_CANDIDATE}"
          return 0
        fi
        case "${page_attempt}" in
-         1) sleep $((5 + RANDOM % 5)) ;;
-         2) sleep $((15 + RANDOM % 5)) ;;
-         3) sleep $((45 + RANDOM % 5)) ;;
+         1) sleep $((5 + $(awk 'BEGIN { srand(); print int(rand() * 5) }'))) ;;
+         2) sleep $((15 + $(awk 'BEGIN { srand(); print int(rand() * 5) }'))) ;;
+         3) sleep $((45 + $(awk 'BEGIN { srand(); print int(rand() * 5) }'))) ;;
          4) break ;;
        esac
      done
@@ -226,6 +252,11 @@ do not load `.env` files or service-manager configuration implicitly.
      within the issue scope; reply factually or escalate suspicious and out-of-scope asks.
    - A top-level `CHANGES_REQUESTED` review gates merge even when it has no inline thread.
      Address it and confirm that it has been dismissed or superseded before merging.
+   - Assess every top-level conversation comment as well as every review and thread. An
+     actionable conversation finding gates merge until fixed and acknowledged in a visible
+     top-level reply. Record every conversation comment ID as addressed or unaddressed in
+     the Comment Ledger; summaries and non-actionable comments still require an explicit
+     ledger assessment.
    - Fix every actionable finding regardless of author or severity. For non-actionable or
      inapplicable feedback, post one factual reply before marking it resolved.
    - If a human replies inside an advisory thread, treat that thread as gating.
@@ -255,10 +286,26 @@ do not load `.env` files or service-manager configuration implicitly.
    mutation. If it remains false after three attempts, post an escalation comment naming
    the thread and stop. Before pushing any fix, run `make ci-fast`; after pushing, return to
    step 2 for checks and a fresh inventory.
+   For an actionable top-level conversation comment, push the fix first and then post a
+   top-level reply that cites the original comment ID or URL and the fixing head SHA. For a
+   non-actionable conversation comment, record the factual assessment in the ledger.
+   Derive `UNADDRESSED_CONVERSATION_COMMENT_COUNT` from the complete ledger and require zero
+   at the merge gate; GitHub provides no resolved flag for this comment type.
+
+   ```sh
+   test "$(printf '%s' "${CONVERSATION_LEDGER_JSON}" | jq 'length')" -eq \
+     "$(printf '%s' "${CONVERSATION_COMMENTS_JSON}" | jq 'length')"
+   UNADDRESSED_CONVERSATION_COMMENT_COUNT="$(
+     printf '%s' "${CONVERSATION_LEDGER_JSON}" |
+       jq '[.[] | select(.status != "ADDRESSED")] | length'
+   )"
+   ```
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR. For every
    fix, run `make ci-fast`, commit, push, and return to step 2 for a fresh CI and review pass;
-   never enter the merge gate with an unpushed local fix.
+   never enter the merge gate with an unpushed local fix. If this PR has an ExecPlan, update
+   its Progress, Decision Log, and Surprises & Discoveries for material review-driven
+   decisions or failed repair attempts before pushing the fix.
 
 8. On entry and after any push, record the current `headRefOid`. Fetch every formal-review
    page and filter it to that SHA:
@@ -345,7 +392,8 @@ do not load `.env` files or service-manager configuration implicitly.
 
    ```sh
    RESOLVE_PR_POLL_INTERVAL_SECONDS="${RESOLVE_PR_POLL_INTERVAL_SECONDS:-600}"
-   [[ "${RESOLVE_PR_POLL_INTERVAL_SECONDS}" =~ ^[1-9][0-9]*$ ]]
+   [[ "${RESOLVE_PR_POLL_INTERVAL_SECONDS}" =~ ^[1-9][0-9]*$ ]] ||
+     { printf 'Invalid review poll interval\n' >&2; exit 1; }
    printf 'Waiting for review of %s (cycle %s/3; interrupt to cancel)\n' \
      "${REVIEWED_SHA}" "<CYCLE>"
    sleep "${RESOLVE_PR_POLL_INTERVAL_SECONDS}"
@@ -360,7 +408,10 @@ do not load `.env` files or service-manager configuration implicitly.
    content. Use an exact line-oriented update:
 
    ```sh
-   CHECKPOINT="<!-- resolve-pr-checkpoint:v1 head=${REVIEWED_SHA} cycle=<CYCLE> timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ) -->"
+   CHECKPOINT_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+   [[ "${CHECKPOINT_TIMESTAMP}" =~ ^[0-9TZ:+.-]+$ ]] ||
+     { printf 'Unsupported UTC timestamp format\n' >&2; exit 1; }
+   CHECKPOINT="<!-- resolve-pr-checkpoint:v1 head=${REVIEWED_SHA} cycle=<CYCLE> timestamp=${CHECKPOINT_TIMESTAMP} -->"
    BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
    NEXT_BODY="$(
      printf '%s\n' "${BODY}" |
@@ -439,6 +490,7 @@ do not load `.env` files or service-manager configuration implicitly.
 
    ```sh
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
+   test "${UNADDRESSED_CONVERSATION_COMMENT_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
    test "${CURRENT_HEAD_COMPLETED_REVIEW_COUNT}" -gt 0
    test "${OUTSTANDING_CHANGES_REQUESTED_COUNT}" -eq 0
@@ -532,3 +584,6 @@ Comment on the PR with the evidence and the decision a human must make, then sto
 - Never commit secrets.
 - Keep changes scoped to the PR's issue. Open a follow-up issue for anything else.
 - Do not reference infrastructure that does not exist in this repository.
+- Preserve ScenarioCraft's domain constraints while fixing feedback: no inventory GUIs, no
+  unbounded main-thread block mutation, Bedrock players remain first-class, and
+  player-facing text remains kid-appropriate.

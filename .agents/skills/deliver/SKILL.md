@@ -7,7 +7,8 @@ description: Take one ScenarioCraft Build Week issue from specification to a pul
 
 **Job:** Take one issue from spec to a PR ready for external review.
 
-**Inputs:** An issue number on the build-week milestone.
+**Inputs:** An issue number on the build-week milestone and, when resuming work, the existing
+draft PR number.
 
 **Outputs:** One ready-for-review PR satisfying that issue's acceptance criteria, with its
 ExecPlan updated and the session ID recorded.
@@ -39,7 +40,11 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    ```sh
    set -euo pipefail
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
+   [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+     { printf 'Repository must be owner/name\n' >&2; exit 1; }
    command -v gh
+   command -v jq
+   command -v sleep
    gh auth status
    PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
    [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
@@ -57,15 +62,27 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    Decision Log. If the repository-local template is missing, create the plan with the same
    required sections: Purpose, Progress, Decision Log, Surprises & Discoveries, Acceptance
    evidence, and Retrospective.
-3. Resolve the intended base branch from the target issue, defaulting to the repository's
-   remote default branch. Reject a nonempty `git status --porcelain` before switching
-   branches. Fetch the base, switch to it, and fast-forward it before creating branch
-   `codex/<issue>-<slug>`; verify that the new branch contains no unexpected commits. Make
-   and push the first scoped commit — the ExecPlan for multi-hour work, or the smallest
-   implementation slice otherwise — before opening a draft PR so GitHub has a branch
-   difference to review. Run `make ci-fast` before pushing an implementation slice; an
-   ExecPlan-only commit does not require the code gate. Keep the PR in draft while
-   implementation and verification continue.
+3. First check whether the input identifies an existing draft PR for this issue. If it
+   does, verify its issue reference, base, and `isDraft: true`; reject a dirty worktree,
+   check out that PR with `gh pr checkout`, verify local `HEAD` equals its `headRefOid`, and
+   resume at step 4 without creating a branch or PR.
+
+   For a new delivery, resolve the intended base branch from the target issue, defaulting
+   to the repository's remote default branch. Reject a nonempty `git status --porcelain`
+   before switching branches. Fetch the base, switch to it, and fast-forward it before
+   creating branch `codex/<issue>-<slug>`; verify that the new branch contains no unexpected
+   commits. Make and push the first scoped commit — the ExecPlan for multi-hour work, or the
+   smallest implementation slice otherwise — so GitHub has a branch difference to review.
+   Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
+   not require the code gate. Then explicitly create the draft against the verified base:
+
+   ```sh
+   gh pr create --draft --repo "${REPO}" --base "${BASE_REF}" \
+     --head "codex/<issue>-<slug>" --title "<TITLE>" \
+     --body-file "<DESCRIPTION_FILE>"
+   ```
+
+   Keep the PR in draft while implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
    the issue and stop; do not silently expand scope.
 5. Write tests alongside the change. Fail fast with a clear message if `Makefile` is absent
