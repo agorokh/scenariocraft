@@ -47,8 +47,9 @@ PR resolution requires GitHub CLI 2.49.0 or newer for `--match-head-commit`.
 - Use `.agents/skills/deliver/SKILL.md` as the delivery procedure for every issue.
 - Use `.agents/skills/resolve-pr/SKILL.md` to drive an open pull request through CI, review,
   and merge.
-- One issue → one Codex session → one pull request.
-- Include the issue number and Codex session ID in the pull request description.
+- One issue → one delivery session plus resolution sessions as needed → one pull request.
+- Include the issue number and every Codex session ID that changed the pull request in its
+  description.
 - Include tests and the issue's requested acceptance evidence.
 - Run `/review` and fix every P1 before merge.
 - Never merge with failing CI.

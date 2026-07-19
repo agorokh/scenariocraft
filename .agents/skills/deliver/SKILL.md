@@ -23,8 +23,9 @@ ExecPlan updated and the session ID recorded.
    working agreement is absent.
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
-   Decision Log. Verify the repository-local template exists before using it; if it is
-   missing, comment on the issue and stop rather than improvising a replacement.
+   Decision Log. If the repository-local template is missing, create the plan with the same
+   required sections: Purpose, Progress, Decision Log, Surprises & Discoveries, Acceptance
+   evidence, and Retrospective.
 3. Resolve the intended base branch from the target issue, defaulting to the repository's
    remote default branch. Reject a nonempty `git status --porcelain` before switching
    branches. Fetch the base, switch to it, and fast-forward it before creating branch

@@ -39,6 +39,9 @@ workflow exists before relying on check state.
    gh pr checkout <P> --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
      "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
+   test -f Makefile
+   make -n ci-fast >/dev/null
+   test -f code_review.md
    test -f .github/workflows/ci.yml
    ```
 
@@ -51,7 +54,8 @@ workflow exists before relying on check state.
 
    If `isDraft` is true, stop and hand it back to its author or the `deliver` skill.
    `deliver` owns the draft-to-ready transition after CI is green; `resolve-pr` starts once
-   external review has begun.
+   external review has begun. Append this resolution session's Codex session ID to the PR
+   description so every session that changed the PR remains auditable.
 
 3. If CI is pending, wait 60 seconds and reinspect it until terminal or until the
    end-to-end budget in `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800
@@ -80,6 +84,8 @@ workflow exists before relying on check state.
    validation. Omit the `after` flag entirely on the first call; never pass a literal
    `null`. If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
    `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
+   When `hasNextPage` is true, require a nonempty `endCursor`; an empty cursor is an
+   incomplete response that must be retried or escalated, never passed as `after=`.
 
    Page every thread's comments before classifying it. When
    `comments.pageInfo.hasNextPage` is true, use the thread `id` and comment cursor:
@@ -108,12 +114,15 @@ workflow exists before relying on check state.
    reply:
 
    ```sh
-   gh api --method POST \
-     "repos/${REPO}/pulls/<P>/comments/<COMMENT_ID>/replies" \
-     -f body='<FACTUAL_REPLY>'
+   jq -n --arg body "${FACTUAL_REPLY}" '{body:$body}' |
+     gh api --method POST \
+       "repos/${REPO}/pulls/<P>/comments/<COMMENT_ID>/replies" \
+       --input -
    ```
 
-   After the fix or reply is visible, resolve the thread explicitly:
+   For a code fix, run local CI, commit and push it, and verify the PR `headRefOid` equals the
+   fix commit before resolving. A factual-reply-only resolution may be resolved immediately
+   after the reply is visible. Resolve the thread explicitly:
 
    ```sh
    gh api graphql -f query='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{id isResolved}}}' -f id=<THREAD_ID>
@@ -162,6 +171,7 @@ workflow exists before relying on check state.
 
    ```sh
    RESOLVE_PR_POLL_INTERVAL_SECONDS="${RESOLVE_PR_POLL_INTERVAL_SECONDS:-600}"
+   [[ "${RESOLVE_PR_POLL_INTERVAL_SECONDS}" =~ ^[1-9][0-9]*$ ]]
    printf 'Waiting for review of %s (cycle %s/3; interrupt to cancel)\n' \
      "${REVIEWED_SHA}" "<CYCLE>"
    sleep "${RESOLVE_PR_POLL_INTERVAL_SECONDS}"
@@ -174,7 +184,7 @@ workflow exists before relying on check state.
    a required or requested reviewer is known to be unavailable, or remains pending after
    the third cycle, post an escalation comment naming the head SHA and reviewer, then stop.
 
-9. Squash-merge only when required checks are green on the head SHA, no gating thread is
+9. Squash-merge only when every reported check is green on the head SHA, no gating thread is
    unresolved, every P1 is fixed, no current-SHA review is `CHANGES_REQUESTED`, no review
    request is pending, and `reviewDecision` is neither `CHANGES_REQUESTED` nor
    `REVIEW_REQUIRED`. A `DISMISSED` review does not count as a completed pass but does not
@@ -184,9 +194,12 @@ workflow exists before relying on check state.
    SHA:
 
    ```sh
-   CHECKS_EXIT=0
-   gh pr checks <P> --repo "${REPO}" || CHECKS_EXIT=$?
-   test "${CHECKS_EXIT}" -eq 0
+   CHECKS_JSON="$(gh pr checks <P> --repo "${REPO}" --json name,bucket)"
+   test "$(printf '%s' "${CHECKS_JSON}" | jq 'length')" -gt 0
+   test "$(printf '%s' "${CHECKS_JSON}" |
+     jq '[.[] | select(.bucket != "pass")] | length')" -eq 0
+   test "$(gh pr view <P> --repo "${REPO}" \
+     --json mergeable --jq .mergeable)" = "MERGEABLE"
    test "$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
    test "$(gh pr view <P> --repo "${REPO}" \
@@ -199,8 +212,9 @@ workflow exists before relying on check state.
      --match-head-commit "${REVIEWED_SHA}"
    ```
 
-   `gh pr checks` exit `0` is green, `8` is pending, and other nonzero exits are failures.
-   On `8`, return to step 3 instead of merging; on failure, inspect and fix the check.
+   Every reported check is intentionally gating. If any check bucket is `pending`, return to
+   step 3; on `fail` or `cancel`, inspect and fix the check. If `mergeable` is
+   `CONFLICTING`, report the conflicting files in an escalation comment and stop.
 
 ## Escalate
 
@@ -209,6 +223,7 @@ Comment on the PR with the evidence and the decision a human must make, then sto
 - The same root cause fails CI three times.
 - An addressed thread remains unresolved after three resolution attempts.
 - A security or dependency tradeoff needs a human decision.
+- The PR is conflicting and cannot be updated without expanding scope.
 - Branch protection or a force-push would be required.
 - `gh` cannot resolve PR state after retries.
 
