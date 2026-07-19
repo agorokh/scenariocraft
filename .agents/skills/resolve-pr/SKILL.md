@@ -41,6 +41,7 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    set -euo pipefail
    command -v gh
+   command -v sleep
    GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
    [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
      { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
@@ -129,7 +130,20 @@ do not load `.env` files or service-manager configuration implicitly.
    If `reviewThreads.pageInfo.hasNextPage` is true, repeat the query with
    `-f after=<END_CURSOR>` using the returned cursor string and continue until it is false.
    Accumulate every page's `nodes` in a running set keyed by thread `id`; never replace an
-   earlier page with a later one.
+   earlier page with a later one. After each successful page fetch, execute:
+
+   ```sh
+   GRAPHQL_THREADS_JSON="${GRAPHQL_THREADS_JSON:-[]}"
+   THREAD_PAGE_NODES="$(
+     printf '%s' "${PAGE_JSON}" |
+       jq -e '.data.repository.pullRequest.reviewThreads.nodes'
+   )"
+   GRAPHQL_THREADS_JSON="$(
+     jq -cn --argjson accumulated "${GRAPHQL_THREADS_JSON}" \
+       --argjson page "${THREAD_PAGE_NODES}" \
+       '$accumulated + $page | unique_by(.id)'
+   )"
+   ```
 
    Separately page the GraphQL `reviews` connection. Unlike a submitted-review-only REST
    inventory, this can expose a visible `PENDING` draft review that must block merge:
@@ -144,6 +158,19 @@ do not load `.env` files or service-manager configuration implicitly.
    either connection, when `hasNextPage` is true, require a nonempty `endCursor`; an empty
    cursor is an incomplete response that must be retried or escalated, never passed as
    `after=`.
+
+   ```sh
+   GRAPHQL_REVIEWS_JSON="${GRAPHQL_REVIEWS_JSON:-[]}"
+   REVIEW_PAGE_NODES="$(
+     printf '%s' "${PAGE_JSON}" |
+       jq -e '.data.repository.pullRequest.reviews.nodes'
+   )"
+   GRAPHQL_REVIEWS_JSON="$(
+     jq -cn --argjson accumulated "${GRAPHQL_REVIEWS_JSON}" \
+       --argjson page "${REVIEW_PAGE_NODES}" \
+       '$accumulated + $page | unique_by(.id)'
+   )"
+   ```
 
    Page every thread's comments before classifying it. When
    `comments.pageInfo.hasNextPage` is true, use the thread `id` and comment cursor:
@@ -339,7 +366,7 @@ do not load `.env` files or service-manager configuration implicitly.
      printf '%s\n' "${BODY}" |
        awk -v checkpoint="${CHECKPOINT}" '
          BEGIN { replaced = 0 }
-         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9TZ:+-]+ -->$/ {
+         /^<!-- resolve-pr-checkpoint:v1 head=[0-9a-f]+ cycle=[1-3] timestamp=[0-9TZ:+.-]+ -->$/ {
            if (!replaced) { print checkpoint; replaced = 1 }
            next
          }
@@ -373,6 +400,18 @@ do not load `.env` files or service-manager configuration implicitly.
    `PR_AUTHOR_LOGIN` and `RESOLVER_LOGIN`:
 
    ```sh
+   UNRESOLVED_THREAD_COUNT="$(
+     printf '%s' "${GRAPHQL_THREADS_JSON}" |
+       jq '[.[] | select(.isResolved | not)] | length'
+   )"
+   CURRENT_HEAD_PENDING_REVIEW_COUNT="$(
+     printf '%s' "${GRAPHQL_REVIEWS_JSON}" |
+       jq --arg sha "${REVIEWED_SHA}" '
+         [.[] |
+           select(.state == "PENDING" and
+                  ((.commit.oid // "") == $sha or .commit == null))
+         ] | length'
+   )"
    PR_AUTHOR_LOGIN="$(gh pr view <P> --repo "${REPO}" \
      --json author --jq .author.login)"
    RESOLVER_LOGIN="$(gh api user --jq .login)"
@@ -382,10 +421,12 @@ do not load `.env` files or service-manager configuration implicitly.
           --arg pr_author "${PR_AUTHOR_LOGIN}" \
           --arg resolver "${RESOLVER_LOGIN}" '
          [.[] |
-           select(.commit.oid == $sha and
+           (.author.login // "") as $login |
+           select($login != "" and
+                  .commit.oid == $sha and
                   (.state == "APPROVED" or .state == "COMMENTED") and
-                  .author.login != $pr_author and
-                  .author.login != $resolver)
+                  $login != $pr_author and
+                  $login != $resolver)
          ] | length'
    )"
    ```
@@ -407,27 +448,49 @@ do not load `.env` files or service-manager configuration implicitly.
    test -n "${CHECKS_JSON}" ||
      { printf 'Empty checks response; merge gate is incomplete\n' >&2; exit 1; }
    printf '%s' "${CHECKS_JSON}" | jq -e 'type == "array" and length > 0' >/dev/null
-   test "$(printf '%s' "${CHECKS_JSON}" |
-     jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length')" -eq 0
-   test "${CHECKS_STATUS}" -eq 0
-   MERGEABLE="UNKNOWN"
-   for MERGEABLE_ATTEMPT in 1 2 3; do
-     MERGEABLE="$(gh pr view <P> --repo "${REPO}" \
-       --json mergeable --jq .mergeable)"
-     test "${MERGEABLE}" = "UNKNOWN" || break
-     test "${MERGEABLE_ATTEMPT}" -eq 3 || sleep 10
-   done
-   test "${MERGEABLE}" = "MERGEABLE"
-   test "$(gh pr view <P> --repo "${REPO}" \
-     --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
-   test "$(gh pr view <P> --repo "${REPO}" \
-     --json reviewRequests --jq '.reviewRequests | length')" -eq 0
-   REVIEW_DECISION="$(gh pr view <P> --repo "${REPO}" \
-     --json reviewDecision --jq .reviewDecision)"
-   test "${REVIEW_DECISION}" != "CHANGES_REQUESTED"
-   test "${REVIEW_DECISION}" != "REVIEW_REQUIRED"
-   gh pr merge <P> --repo "${REPO}" --squash \
-     --match-head-commit "${REVIEWED_SHA}"
+   CHECK_ACTION="$(
+     printf '%s' "${CHECKS_JSON}" |
+       jq -r '
+         if any(.[]; .bucket == "pending") then "wait"
+         elif any(.[]; .bucket == "fail" or .bucket == "cancel") then "repair"
+         elif any(.[]; .bucket != "pass" and .bucket != "skipping") then "escalate"
+         else "merge"
+         end'
+   )"
+   case "${CHECK_ACTION}" in
+     wait)
+       printf 'Checks are pending; return to step 3.\n'
+       ;;
+     repair)
+       printf 'Checks failed or were cancelled; return to the repair path in step 3.\n'
+       ;;
+     escalate)
+       gh pr comment <P> --repo "${REPO}" \
+         --body "Escalation: an unknown check bucket blocked the merge gate."
+       exit 1
+       ;;
+     merge)
+       test "${CHECKS_STATUS}" -eq 0
+       MERGEABLE="UNKNOWN"
+       for MERGEABLE_ATTEMPT in 1 2 3; do
+         MERGEABLE="$(gh pr view <P> --repo "${REPO}" \
+           --json mergeable --jq .mergeable)"
+         test "${MERGEABLE}" = "UNKNOWN" || break
+         test "${MERGEABLE_ATTEMPT}" -eq 3 || sleep 10
+       done
+       test "${MERGEABLE}" = "MERGEABLE"
+       test "$(gh pr view <P> --repo "${REPO}" \
+         --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
+       test "$(gh pr view <P> --repo "${REPO}" \
+         --json reviewRequests --jq '.reviewRequests | length')" -eq 0
+       REVIEW_DECISION="$(gh pr view <P> --repo "${REPO}" \
+         --json reviewDecision --jq .reviewDecision)"
+       test "${REVIEW_DECISION}" != "CHANGES_REQUESTED"
+       test "${REVIEW_DECISION}" != "REVIEW_REQUIRED"
+       gh pr merge <P> --repo "${REPO}" --squash \
+         --match-head-commit "${REVIEWED_SHA}"
+       ;;
+   esac
    ```
 
    `gh pr checks` exits nonzero for pending and failing checks, so capture its status before
