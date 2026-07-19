@@ -29,6 +29,8 @@ updated and the session ID recorded.
    under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Put the issue number, the acceptance evidence each criterion asks for, and the Codex
    session ID in the PR description. Mark the PR ready for review.
+   Marking it ready is what starts the external review — reviewers do not run on drafts, so
+   a PR left in draft will sit with no findings and that is not the same as a clean review.
 8. Run `/review` against `code_review.md`. Fix every P1 in the same PR.
 9. Merge only with CI green. Never merge red.
 10. If the same correction has now been needed twice, append a dated rule to
