@@ -114,12 +114,25 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    ```sh
    [[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] ||
      { printf 'Unsafe branch slug\n' >&2; exit 1; }
-   gh pr create --draft --repo "${REPO}" --base "${BASE_REF}" \
-     --head "codex/<issue>-${SLUG}" --title "${PR_TITLE}" \
-     --body-file "<DESCRIPTION_FILE>"
+   [[ "${BASE_REF}" =~ ^[A-Za-z0-9._/-]+$ ]] ||
+     { printf 'Unsafe base ref\n' >&2; exit 1; }
+   DESCRIPTION_BODY="$(<"<DESCRIPTION_FILE>")"
+   PR_JSON="$(
+     jq -cn --arg title "${PR_TITLE}" --arg head "codex/<issue>-${SLUG}" \
+       --arg base "${BASE_REF}" --arg body "${DESCRIPTION_BODY}" \
+       '{title: $title, head: $head, base: $base, body: $body, draft: true}' |
+       gh api --method POST "repos/${REPO}/pulls" --input -
+   )"
+   PR_NUMBER="$(printf '%s' "${PR_JSON}" | jq -er .number)"
+   PR_VIEW_JSON="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
+     --json isDraft,headRefName,baseRefName)"
+   printf '%s' "${PR_VIEW_JSON}" |
+     jq -e --arg head "codex/<issue>-${SLUG}" --arg base "${BASE_REF}" \
+       '.isDraft and .headRefName == $head and .baseRefName == $base' >/dev/null
    ```
 
-   Keep `PR_TITLE` as data in the quoted `--title` argument; never evaluate it as shell.
+   `PR_TITLE`, the description, and refs are serialized as JSON data and never evaluated as
+   shell. Stop immediately if creation or the exact draft/base/head verification fails.
 
    Keep the PR in draft while implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
