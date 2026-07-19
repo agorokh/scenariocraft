@@ -21,6 +21,8 @@ ExecPlan updated and the session ID recorded.
 
 Set overrides with `export NAME=value` in the shell that launches the agent. These skills
 do not load `.env` files or service-manager configuration implicitly.
+The repository contract requires a `Makefile` with a usable `ci-fast` target and a
+`code_review.md` policy file.
 
 ## Steps
 
@@ -30,7 +32,8 @@ do not load `.env` files or service-manager configuration implicitly.
    `REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"` for an intentional fork or renamed
    remote, verify it with `gh repo view "${REPO}"`, and read the working agreement with
    `gh issue view 2 --repo "${REPO}"`. Fail fast if `Makefile`, `code_review.md`, or the
-   working agreement is absent.
+   working agreement is absent, and run `make -n ci-fast >/dev/null` to verify the CI target
+   before beginning delivery.
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
    Decision Log. If the repository-local template is missing, create the plan with the same
@@ -52,10 +55,12 @@ do not load `.env` files or service-manager configuration implicitly.
 6. If an ExecPlan was created, update it: check off Progress and record anything that failed
    or surprised you under Surprises & Discoveries. Keep the scar tissue; it is the point.
 7. Run `/review` against `code_review.md` while the PR is still a draft and fix every P1.
-   Run `make ci-fast` after each fix. Put the issue number, the acceptance evidence each
-   criterion asks for, and the Codex session ID in the PR description. Commit and push the
-   completed implementation, tests, conditional ExecPlan update, and P1 fixes; verify local
-   `HEAD` equals the PR's `headRefOid`.
+   Run `make ci-fast` after each fix. If the same correction has now been needed twice,
+   append a dated rule to `AGENTS.md` → Corrections before the final commit. Put the issue
+   number, the acceptance evidence each criterion asks for, and the Codex session ID in the
+   PR description. Commit and push the completed implementation, tests, conditional
+   ExecPlan update, correction entry, and P1 fixes; verify local `HEAD` equals the PR's
+   `headRefOid`.
    Confirm local CI and that pushed head's GitHub checks are green. If checks are pending,
    wait 60 seconds and reinspect them until terminal or until the end-to-end budget in
    `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800 seconds to account
@@ -69,9 +74,6 @@ do not load `.env` files or service-manager configuration implicitly.
    is not the same as a clean review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
    to merged; do not run the post-review CI-repair, review-resolution, or merge loop here.
-8. If the same correction has now been needed twice, append a dated rule to
-    `AGENTS.md` → Corrections in this PR.
-
 ## Do not
 
 - Add gameplay outside the issue's scope.

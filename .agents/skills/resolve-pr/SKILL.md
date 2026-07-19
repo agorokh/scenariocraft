@@ -41,6 +41,8 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    command -v gh
    GH_VERSION="$(gh --version | awk 'NR == 1 {sub(/^v/, "", $3); print $3}')"
+   [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
+     { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
    GH_MAJOR="${GH_VERSION%%.*}"
    GH_REMAINDER="${GH_VERSION#*.}"
    GH_MINOR="${GH_REMAINDER%%.*}"
@@ -71,8 +73,10 @@ do not load `.env` files or service-manager configuration implicitly.
 
    If `isDraft` is true, stop and hand it back to its author or the `deliver` skill.
    `deliver` owns the draft-to-ready transition after CI is green; `resolve-pr` starts once
-   external review has begun. Append this resolution session's Codex session ID to the PR
-   description so every session that changed the PR remains auditable.
+   external review has begun. Keep a `## Codex sessions` list in the PR description and add
+   this resolution session's ID only when that exact list item is absent. Preserve the rest
+   of the description. This idempotent set of unique IDs keeps every session that changed
+   the PR auditable without duplicating entries after a resumed invocation.
 
 3. If CI is pending, wait 60 seconds and reinspect it until terminal or until the
    end-to-end budget in `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800
@@ -80,7 +84,11 @@ do not load `.env` files or service-manager configuration implicitly.
    operator may override it with a positive integer. Escalate if the budget expires. If CI
    is red, read the failing job's logs and fix the cause rather than the symptom. Run
    `make ci-fast` locally, commit, push, then return to step 2 so the replacement head's
-   checks are inspected.
+   checks are inspected. Track repair attempts by failing check and root cause. Increment
+   the matching counter when the replacement head fails for the same cause; on the third
+   failure, post an escalation comment with the check name, root cause, and three attempted
+   fixes, then stop. Reset a counter only when that check becomes green or the diagnosed
+   root cause changes.
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -128,9 +136,10 @@ do not load `.env` files or service-manager configuration implicitly.
 
    Repeat until `comments.pageInfo.hasNextPage` is false so every comment author is
    considered. Accumulate comment nodes across pages and retain the first comment's
-   `databaseId` as the thread's reply target. Treat any REST or GraphQL failure as retryable
-   at most three times; if a complete inventory still cannot be fetched, post an escalation
-   comment and stop. Never continue with a partial response.
+   `databaseId` as the thread's reply target. After an initial REST or GraphQL failure,
+   retry at most three times with delays of 5, 15, and 45 seconds. If a complete inventory
+   still cannot be fetched, post an escalation comment and stop. Never continue with a
+   partial response.
 
 5. Classify every feedback item:
 
@@ -182,11 +191,14 @@ do not load `.env` files or service-manager configuration implicitly.
    ```sh
    REVIEWED_SHA="$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)"
-   gh api --paginate --slurp \
-     "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
+   ALL_REVIEWS_JSON="$(
+     gh api --paginate --slurp \
+       "repos/${REPO}/pulls/<P>/reviews?per_page=100" |
+       jq 'add // []'
+   )"
+   printf '%s' "${ALL_REVIEWS_JSON}" |
      jq --arg sha "${REVIEWED_SHA}" \
-       '(add // [])
-        | map(select(.commit_id == $sha))
+       'map(select(.commit_id == $sha))
         | group_by(.user.login // "deleted")
         | map(max_by(.submitted_at))
         | map({user: (.user.login // "deleted"), state, body})'
@@ -196,8 +208,34 @@ do not load `.env` files or service-manager configuration implicitly.
    GraphQL `PENDING` review whose `commit.oid` matches the head means a reviewer is still
    composing feedback; return to the bounded polling path even when `reviewRequests` is
    empty. `APPROVED` or `COMMENTED` means the pass posted, but every finding in its body
-   still must be addressed. Evaluate only the latest same-SHA submitted review per
-   reviewer; an earlier change request superseded by that review is historical.
+   still must be addressed. Use the latest same-SHA submitted review per reviewer to decide
+   whether the current head received a completed pass.
+
+   Separately carry change requests across head changes. For each reviewer, inspect all
+   reviews across all commits. A `CHANGES_REQUESTED` review remains gating after a fix push
+   until GitHub marks it `DISMISSED` or that reviewer posts a later `APPROVED` or
+   `COMMENTED` review on the current head. A review on an intermediate or older head does
+   not clear it. This cross-head gate applies even when `reviewDecision` is empty.
+   Compute the outstanding count from the complete REST review inventory:
+
+   ```sh
+   OUTSTANDING_CHANGES_REQUESTED_COUNT="$(
+     printf '%s' "${ALL_REVIEWS_JSON}" |
+       jq --arg sha "${REVIEWED_SHA}" '
+         def author: (.user.login // "deleted");
+         . as $reviews |
+         [$reviews[] |
+           select(.state == "CHANGES_REQUESTED") as $change |
+           select([
+             $reviews[] |
+             select(author == ($change | author) and
+                    .submitted_at > $change.submitted_at and
+                    .commit_id == $sha and
+                    (.state == "APPROVED" or .state == "COMMENTED"))
+           ] | length == 0)
+         ] | length'
+   )"
+   ```
    A nonempty `reviewRequests` list means review is pending. When the repository has no
    required or requested reviewer, wait one full cycle for asynchronous findings; after
    that, absence of a formal review is non-blocking and only posted findings, unresolved
@@ -218,11 +256,16 @@ do not load `.env` files or service-manager configuration implicitly.
    ```
 
    The default interval is the observed 600-second reviewer latency. The operator may
-   override it with a positive integer. This repository has no scheduler or automatic
-   session-resume mechanism, so keep a long-lived terminal session for the sleep. Wait at
-   most three cycles for the same head SHA, for a default total timeout of 1,800 seconds. If
-   a required or requested reviewer is known to be unavailable, or remains pending after
-   the third cycle, post an escalation comment naming the head SHA and reviewer, then stop.
+   override it with a positive integer. Before each wait, replace a single
+   `<!-- resolve-pr-checkpoint head=<SHA> cycle=<N> timestamp=<ISO-8601> -->` marker in the
+   PR description while preserving its other content. The wait may be taken by ending the
+   turn and resuming after 600 seconds rather than blocking an agent session. On resume,
+   read the checkpoint, verify the head is unchanged, and return to step 4; if it changed,
+   reset to step 2 and cycle one. A long-lived terminal may use `sleep` directly.
+   Wait at most three cycles for the same head SHA, for a default total timeout of 1,800
+   seconds. If a required or requested reviewer is known to be unavailable, or remains
+   pending after the third cycle, post an escalation comment naming the head SHA and
+   reviewer, then stop.
 
 9. Squash-merge only when every reported check is successful or intentionally skipped on
    the head SHA, no gating thread is unresolved, every P1 is fixed, no visible current-SHA
@@ -233,16 +276,15 @@ do not load `.env` files or service-manager configuration implicitly.
    Immediately before merging, rerun all of step 4 and rebuild its complete accumulated
    inventory. Derive `UNRESOLVED_THREAD_COUNT`,
    `CURRENT_HEAD_PENDING_REVIEW_COUNT`, and
-   `CURRENT_HEAD_CHANGES_REQUESTED_COUNT` from that fresh GraphQL result. For change
-   requests, use the latest current-SHA review per reviewer as in step 8; do not rely on
-   `reviewDecision`, which can be empty without branch protection. Then verify all reported
-   checks, the head, review requests, and review decision. Pin the merge to the reviewed
-   SHA:
+   `OUTSTANDING_CHANGES_REQUESTED_COUNT` from that fresh GraphQL result. For change requests,
+   apply step 8's cross-head rule; do not rely on `reviewDecision`, which can be empty
+   without branch protection. Then verify all reported checks, the head, review requests,
+   and review decision. Pin the merge to the reviewed SHA:
 
    ```sh
    test "${UNRESOLVED_THREAD_COUNT}" -eq 0
    test "${CURRENT_HEAD_PENDING_REVIEW_COUNT}" -eq 0
-   test "${CURRENT_HEAD_CHANGES_REQUESTED_COUNT}" -eq 0
+   test "${OUTSTANDING_CHANGES_REQUESTED_COUNT}" -eq 0
    CHECKS_STATUS=0
    CHECKS_JSON="$(gh pr checks <P> --repo "${REPO}" --json name,bucket)" ||
      CHECKS_STATUS=$?
@@ -252,8 +294,13 @@ do not load `.env` files or service-manager configuration implicitly.
    test "$(printf '%s' "${CHECKS_JSON}" |
      jq '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length')" -eq 0
    test "${CHECKS_STATUS}" -eq 0
-   MERGEABLE="$(gh pr view <P> --repo "${REPO}" \
-     --json mergeable --jq .mergeable)"
+   MERGEABLE="UNKNOWN"
+   for MERGEABLE_ATTEMPT in 1 2 3; do
+     MERGEABLE="$(gh pr view <P> --repo "${REPO}" \
+       --json mergeable --jq .mergeable)"
+     test "${MERGEABLE}" = "UNKNOWN" || break
+     test "${MERGEABLE_ATTEMPT}" -eq 3 || sleep 10
+   done
    test "${MERGEABLE}" = "MERGEABLE"
    test "$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
@@ -272,13 +319,14 @@ do not load `.env` files or service-manager configuration implicitly.
    not a clean result. Every reported check is intentionally gating. Accept `pass` and
    `skipping`; if any bucket is `pending`, return to step 3; on `fail` or `cancel`, inspect
    and fix the check; escalate an unknown bucket rather than guessing. If `mergeable` is
-   `UNKNOWN`, wait and re-read it within the step 3 CI wait budget. If it is `CONFLICTING`,
-   report the conflicting files in an escalation comment and stop. Merge only when it is
-   `MERGEABLE`. Retry only a transient merge API failure, at most three attempts with a
-   10-second delay. Before each retry, return to the start of step 9 and rerun the complete
-   gate, including the fresh step 4 inventory and unchanged-head assertion; stop immediately
-   for a non-transient policy or authorization failure. After the third transient failure,
-   post `Escalation: squash merge failed three times for <REVIEWED_SHA>.` and stop.
+   `UNKNOWN`, use the dedicated three-attempt, 10-second polling loop above. If it is
+   `CONFLICTING`, report the conflicting files in an escalation comment and stop. Merge
+   only when it is `MERGEABLE`. Retry only a transient merge API failure, at most three
+   attempts with a 10-second delay. Before each retry, return to the start of step 9 and
+   rerun the complete gate, including the fresh step 4 inventory and unchanged-head
+   assertion; stop immediately for a non-transient policy or authorization failure. After
+   the third transient failure, post
+   `Escalation: squash merge failed three times for <REVIEWED_SHA>.` and stop.
 
 ## Escalate
 
