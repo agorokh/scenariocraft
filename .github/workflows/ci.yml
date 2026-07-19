@@ -36,7 +36,7 @@ jobs:
   smoke:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -57,7 +57,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .paper-cache/paper-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}.jar
-          key: paper-${{ runner.os }}-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}
+          key: paper-${{ runner.os }}-${{ env.PAPER_VERSION }}-${{ env.PAPER_BUILD }}-${{ env.PAPER_SHA256 }}
 
       - name: Download pinned Paper server
         if: steps.paper-cache.outputs.cache-hit != 'true'
@@ -70,11 +70,20 @@ jobs:
               --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
               "https://fill.papermc.io/v3/projects/paper/versions/${PAPER_VERSION}/builds"
           )"
+          jq -e 'type == "array"' <<<"${builds}" >/dev/null || {
+            printf 'Paper builds API returned an unexpected payload.\n'
+            exit 1
+          }
           url="$(
             jq -er --argjson build "${PAPER_BUILD}" \
               '.[] | select(.id == $build) | .downloads["server:default"].url' \
               <<<"${builds}"
           )"
+          test -n "${url}" || {
+            printf 'Paper %s build %s has no server download URL.\n' \
+              "${PAPER_VERSION}" "${PAPER_BUILD}"
+            exit 1
+          }
           curl --fail --show-error --location \
             --header 'User-Agent: ScenarioCraft-CI/1.0 (https://github.com/agorokh/scenariocraft)' \
             --output ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
@@ -96,9 +105,16 @@ jobs:
           mkdir -p "${server_dir}/plugins"
           cp ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
             "${server_dir}/paper.jar"
-          plugin_jar="$(find build/libs -maxdepth 1 -type f -name 'ScenarioCraft-*.jar' |
-            head -n 1)"
-          test -n "${plugin_jar}"
+          mapfile -t plugin_jars < <(
+            find build/libs -maxdepth 1 -type f -name 'ScenarioCraft-*.jar' \
+              ! -name '*-sources.jar' ! -name '*-javadoc.jar' -print
+          )
+          test "${#plugin_jars[@]}" -eq 1 || {
+            printf 'Expected one plugin jar, found %s:\n' "${#plugin_jars[@]}"
+            printf '%s\n' "${plugin_jars[@]}"
+            exit 1
+          }
+          plugin_jar="${plugin_jars[0]}"
           cp "${plugin_jar}" "${server_dir}/plugins/ScenarioCraft.jar"
           printf 'eula=true\n' >"${server_dir}/eula.txt"
           mkfifo "${server_dir}/server.stdin"
@@ -111,6 +127,18 @@ jobs:
             exec 3<>server.stdin
             java -Xms512M -Xmx1G -jar paper.jar --nogui <&3 >server-console.log 2>&1 &
             server_pid=$!
+            cleanup() {
+              if kill -0 "${server_pid}" 2>/dev/null; then
+                printf "stop\n" >&3 || true
+                kill -TERM "${server_pid}" 2>/dev/null || true
+                for _ in 1 2 3 4 5; do
+                  kill -0 "${server_pid}" 2>/dev/null || return
+                  sleep 1
+                done
+                kill -KILL "${server_pid}" 2>/dev/null || true
+              fi
+            }
+            trap cleanup EXIT TERM INT
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
                 grep -q "Done (" logs/latest.log; then
@@ -123,6 +151,8 @@ jobs:
           ' bash "${server_dir}"
           server_status=$?
           set -e
+          sleep 2
+          sync
 
           log="${server_dir}/logs/latest.log"
           test -f "${log}" || {
@@ -143,13 +173,20 @@ jobs:
             grep -n -C 4 -E 'ScenarioCraft|Enabling|Disabling' "${log}" || true
             failed=1
           fi
+          if ! grep -q 'ScenarioCraft enabled' "${log}"; then
+            printf 'ScenarioCraft post-onEnable readiness line was not found.\n'
+            grep -n -C 4 -E 'ScenarioCraft|Enabling|Disabling|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
           if ! grep -q 'Done (' "${log}"; then
             printf 'Paper did not reach Done.\n'
             grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
             failed=1
           fi
           if grep -n -C 4 -E \
-            'Could not load|Ambiguous plugin name|Unsupported api-version' "${log}"; then
+            'Could not load|Ambiguous plugin name|Unsupported api-version|Error occurred while enabling' \
+            "${log}"; then
             printf 'Paper reported a plugin loading or compatibility error.\n'
             failed=1
           fi
@@ -164,4 +201,3 @@ jobs:
             ${{ runner.temp }}/paper-smoke/logs/latest.log
             ${{ runner.temp }}/paper-smoke/server-console.log
           if-no-files-found: warn
-          retention-days: 14
