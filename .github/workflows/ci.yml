@@ -301,17 +301,27 @@ jobs:
           )"
           queued_mutations="$(
             printf '%s\n' "${queued_line}" |
-              sed -E 's/.*battle_world, ([0-9]+) block mutations.*/\1/'
+              sed -nE \
+                's/^.*Arena build queued: 2 plots in battle_world, ([0-9]+) block mutations at 4000 per tick.*$/\1/p'
           )"
           complete_mutations="$(
             printf '%s\n' "${complete_line}" |
-              sed -E 's/.*battle_world \(([0-9]+) block mutations\).*/\1/'
+              sed -nE \
+                's/^.*Arena build complete: 2 plots in battle_world \(([0-9]+) block mutations\).*$/\1/p'
           )"
           if test -z "${queued_line}" ||
-            test -z "${complete_line}" ||
-            test "${queued_mutations}" != "${complete_mutations}"; then
+            test -z "${complete_line}"; then
             printf 'The two-plot batched arena build did not complete as expected.\n'
             grep -n -C 4 -E 'Arena build|battle_world|ERROR|Exception' "${log}" || true
+            failed=1
+          elif ! [[ "${queued_mutations}" =~ ^[0-9]+$ ]] ||
+            ! [[ "${complete_mutations}" =~ ^[0-9]+$ ]]; then
+            printf 'Could not extract numeric arena mutation totals from the smoke log.\n'
+            grep -n -C 2 -E 'Arena build queued|Arena build complete' "${log}" || true
+            failed=1
+          elif test "${queued_mutations}" != "${complete_mutations}"; then
+            printf 'Queued and completed arena mutation totals differ: %s vs %s.\n' \
+              "${queued_mutations}" "${complete_mutations}"
             failed=1
           fi
           if grep -n -C 4 -E \

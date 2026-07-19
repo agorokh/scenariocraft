@@ -72,6 +72,9 @@ real server boot.
 - A post-cooldown review caught that smoke fast-failure signatures were searched across
   the whole log. The harness now snapshots a byte cursor before `battle start`, checks only
   later output, and reports command, preparation, server-exit, and timeout failures distinctly.
+- The next Kimi pass noted that `sed` could return an unmatched log line as a supposed
+  mutation count. Extraction is now anchored and produces no value on mismatch, followed
+  by an explicit digits-only assertion and a separate queued-versus-completed comparison.
 
 ## Acceptance evidence
 
