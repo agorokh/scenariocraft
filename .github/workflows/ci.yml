@@ -209,8 +209,15 @@ jobs:
             grep -n -C 4 -E 'Done|ERROR|Exception' "${log}" || true
             failed=1
           fi
+          if ! grep -q 'Stopping server' "${log}" ||
+            ! grep -q 'All dimensions are saved' "${log}"; then
+            printf 'Paper did not complete the expected clean shutdown path.\n'
+            grep -n -C 4 -E 'Stopping|Saving|saved|Disabling|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
           if grep -n -C 4 -E \
-            'Could not load|Ambiguous plugin name|Unsupported api-version|Error occurred while enabling' \
+            'Could not load|Ambiguous plugin name|Unsupported api-version|Error occurred while enabling|Error occurred while disabling' \
             "${log}"; then
             printf 'Paper reported a plugin loading or compatibility error.\n'
             failed=1
