@@ -84,10 +84,20 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    then check out and verify that exact PR:
 
    ```sh
+   PR_NUMBER=<P>
+   EXPECTED_BASE_REF="<VERIFIED_ISSUE_BASE_REF>"
+   DRAFT_JSON="$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
+     --json body,baseRefName,isDraft)"
+   printf '%s' "${DRAFT_JSON}" |
+     jq -e --arg base "${EXPECTED_BASE_REF}" \
+       '.isDraft and .baseRefName == $base' >/dev/null
+   printf '%s' "${DRAFT_JSON}" | jq -r .body |
+     grep -Eq "(^|[^0-9])#${ISSUE}([^0-9]|$)"
    test -z "$(git status --porcelain)"
-   gh pr checkout <P> --repo "${REPO}"
+   gh pr checkout "${PR_NUMBER}" --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
-     "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
+     "$(gh pr view "${PR_NUMBER}" --repo "${REPO}" \
+       --json headRefOid --jq .headRefOid)"
    ```
 
    Re-run `test -f Makefile`, `make -n ci-fast >/dev/null`, `test -f code_review.md`, and
@@ -98,7 +108,8 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    to the repository's remote default branch. Reject a nonempty `git status --porcelain`
    before switching branches. Fetch the base, switch to it, and fast-forward it before
    creating branch `codex/<issue>-<slug>`. Derive `slug` with lowercase ASCII letters,
-   digits, and hyphens only, then require `[[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]`;
+   digits, and hyphens only; if that derivation is empty, use `issue-${ISSUE}`. Then require
+   `[[ "${SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]`;
    never paste issue text into a shell command. Verify that the new branch contains no
    unexpected commits. On the new branch, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` for a multi-hour issue and record the intended approach in the
@@ -168,9 +179,15 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    Do not push merely to restart healthy pending checks. If the budget expires, escalate and
    stop without marking the PR ready. If checks fail, push fixes while the PR remains a
    draft, then repeat the pushed-SHA and GitHub-check verification for the replacement head.
+   Bound this pre-review repair loop to three pushed fixes for the same check and root cause.
+   Track the count in the ExecPlan when one exists, or in a PR comment otherwise; if the
+   replacement head fails for the same cause after the third fix, post an escalation comment
+   naming the check and redacted cause, then stop.
    This pre-review CI repair belongs to `deliver`; only then mark the PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
+   Run `gh pr ready "${PR_NUMBER}" --repo "${REPO}"`, then verify
+   `gh pr view "${PR_NUMBER}" --repo "${REPO}" --json isDraft --jq .isDraft` is `false`.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR
    to merged; do not run the post-review CI-repair, review-resolution, or merge loop here.
 ## Do not

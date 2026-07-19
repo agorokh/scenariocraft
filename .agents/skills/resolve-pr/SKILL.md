@@ -67,21 +67,6 @@ calling any helper; do not assume shell functions are exported across processes.
    command -v grep
    command -v head
    command -v mktemp
-   GH_VERSION="$(
-     gh --version |
-       grep -Eo '[0-9]+\.[0-9]+(\.[0-9]+)?' |
-       head -n 1
-   )"
-   [[ "${GH_VERSION}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] ||
-     { printf 'Cannot parse gh version: %s\n' "${GH_VERSION}" >&2; exit 1; }
-   GH_MAJOR="${GH_VERSION%%.*}"
-   GH_REMAINDER="${GH_VERSION#*.}"
-   GH_MINOR="${GH_REMAINDER%%.*}"
-   if ! { test "${GH_MAJOR}" -gt 2 ||
-     { test "${GH_MAJOR}" -eq 2 && test "${GH_MINOR}" -ge 49; }; }; then
-     printf 'gh 2.49.0 or newer is required\n' >&2
-     exit 1
-   fi
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
    [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
@@ -114,6 +99,11 @@ calling any helper; do not assume shell functions are exported across processes.
    ```sh
    gh pr view <P> --repo "${REPO}" \
      --json number,state,isDraft,headRefOid,statusCheckRollup,mergeable,reviewDecision,reviewRequests,comments,reviews
+   test "$(gh pr view <P> --repo "${REPO}" --json state --jq .state)" = "OPEN" || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: resolve-pr only operates on an OPEN pull request."
+     exit 1
+   }
    ```
 
    If `isDraft` is true, stop and hand it back to its author or the `deliver` skill.
@@ -133,6 +123,7 @@ calling any helper; do not assume shell functions are exported across processes.
    RESOLVE_PR_DEFAULT_POLL_INTERVAL_SECONDS=600
    CONVERSATION_LEDGER_JSON='[]'
    REVIEW_LEDGER_JSON='[]'
+   LEDGER_INVENTORY_AUTHORITATIVE=0
    REPAIR_ATTEMPTS_JSON='{}'
    PR_BODY="$(gh pr view <P> --repo "${REPO}" --json body --jq .body)"
    if printf '%s\n' "${PR_BODY}" |
@@ -188,7 +179,7 @@ calling any helper; do not assume shell functions are exported across processes.
    persist_resolution_state() {
      local update_attempt body current_body next_body post_update_body
      local body_ledgers desired_conversation desired_reviews desired_repairs
-     local ledgers_json update_ok=0 update_delay
+     local ledger_marker_present ledgers_json update_ok=0 update_delay
      desired_conversation="${CONVERSATION_LEDGER_JSON}"
      desired_reviews="${REVIEW_LEDGER_JSON}"
      desired_repairs="${REPAIR_ATTEMPTS_JSON}"
@@ -199,6 +190,10 @@ calling any helper; do not assume shell functions are exported across processes.
          printf 'Malformed or duplicate managed ledger block\n' >&2
          return 1
        }
+       ledger_marker_present="$(
+         printf '%s\n' "${body}" |
+           awk '/^<!-- resolve-pr-ledgers:v1$/ { count++ } END { print count + 0 }'
+       )"
        body_ledgers='{"conversation":[],"reviews":[],"repair_attempts":{}}'
        if printf '%s\n' "${body}" |
          grep -q '^<!-- resolve-pr-ledgers:v1$'; then
@@ -214,19 +209,29 @@ calling any helper; do not assume shell functions are exported across processes.
        CONVERSATION_LEDGER_JSON="$(
          jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
              jq '.conversation')" \
-           --argjson desired "${desired_conversation}" '
-           ([$current[] |
-              select(.id as $id | all($desired[]; .id != $id))] + $desired) |
-           sort_by(.id)
+           --argjson desired "${desired_conversation}" \
+           --arg authoritative "${LEDGER_INVENTORY_AUTHORITATIVE}" '
+           if $authoritative == "1" then
+             $desired | sort_by(.id)
+           else
+             ([$current[] |
+                select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+             sort_by(.id)
+           end
          '
        )"
        REVIEW_LEDGER_JSON="$(
          jq -cn --argjson current "$(printf '%s' "${body_ledgers}" |
              jq '.reviews')" \
-           --argjson desired "${desired_reviews}" '
-           ([$current[] |
-              select(.id as $id | all($desired[]; .id != $id))] + $desired) |
-           sort_by(.id)
+           --argjson desired "${desired_reviews}" \
+           --arg authoritative "${LEDGER_INVENTORY_AUTHORITATIVE}" '
+           if $authoritative == "1" then
+             $desired | sort_by(.id)
+           else
+             ([$current[] |
+                select(.id as $id | all($desired[]; .id != $id))] + $desired) |
+             sort_by(.id)
+           end
          '
        )"
        REPAIR_ATTEMPTS_JSON="$(
@@ -247,8 +252,21 @@ calling any helper; do not assume shell functions are exported across processes.
        )"
        next_body="$(
          printf '%s\n' "${body}" |
-           LEDGERS_FOR_AWK="${ledgers_json}" awk '
-             BEGIN { replaced = 0; skipping = 0 }
+           LEDGERS_FOR_AWK="${ledgers_json}" \
+           LEDGER_MARKER_PRESENT_FOR_AWK="${ledger_marker_present}" awk '
+             BEGIN { replaced = 0; skipping = 0; header_seen = 0 }
+             /^## Comment Ledger$/ {
+               header_seen = 1
+               print
+               if (ENVIRON["LEDGER_MARKER_PRESENT_FOR_AWK"] == "0") {
+                 print ""
+                 print "<!-- resolve-pr-ledgers:v1"
+                 print ENVIRON["LEDGERS_FOR_AWK"]
+                 print "-->"
+                 replaced = 1
+               }
+               next
+             }
              /^<!-- resolve-pr-ledgers:v1$/ {
                print "<!-- resolve-pr-ledgers:v1"
                print ENVIRON["LEDGERS_FOR_AWK"]
@@ -262,6 +280,11 @@ calling any helper; do not assume shell functions are exported across processes.
              { print }
              END {
                if (!replaced) {
+                 if (!header_seen) {
+                   print ""
+                   print "## Comment Ledger"
+                   print ""
+                 }
                  print "<!-- resolve-pr-ledgers:v1"
                  print ENVIRON["LEDGERS_FOR_AWK"]
                  print "-->"
@@ -525,6 +548,7 @@ calling any helper; do not assume shell functions are exported across processes.
            status: "UNADDRESSED"})
        ]'
    )"
+   LEDGER_INVENTORY_AUTHORITATIVE=1
    gh api --paginate "repos/${REPO}/pulls/<P>/comments?per_page=100"
    ```
 
@@ -1145,12 +1169,13 @@ calling any helper; do not assume shell functions are exported across processes.
        --body "Escalation: checks API returned empty or invalid JSON."
      exit 1
    fi
-   CHECK_ACTION="$(
+       CHECK_ACTION="$(
      printf '%s' "${CHECKS_JSON}" |
        jq -r '
          if any(.[]; .bucket == "pending") then "wait"
          elif any(.[]; .bucket == "fail" or .bucket == "cancel") then "repair"
          elif any(.[]; .bucket != "pass" and .bucket != "skipping") then "escalate"
+         elif (any(.[]; .bucket == "pass") | not) then "escalate"
          else "merge"
          end'
    )"
@@ -1179,6 +1204,8 @@ calling any helper; do not assume shell functions are exported across processes.
          MERGEABLE)
            ;;
          CONFLICTING)
+           test -z "$(git status --porcelain)"
+           test "$(git rev-parse HEAD)" = "${REVIEWED_SHA}"
            BASE_SHA="$(gh pr view <P> --repo "${REPO}" \
              --json baseRefOid --jq .baseRefOid)"
            PR_REMOTE_URL="$(gh repo view "${REPO}" --json url --jq .url)"
@@ -1249,6 +1276,8 @@ Comment on the PR with the evidence and the decision a human must make, then sto
   `gh api user` and `gh api rate_limit` probes are the only exceptions. For
   `gh api graphql`, bind its `OWNER` and `NAME` variables explicitly as shown above.
 - Never force-push.
+- Run at most one active resolver session per PR; GitHub does not provide compare-and-swap
+  semantics for PR-description writes.
 - Never commit secrets.
 - Keep changes scoped to the PR's issue. Open a follow-up issue for anything else.
 - Do not reference infrastructure that does not exist in this repository.
