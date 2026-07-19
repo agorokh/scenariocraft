@@ -29,6 +29,9 @@ make ci-fast
 
 `make ci-fast` is the local CI-parity gate. The build jar is written to `build/libs/`.
 PR resolution requires GitHub CLI 2.49.0 or newer for `--match-head-commit`.
+On macOS, install or upgrade it with `brew install gh` or `brew upgrade gh`; on other
+platforms, use GitHub CLI's official package instructions. Verify with `gh --version` and
+`gh pr merge --help` before starting PR resolution.
 
 ## Conventions
 

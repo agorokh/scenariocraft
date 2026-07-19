@@ -42,6 +42,9 @@ do not load `.env` files or service-manager configuration implicitly.
    set -euo pipefail
    command -v gh
    command -v jq
+   JQ_VERSION="$(jq --version)"
+   [[ "${JQ_VERSION}" =~ ^jq-1\.[6-9]([.-].*)?$ ]] ||
+     { printf 'jq 1.6 or newer is required\n' >&2; exit 1; }
    command -v sleep
    command -v awk
    command -v date
@@ -74,8 +77,11 @@ do not load `.env` files or service-manager configuration implicitly.
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
+   PR=<P>
+   [[ "${PR}" =~ ^[1-9][0-9]*$ ]] ||
+     { printf 'PR number must be a positive integer\n' >&2; exit 1; }
    gh auth status
-   gh api user >/dev/null
+   RESOLVER_LOGIN="$(gh api user --jq .login)"
    PERMISSION="$(gh repo view "${REPO}" --json viewerPermission --jq .viewerPermission)"
    [[ "${PERMISSION}" =~ ^(WRITE|MAINTAIN|ADMIN)$ ]] ||
      { printf 'Pull-request write access is required\n' >&2; exit 1; }
@@ -126,6 +132,23 @@ do not load `.env` files or service-manager configuration implicitly.
    fixes, then stop. The escalation may contain only the check name, job URL, and a redacted
    one-line cause; never paste raw logs, environment dumps, tokens, or credentials. Reset a
    counter only when that check becomes green or the diagnosed root cause changes.
+   Load `REPAIR_ATTEMPTS_JSON` from the durable ledger block before incrementing a
+   redacted, stable `<CHECK>:<ROOT_CAUSE>` key:
+
+   ```sh
+   REPAIR_KEY="<CHECK>:<REDACTED_ROOT_CAUSE>"
+   REPAIR_ATTEMPTS_JSON="$(
+     printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
+       jq --arg key "${REPAIR_KEY}" \
+         '.[$key] = ((.[$key] // 0) + 1)'
+   )"
+   test "$(printf '%s' "${REPAIR_ATTEMPTS_JSON}" |
+     jq --arg key "${REPAIR_KEY}" '.[$key]')" -lt 3 || {
+     gh pr comment <P> --repo "${REPO}" \
+       --body "Escalation: ${REPAIR_KEY} failed after three repair attempts."
+     exit 1
+   }
+   ```
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -151,15 +174,21 @@ do not load `.env` files or service-manager configuration implicitly.
        jq -e '.conversation | type == "array"' >/dev/null
      printf '%s' "${LEDGERS_JSON}" |
        jq -e '.reviews | type == "array"' >/dev/null
+     printf '%s' "${LEDGERS_JSON}" |
+       jq -e '(.repair_attempts // {}) | type == "object"' >/dev/null
      CONVERSATION_LEDGER_JSON="$(
        printf '%s' "${LEDGERS_JSON}" | jq '.conversation'
      )"
      REVIEW_LEDGER_JSON="$(
        printf '%s' "${LEDGERS_JSON}" | jq '.reviews'
      )"
+     REPAIR_ATTEMPTS_JSON="$(
+       printf '%s' "${LEDGERS_JSON}" | jq '.repair_attempts // {}'
+     )"
    else
      CONVERSATION_LEDGER_JSON='[]'
      REVIEW_LEDGER_JSON='[]'
+     REPAIR_ATTEMPTS_JSON='{}'
    fi
    RATE_LIMIT_JSON="$(gh api rate_limit)"
    GRAPHQL_REMAINING="$(
@@ -210,13 +239,19 @@ do not load `.env` files or service-manager configuration implicitly.
    CONVERSATION_COMMENTS_JSON="${REST_COLLECTION_JSON}"
    CONVERSATION_LEDGER_JSON="$(
      jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
-       --argjson comments "${CONVERSATION_COMMENTS_JSON}" '
+       --argjson comments "${CONVERSATION_COMMENTS_JSON}" \
+       --arg resolver "${RESOLVER_LOGIN}" '
        [$comments[] as $comment |
          ([$ledger[] |
              select((.id | tonumber) == ($comment.id | tonumber) and
                     .updated_at == $comment.updated_at)][0] //
-          {id: $comment.id, updated_at: $comment.updated_at,
-           status: "UNADDRESSED"})
+          (if $comment.user.login == $resolver and
+              ($comment.body | startswith("resolve-pr evidence:"))
+           then {id: $comment.id, updated_at: $comment.updated_at,
+                 status: "ADDRESSED", system_evidence: true}
+           else {id: $comment.id, updated_at: $comment.updated_at,
+                 status: "UNADDRESSED"}
+           end))
        ]'
    )"
    fetch_rest_collection \
@@ -353,8 +388,9 @@ do not load `.env` files or service-manager configuration implicitly.
    If a complete inventory still cannot be fetched, post an escalation comment and stop.
    Never continue with a partial response. When repeated throttling is suspected, inspect
    `gh api rate_limit` before retrying more work.
-   Apply this concrete retry wrapper to every REST or GraphQL page fetch. It stores a
-   successful response in `PAGE_JSON`; pass the complete `gh api` invocation as arguments:
+   The following concrete wrapper is the GraphQL-page implementation. REST collections use
+   the equivalent bounded retry inside `fetch_rest_collection`; both paths must retain the
+   same attempt limit, backoff, payload validation, and escalation behavior.
 
    ```sh
    fetch_page_with_retry() {
@@ -435,17 +471,28 @@ do not load `.env` files or service-manager configuration implicitly.
    the thread and stop. Before pushing any fix, run `make ci-fast`; after pushing, return to
    step 2 for checks and a fresh inventory.
    For an actionable top-level conversation comment, push the fix first and then post a
-   top-level reply that cites the original comment ID or URL and the fixing head SHA. For a
-   non-actionable conversation comment, record the factual assessment in the ledger.
+   top-level reply containing `resolve-pr evidence: comment <ID>, head <SHA>`. For a
+   non-actionable comment, post the same marker with the factual assessment. Record the
+   resulting GitHub comment ID as `evidence_comment_id` and the head as `evidence_sha`.
+   `ADDRESSED` is valid only while that evidence comment still exists, was authored by the
+   authenticated resolver, and names the source ID and current fixing SHA; PR-body status
+   alone is never authoritative.
    Derive `UNADDRESSED_CONVERSATION_COMMENT_COUNT` from the complete ledger and require zero
    at the merge gate; GitHub provides no resolved flag for this comment type.
 
    ```sh
    COMMENT_ID=<ASSESSED_COMMENT_ID>
+   EVIDENCE_COMMENT_ID=<POSTED_EVIDENCE_COMMENT_ID>
    CONVERSATION_LEDGER_JSON="$(
      printf '%s' "${CONVERSATION_LEDGER_JSON}" |
-       jq --argjson id "${COMMENT_ID}" '
-         map(if .id == $id then .status = "ADDRESSED" else . end)'
+       jq --argjson id "${COMMENT_ID}" \
+          --argjson evidence_id "${EVIDENCE_COMMENT_ID}" \
+          --arg sha "${REVIEWED_SHA}" '
+         map(if .id == $id then
+           .status = "ADDRESSED" |
+           .evidence_comment_id = $evidence_id |
+           .evidence_sha = $sha
+         else . end)'
    )"
    test "$(printf '%s' "${CONVERSATION_LEDGER_JSON}" | jq 'length')" -eq \
      "$(printf '%s' "${CONVERSATION_COMMENTS_JSON}" | jq 'length')"
@@ -456,23 +503,35 @@ do not load `.env` files or service-manager configuration implicitly.
    ```
 
    Assess every formal review body too, including a `COMMENTED` summary with no inline
-   thread. Fix or factually acknowledge each finding, then make that review's ledger
-   transition explicit:
+   thread. Fix or factually acknowledge each finding in a top-level evidence comment that
+   cites the review ID and fixing head, then make that review's ledger transition explicit:
 
    ```sh
    REVIEW_ID=<ASSESSED_REVIEW_ID>
+   EVIDENCE_COMMENT_ID=<POSTED_EVIDENCE_COMMENT_ID>
    REVIEW_LEDGER_JSON="$(
      printf '%s' "${REVIEW_LEDGER_JSON}" |
-       jq --argjson id "${REVIEW_ID}" '
-         map(if .id == $id then .status = "ADDRESSED" else . end)'
+       jq --argjson id "${REVIEW_ID}" \
+          --argjson evidence_id "${EVIDENCE_COMMENT_ID}" \
+          --arg sha "${REVIEWED_SHA}" '
+         map(if .id == $id then
+           .status = "ADDRESSED" |
+           .evidence_comment_id = $evidence_id |
+           .evidence_sha = $sha
+         else . end)'
    )"
    ```
+
+   Before accepting either `ADDRESSED` state at the merge gate, fetch its
+   `evidence_comment_id` from the complete conversation inventory and verify the resolver
+   author plus exact evidence marker. Reset missing or mismatched evidence to `UNADDRESSED`.
 
    Persist both ledgers in the PR description's `## Comment Ledger` section as a JSON object
    between exact `<!-- resolve-pr-ledgers:v1` and `-->` lines, using IDs and statuses only.
    On resume, reconstruct both variables with step 4's parser; if the marker exists but does
    not parse, stop instead of defaulting to empty ledgers. Re-sync the persisted ledgers
-   against each fresh inventory as shown in step 4.
+   against each fresh inventory as shown in step 4. Persist `REPAIR_ATTEMPTS_JSON` in the
+   same object so same-root-cause CI failure counts survive waits and resumed sessions.
 
 7. Run `/review` against `code_review.md` and fix every P1 introduced by this PR. For every
    fix, run `make ci-fast`, commit, push, and return to step 2 for a fresh CI and review pass;
@@ -588,7 +647,9 @@ do not load `.env` files or service-manager configuration implicitly.
    LEDGERS_JSON="$(
      jq -cn --argjson conversation "${CONVERSATION_LEDGER_JSON}" \
        --argjson reviews "${REVIEW_LEDGER_JSON}" \
-       '{conversation: $conversation, reviews: $reviews}'
+       --argjson repair_attempts "${REPAIR_ATTEMPTS_JSON}" \
+       '{conversation: $conversation, reviews: $reviews,
+         repair_attempts: $repair_attempts}'
    )"
    CODEX_SESSION_ID="<SESSION_ID>"
    [[ "${CODEX_SESSION_ID}" =~ ^[0-9a-f-]+$ ]] ||
@@ -679,8 +740,11 @@ do not load `.env` files or service-manager configuration implicitly.
 
    The wait may be taken by ending the turn and resuming after 600 seconds rather than
    blocking an agent session. On resume, read the checkpoint, verify the head is unchanged,
-   and return to step 4; if it changed, reset to step 2 and cycle one. A long-lived terminal
-   may use `sleep` directly.
+   rerun all step 1 authentication, permission, worktree, head, and repository-contract
+   checks, then repeat step 2 before returning to step 4. If the head changed, reset to step
+   2 and cycle one. The checkpoint timestamp format is fixed to whole-second UTC
+   `YYYY-MM-DDTHH:MM:SSZ`; changing it requires updating the anchored parser in the same
+   commit. A long-lived terminal may use `sleep` directly.
    Wait at most three cycles for the same head SHA, for a default total timeout of 1,800
    seconds. If a required or requested reviewer is known to be unavailable, or remains
    pending after the third cycle, post an escalation comment naming the head SHA and
@@ -737,6 +801,38 @@ do not load `.env` files or service-manager configuration implicitly.
    requests, and review decision. Pin the merge to the reviewed SHA:
 
    ```sh
+   CONVERSATION_LEDGER_JSON="$(
+     jq -cn --argjson ledger "${CONVERSATION_LEDGER_JSON}" \
+       --argjson comments "${CONVERSATION_COMMENTS_JSON}" \
+       --arg resolver "${RESOLVER_LOGIN}" '
+       $ledger | map(
+         if .status == "ADDRESSED" then
+           . as $entry |
+           ("resolve-pr evidence: comment " + ($entry.id | tostring) +
+            ", head " + ($entry.evidence_sha // "")) as $marker |
+           if [$comments[] |
+             select(.id == $entry.evidence_comment_id and
+                    .user.login == $resolver and
+                    (.body | contains($marker)))] | length == 1
+           then . else .status = "UNADDRESSED" end
+         else . end)'
+   )"
+   REVIEW_LEDGER_JSON="$(
+     jq -cn --argjson ledger "${REVIEW_LEDGER_JSON}" \
+       --argjson comments "${CONVERSATION_COMMENTS_JSON}" \
+       --arg resolver "${RESOLVER_LOGIN}" '
+       $ledger | map(
+         if .status == "ADDRESSED" then
+           . as $entry |
+           ("resolve-pr evidence: review " + ($entry.id | tostring) +
+            ", head " + ($entry.evidence_sha // "")) as $marker |
+           if [$comments[] |
+             select(.id == $entry.evidence_comment_id and
+                    .user.login == $resolver and
+                    (.body | contains($marker)))] | length == 1
+           then . else .status = "UNADDRESSED" end
+         else . end)'
+   )"
    test "$(printf '%s' "${CONVERSATION_LEDGER_JSON}" | jq 'length')" -eq \
      "$(printf '%s' "${CONVERSATION_COMMENTS_JSON}" | jq 'length')"
    UNADDRESSED_CONVERSATION_COMMENT_COUNT="$(

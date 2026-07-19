@@ -42,6 +42,9 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"
    [[ "${REPO}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
      { printf 'Repository must be owner/name\n' >&2; exit 1; }
+   ISSUE=<ISSUE_NUMBER>
+   [[ "${ISSUE}" =~ ^[1-9][0-9]*$ ]] ||
+     { printf 'Issue number must be a positive integer\n' >&2; exit 1; }
    command -v gh
    command -v jq
    command -v sleep
@@ -57,16 +60,14 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    make -n ci-fast >/dev/null
    test -f code_review.md
    ```
-2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
-   `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
-   Decision Log. If the repository-local template is missing, create the plan with the same
-   required sections: Purpose, Progress, Decision Log, Surprises & Discoveries, Acceptance
-   evidence, and Retrospective.
+2. Determine whether the issue is multi-hour and identify its intended ExecPlan path, but
+   do not edit the plan before switching to the delivery branch in step 3.
 3. First check whether the input identifies an existing draft PR for this issue. If it
    does, verify its issue reference, base, and `isDraft: true`; reject a dirty worktree,
    then check out and verify that exact PR:
 
    ```sh
+   test -z "$(git status --porcelain)"
    gh pr checkout <P> --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
      "$(gh pr view <P> --repo "${REPO}" --json headRefOid --jq .headRefOid)"
@@ -84,6 +85,11 @@ The repository contract requires a `Makefile` with a usable `ci-fast` target and
    never paste issue text into a shell command. Verify that the new branch contains no
    unexpected commits. Make and push the first scoped commit — the ExecPlan for multi-hour work, or the
    smallest implementation slice otherwise — so GitHub has a branch difference to review.
+   On the new branch, create or extend `docs/plans/<feature>.md` from
+   `docs/plans/TEMPLATE.md` for a multi-hour issue and record the intended approach in the
+   Decision Log. If the repository-local template is missing, use the same required
+   sections: Purpose, Progress, Decision Log, Surprises & Discoveries, Acceptance evidence,
+   and Retrospective.
    Re-run the same four repository-contract checks immediately after creating the branch.
    Run `make ci-fast` before pushing an implementation slice; an ExecPlan-only commit does
    not require the code gate. Then explicitly create the draft against the verified base:
