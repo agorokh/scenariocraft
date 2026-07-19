@@ -16,8 +16,11 @@ ExecPlan updated and the session ID recorded.
 
 1. Read, in order: issue [#2](https://github.com/agorokh/scenariocraft/issues/2)
    (working agreement), `AGENTS.md`, `code_review.md`, then the target issue. Treat the
-   issue's acceptance criteria as the definition of done. Verify the repository-local
-   working agreement with `gh issue view 2 --repo agorokh/scenariocraft`.
+   issue's acceptance criteria as the definition of done. Set
+   `REPO="${SCENARIOCRAFT_REPO:-agorokh/scenariocraft}"` for an intentional fork or renamed
+   remote, verify it with `gh repo view "${REPO}"`, and read the working agreement with
+   `gh issue view 2 --repo "${REPO}"`. Fail fast if `Makefile`, `code_review.md`, or the
+   working agreement is absent.
 2. If the issue is multi-hour, create or extend `docs/plans/<feature>.md` from
    `docs/plans/TEMPLATE.md` before writing code. Record the intended approach in the
    Decision Log. Verify the repository-local template exists before using it; if it is
@@ -32,20 +35,23 @@ ExecPlan updated and the session ID recorded.
    implementation and verification continue.
 4. Implement to the acceptance criteria only. If a spec is wrong or ambiguous, comment on
    the issue and stop; do not silently expand scope.
-5. Write tests alongside the change. Verify the checked-in Makefile exposes `ci-fast` with
+5. Write tests alongside the change. Verify the checked-in `Makefile` exposes `ci-fast` with
    `make -n ci-fast`, then run `make ci-fast` locally before every code push.
 6. If an ExecPlan was created, update it: check off Progress and record anything that failed
    or surprised you under Surprises & Discoveries. Keep the scar tissue; it is the point.
-7. Put the issue number, the acceptance evidence each criterion asks for, and the Codex
-   session ID in the PR description. Commit and push the completed implementation, tests,
-   and conditional ExecPlan update; verify local `HEAD` equals the PR's `headRefOid`.
+7. Run `/review` against `code_review.md` while the PR is still a draft and fix every P1.
+   Run `make ci-fast` after each fix. Put the issue number, the acceptance evidence each
+   criterion asks for, and the Codex session ID in the PR description. Commit and push the
+   completed implementation, tests, conditional ExecPlan update, and P1 fixes; verify local
+   `HEAD` equals the PR's `headRefOid`.
    Confirm local CI and that pushed head's GitHub checks are green. If checks are pending,
-   wait 60 seconds and reinspect them, for at most ten cycles, matching the workflow's
-   10-minute timeout; do not push merely to restart healthy pending checks. If they remain
-   non-terminal after the tenth cycle, escalate and stop without marking the PR ready. If
-   checks fail, push fixes while the PR remains a draft, then repeat the pushed-SHA and
-   GitHub-check verification for the replacement head. Only then mark the PR ready for
-   review.
+   wait 60 seconds and reinspect them until terminal or until the end-to-end budget in
+   `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800 seconds to account
+   for runner queue time separately from the job timeout; the operator may override it.
+   Do not push merely to restart healthy pending checks. If the budget expires, escalate and
+   stop without marking the PR ready. If checks fail, push fixes while the PR remains a
+   draft, then repeat the pushed-SHA and GitHub-check verification for the replacement head.
+   Only then mark the PR ready for review.
    Reviewers do not run on drafts, so a PR left in draft will sit with no findings and that
    is not the same as a clean review.
    Marking it ready starts external review. Hand off to the resolve-pr skill to drive the PR

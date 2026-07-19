@@ -16,7 +16,8 @@ description: Drive one open ScenarioCraft pull request through CI repair, review
 `gh auth status` must succeed, with repository access, pull-request write scope, and
 Actions/checks read access. The installed `gh` must expose `--match-head-commit`; verify it
 with `gh pr merge --help`. The workflow requires the GitHub CLI; fail fast when `gh` is
-absent instead of attempting installation during PR resolution.
+absent instead of attempting installation during PR resolution. Verify the checked-in CI
+workflow exists before relying on check state.
 
 ## Steps
 
@@ -34,6 +35,7 @@ absent instead of attempting installation during PR resolution.
    OWNER="${REPO%%/*}"
    NAME="${REPO#*/}"
    gh repo view "${REPO}" --json nameWithOwner
+   test -f .github/workflows/ci.yml
    test -z "$(git status --porcelain)"
    gh pr checkout <P> --repo "${REPO}"
    test "$(git rev-parse HEAD)" = \
@@ -51,11 +53,13 @@ absent instead of attempting installation during PR resolution.
    `deliver` owns the draft-to-ready transition after CI is green; `resolve-pr` starts once
    external review has begun.
 
-3. If CI is pending, wait 60 seconds and reinspect it, for at most ten cycles, matching the
-   workflow's 10-minute job timeout; if it is still non-terminal after the tenth cycle,
-   escalate instead of guessing. If CI is red, read the failing job's logs and fix the
-   cause rather than the symptom. Run `make ci-fast` locally, commit, push, then return to
-   step 2 so the replacement head's checks are inspected.
+3. If CI is pending, wait 60 seconds and reinspect it until terminal or until the
+   end-to-end budget in `SCENARIOCRAFT_CI_WAIT_SECONDS` expires. Default the budget to 1,800
+   seconds, which covers runner queue time separately from the job's own timeout; the
+   operator may override it with a positive integer. Escalate if the budget expires. If CI
+   is red, read the failing job's logs and fix the cause rather than the symptom. Run
+   `make ci-fast` locally, commit, push, then return to step 2 so the replacement head's
+   checks are inspected.
 
 4. Fetch the complete feedback inventory. Page top-level conversation comments, formal
    reviews, and inline comments:
@@ -157,23 +161,31 @@ absent instead of attempting installation during PR resolution.
 
 9. Squash-merge only when required checks are green on the head SHA, no gating thread is
    unresolved, every P1 is fixed, no current-SHA review is `CHANGES_REQUESTED`, no review
-   request is pending, and `reviewDecision` is not `CHANGES_REQUESTED`. A `DISMISSED` review
-   does not count as a completed pass but does not itself gate merge. Confirm every change
-   request on that SHA was dismissed or superseded by a later approving review. Immediately
-   before merging, verify all reported checks, re-read the head and review decision, and pin
-   the merge to the reviewed SHA:
+   request is pending, and `reviewDecision` is neither `CHANGES_REQUESTED` nor
+   `REVIEW_REQUIRED`. A `DISMISSED` review does not count as a completed pass but does not
+   itself gate merge. Confirm every change request on that SHA was dismissed or superseded
+   by a later approving review. Immediately before merging, verify all reported checks,
+   re-read the head, review requests, and review decision, and pin the merge to the reviewed
+   SHA:
 
    ```sh
-   if ! gh pr checks <P> --repo "${REPO}"; then
-     exit 1
-   fi
+   CHECKS_EXIT=0
+   gh pr checks <P> --repo "${REPO}" || CHECKS_EXIT=$?
+   test "${CHECKS_EXIT}" -eq 0
    test "$(gh pr view <P> --repo "${REPO}" \
      --json headRefOid --jq .headRefOid)" = "${REVIEWED_SHA}"
    test "$(gh pr view <P> --repo "${REPO}" \
-     --json reviewDecision --jq .reviewDecision)" != "CHANGES_REQUESTED"
+     --json reviewRequests --jq '.reviewRequests | length')" -eq 0
+   REVIEW_DECISION="$(gh pr view <P> --repo "${REPO}" \
+     --json reviewDecision --jq .reviewDecision)"
+   test "${REVIEW_DECISION}" != "CHANGES_REQUESTED"
+   test "${REVIEW_DECISION}" != "REVIEW_REQUIRED"
    gh pr merge <P> --repo "${REPO}" --squash \
      --match-head-commit "${REVIEWED_SHA}"
    ```
+
+   `gh pr checks` exit `0` is green, `8` is pending, and other nonzero exits are failures.
+   On `8`, return to step 3 instead of merging; on failure, inspect and fix the check.
 
 ## Escalate
 
