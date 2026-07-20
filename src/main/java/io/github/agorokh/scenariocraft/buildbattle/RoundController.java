@@ -37,6 +37,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.BookMeta;
@@ -328,6 +329,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (clicked == null || !isSecretChest(clicked)) {
             return;
         }
+        if (event.getHand() != EquipmentSlot.HAND) {
+            event.setCancelled(true);
+            return;
+        }
 
         Player player = event.getPlayer();
         if (phase() != RoundPhase.NOTE_PICK) {
@@ -469,11 +474,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         try {
             taskBookPlacer.accept(currentTask);
         } catch (RuntimeException failure) {
-            logger.log(Level.SEVERE, "Could not prepare the secret task book", failure);
-            abortRound();
-            broadcast(
-                    "The secret note could not get ready this time. Please ask a grown-up helper to check the server.");
-            return;
+            logger.log(
+                    Level.WARNING,
+                    "Could not prepare the cosmetic secret task book; continuing with title and chat",
+                    failure);
         }
 
         PickerSelector.Candidate picker =

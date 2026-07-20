@@ -116,6 +116,56 @@ class RoundControllerTest {
     }
 
     @Test
+    void offHandChestInteractionIsCancelledWithoutRevealing() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        PlayerInteractEvent interaction =
+                rig.chestInteraction(rig.player, EquipmentSlot.OFF_HAND);
+
+        rig.controller.onPlayerInteract(interaction);
+
+        assertTrue(interaction.isCancelled());
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertFalse(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        rig.close();
+    }
+
+    @Test
+    void pickerRevealStartsAFreshBuildCountdown() {
+        TestRig rig = new TestRig(new PhaseTimings(1, 1, 3, 1));
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+
+        rig.controller.onPlayerInteract(rig.chestInteraction(rig.player));
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        rig.close();
+    }
+
+    @Test
+    void cosmeticBookFailureStillAllowsPickerAndAfkReveal() {
+        TestRig rig = new TestRig();
+        rig.failTaskBookPlacement.set(true);
+
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        rig.close();
+    }
+
+    @Test
     void afkTimeoutRevealsTaskAndProceedsToBuildingWithoutInteraction() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -456,6 +506,7 @@ class RoundControllerTest {
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicBoolean failSaveData = new AtomicBoolean();
         private final AtomicBoolean failRunTask = new AtomicBoolean();
+        private final AtomicBoolean failTaskBookPlacement = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -757,7 +808,13 @@ class RoundControllerTest {
                             editor,
                             Logger.getAnonymousLogger(),
                             ignored -> 0,
-                            placedTask::set);
+                            prompt -> {
+                                if (failTaskBookPlacement.get()) {
+                                    throw new IllegalStateException(
+                                            "test cosmetic book failure");
+                                }
+                                placedTask.set(prompt);
+                            });
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
@@ -796,13 +853,18 @@ class RoundControllerTest {
         }
 
         private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
+            return chestInteraction(interactingPlayer, EquipmentSlot.HAND);
+        }
+
+        private PlayerInteractEvent chestInteraction(
+                Player interactingPlayer, EquipmentSlot hand) {
             return new PlayerInteractEvent(
                     interactingPlayer,
                     Action.RIGHT_CLICK_BLOCK,
                     null,
                     secretChestBlock,
                     BlockFace.UP,
-                    EquipmentSlot.HAND);
+                    hand);
         }
 
         private void close() {
