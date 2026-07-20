@@ -11,12 +11,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
+import java.util.function.IntUnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
+import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
@@ -24,12 +30,16 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BookMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
@@ -44,11 +54,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int MAX_SNAPSHOT_SECTION_BYTES = 4 * 1024 * 1024;
     private static final int MAX_SNAPSHOT_SLOTS = 128;
 
+    private final Plugin plugin;
     private final Server server;
     private final BattleSettings settings;
     private final ArenaWorld arena;
     private final BatchedBlockEditor blockEditor;
     private final Logger logger;
+    private final PickerSelector pickerSelector;
+    private final TaskDeck taskDeck;
+    private final Consumer<String> taskBookPlacer;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
@@ -58,6 +72,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private List<PlotBounds> plots = List.of();
     private RoundTimer timer;
     private CommandSender roundStarter;
+    private UUID currentPickerId;
+    private String currentPickerName;
+    private String currentTask;
+    private boolean taskRevealed;
     private boolean closed;
 
     public RoundController(
@@ -66,12 +84,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             ArenaWorld arena,
             BatchedBlockEditor blockEditor,
             Logger logger) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                bound -> ThreadLocalRandom.current().nextInt(bound),
+                task -> placeTaskBook(arena, task));
+    }
+
+    RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            IntUnaryOperator randomIndex,
+            Consumer<String> taskBookPlacer) {
         Objects.requireNonNull(plugin, "plugin");
+        this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.arena = Objects.requireNonNull(arena, "arena");
         this.blockEditor = Objects.requireNonNull(blockEditor, "blockEditor");
         this.logger = Objects.requireNonNull(logger, "logger");
+        this.pickerSelector = new PickerSelector(randomIndex);
+        this.taskDeck = new TaskDeck(settings.tasks(), randomIndex);
+        this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
         this.buildBossBar =
@@ -179,6 +219,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             plots,
                             arena.floorY(),
                             arenaSettings.wallHeight(),
+                            secretChest(),
                             completedMutations -> arenaResetComplete(completedMutations),
                             this::arenaWorkFailed);
         } catch (RuntimeException failure) {
@@ -278,6 +319,70 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        Block clicked = event.getClickedBlock();
+        if (clicked == null || !isSecretChest(clicked)) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        if (phase() != RoundPhase.NOTE_PICK) {
+            event.setCancelled(true);
+            player.sendMessage(
+                    "The secret chest opens during note pick. The next mystery is coming soon!");
+            return;
+        }
+        if (currentPickerId == null || !currentPickerId.equals(player.getUniqueId())) {
+            event.setCancelled(true);
+            String pickerName =
+                    currentPickerName == null ? "the note picker" : currentPickerName;
+            player.sendMessage(
+                    "This secret note belongs to "
+                            + pickerName
+                            + " this round. You'll see the idea together soon!");
+            return;
+        }
+        if (!revealCurrentTask()) {
+            event.setCancelled(true);
+            player.sendMessage("The secret note is already open — build time is starting!");
+            return;
+        }
+
+        try {
+            server.getScheduler()
+                    .runTask(
+                            plugin,
+                            () -> {
+                                if (phase() == RoundPhase.NOTE_PICK && taskRevealed) {
+                                    beginBuilding();
+                                }
+                            });
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.WARNING,
+                    "Could not schedule the post-note transition; continuing immediately",
+                    failure);
+            if (phase() == RoundPhase.NOTE_PICK && taskRevealed) {
+                beginBuilding();
+            }
+        }
+    }
+
+    @EventHandler
+    public void onSecretChestBreak(BlockBreakEvent event) {
+        if (!isSecretChest(event.getBlock())) {
+            return;
+        }
+        event.setCancelled(true);
+        event.getPlayer()
+                .sendMessage(
+                        "That secret chest is part of the game, so it stays right here!");
+    }
+
     @Override
     public void close() {
         if (closed) {
@@ -293,6 +398,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         contestants.clear();
         revealSpectators.clear();
         roundStarter = null;
+        resetNotePickState();
         plots = List.of();
     }
 
@@ -339,7 +445,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
         switch (phase()) {
             case GATHERING -> beginNotePick();
-            case NOTE_PICK -> beginBuilding();
+            case NOTE_PICK -> {
+                String pickerName =
+                        currentPickerName == null ? "Our note picker" : currentPickerName;
+                broadcast(
+                        pickerName
+                                + " must be away for a moment, so the secret note opened itself!");
+                revealCurrentTask();
+                beginBuilding();
+            }
             case BUILDING -> beginReveal();
             case REVEAL -> completeRound();
             case IDLE, PREPARING -> throw new IllegalStateException(
@@ -350,16 +464,63 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void beginNotePick() {
         transitionTo(RoundPhase.NOTE_PICK);
         timer = RoundTimer.start(settings.timings().noteSeconds());
-        String task = settings.tasks().getFirst();
-        broadcast("Your build idea is: " + task + "!");
-        forEachOnlineContestant(
-                (player, ignored) ->
-                        player.sendTitle(
-                                "Build idea!",
-                                task,
-                                TELEPORT_FADE_TICKS,
-                                TITLE_STAY_TICKS,
-                                TELEPORT_FADE_TICKS));
+        currentTask = taskDeck.draw();
+        taskRevealed = false;
+        try {
+            taskBookPlacer.accept(currentTask);
+        } catch (RuntimeException failure) {
+            logger.log(Level.SEVERE, "Could not prepare the secret task book", failure);
+            abortRound();
+            broadcast(
+                    "The secret note could not get ready this time. Please ask a grown-up helper to check the server.");
+            return;
+        }
+
+        PickerSelector.Candidate picker =
+                pickerSelector
+                        .select(
+                                contestants.values().stream()
+                                        .map(contestant -> server.getPlayer(contestant.playerId()))
+                                        .filter(Objects::nonNull)
+                                        .filter(Player::isOnline)
+                                        .map(
+                                                player ->
+                                                        new PickerSelector.Candidate(
+                                                                player.getUniqueId(),
+                                                                player.getName(),
+                                                                settings.isExempt(
+                                                                        player.getName())))
+                                        .toList())
+                        .orElse(null);
+        if (picker == null) {
+            broadcast(
+                    "No builder is at the hub to open the secret note, so it opened itself!");
+            revealCurrentTask();
+            beginBuilding();
+            return;
+        }
+
+        currentPickerId = picker.playerId();
+        currentPickerName = picker.playerName();
+        broadcast(
+                currentPickerName
+                        + " is the secret-note picker! The chest is waiting at the hub.");
+        for (Player player : server.getOnlinePlayers()) {
+            sendPickerTitle(player);
+        }
+    }
+
+    private boolean revealCurrentTask() {
+        if (taskRevealed || currentTask == null) {
+            return false;
+        }
+        taskRevealed = true;
+        timer = null;
+        broadcast("Your build idea is: " + currentTask + "!");
+        for (Player player : server.getOnlinePlayers()) {
+            sendTaskTitle(player);
+        }
+        return true;
     }
 
     private void beginBuilding() {
@@ -444,6 +605,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         contestants.clear();
         revealSpectators.clear();
         roundStarter = null;
+        resetNotePickState();
         plots = List.of();
         broadcast("Build Battle complete — amazing creating, everyone!");
         logger.info("Round complete: returned to IDLE.");
@@ -459,6 +621,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         contestants.clear();
         revealSpectators.clear();
         roundStarter = null;
+        resetNotePickState();
         plots = List.of();
     }
 
@@ -497,12 +660,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             case PREPARING, GATHERING -> moveToHub(player, contestant);
             case NOTE_PICK -> {
                 moveToHub(player, contestant);
-                player.sendTitle(
-                        "Build idea!",
-                        settings.tasks().getFirst(),
-                        TELEPORT_FADE_TICKS,
-                        TITLE_STAY_TICKS,
-                        TELEPORT_FADE_TICKS);
+                if (taskRevealed) {
+                    sendTaskTitle(player);
+                } else {
+                    sendPickerTitle(player);
+                }
             }
             case BUILDING -> moveToPlot(player, contestant);
             case REVEAL -> {
@@ -603,6 +765,41 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
+    private void sendPickerTitle(Player player) {
+        if (currentPickerId == null || currentPickerName == null) {
+            return;
+        }
+        String subtitle =
+                currentPickerId.equals(player.getUniqueId())
+                        ? "Open the chest at the hub!"
+                        : "They'll reveal the build idea!";
+        player.sendTitle(
+                currentPickerName + " has the secret note!",
+                subtitle,
+                TELEPORT_FADE_TICKS,
+                TITLE_STAY_TICKS,
+                TELEPORT_FADE_TICKS);
+    }
+
+    private void sendTaskTitle(Player player) {
+        if (currentTask == null) {
+            return;
+        }
+        player.sendTitle(
+                "Build idea!",
+                currentTask,
+                TELEPORT_FADE_TICKS,
+                TITLE_STAY_TICKS,
+                TELEPORT_FADE_TICKS);
+    }
+
+    private void resetNotePickState() {
+        currentPickerId = null;
+        currentPickerName = null;
+        currentTask = null;
+        taskRevealed = false;
+    }
+
     private Location hubLocation() {
         Location spawn = arena.world().getSpawnLocation();
         return new Location(
@@ -610,6 +807,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 spawn.getBlockX() + 0.5,
                 arena.floorY() + 1.0,
                 spawn.getBlockZ() + 0.5);
+    }
+
+    private SecretChestPosition secretChest() {
+        return SecretChestPosition.atHub(arena);
+    }
+
+    private boolean isSecretChest(Block block) {
+        return block.getWorld() == arena.world() && secretChest().matches(block);
     }
 
     private Location tourLocation() {
@@ -622,7 +827,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 player.getGameMode(),
                 snapshotContents(player.getInventory()),
                 snapshotContents(player.getEnderChest()),
-                cursor == null ? null : cursor.clone());
+                cursor == null || cursor.isEmpty() ? null : cursor.clone());
     }
 
     private void persistInventorySnapshot(Player player, InventorySnapshot snapshot) {
@@ -729,8 +934,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private static void writeItem(DataOutputStream output, ItemStack item)
             throws IOException {
-        output.writeBoolean(item != null);
-        if (item == null) {
+        boolean present = item != null && !item.isEmpty();
+        output.writeBoolean(present);
+        if (!present) {
             return;
         }
         byte[] encoded = item.serializeAsBytes();
@@ -764,9 +970,35 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         ItemStack[] snapshot = new ItemStack[contents.length];
         for (int slot = 0; slot < contents.length; slot++) {
             ItemStack item = contents[slot];
-            snapshot[slot] = item == null ? null : item.clone();
+            snapshot[slot] = item == null || item.isEmpty() ? null : item.clone();
         }
         return snapshot;
+    }
+
+    private static void placeTaskBook(ArenaWorld arena, String task) {
+        SecretChestPosition chestPosition = SecretChestPosition.atHub(arena);
+        Block block =
+                arena.world()
+                        .getBlockAt(
+                                chestPosition.x(),
+                                chestPosition.y(),
+                                chestPosition.z());
+        if (!(block.getState() instanceof Chest chest)) {
+            throw new IllegalStateException("secret-note block is not a chest");
+        }
+
+        ItemStack writtenBook = new ItemStack(Material.WRITTEN_BOOK);
+        if (!(writtenBook.getItemMeta() instanceof BookMeta bookMeta)) {
+            throw new IllegalStateException("written book metadata is unavailable");
+        }
+        bookMeta.setTitle("Secret Build Idea");
+        bookMeta.setAuthor("ScenarioCraft");
+        bookMeta.setPages(task);
+        writtenBook.setItemMeta(bookMeta);
+
+        Inventory inventory = chest.getBlockInventory();
+        inventory.clear();
+        inventory.setItem(inventory.getSize() / 2, writtenBook);
     }
 
     private static String formatTime(int seconds) {

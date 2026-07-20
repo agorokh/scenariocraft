@@ -12,10 +12,12 @@ class ArenaFillPlanTest {
     void defaultTwoPlotPlanClearsBeforeBuildingFourWallsPerPlot() {
         List<PlotBounds> plots = PlotGeometry.aroundHub(0, 0, 2, 33, 64);
 
-        ArenaFillPlan plan = ArenaFillPlan.forPlots(plots, -61, 30);
+        ArenaFillPlan plan =
+                ArenaFillPlan.forPlots(
+                        plots, -61, 30, new SecretChestPosition(2, -60, 0));
 
-        assertEquals(10, plan.fills().size());
-        assertEquals(81_660, plan.totalBlockMutations());
+        assertEquals(11, plan.fills().size());
+        assertEquals(81_661, plan.totalBlockMutations());
         assertEquals(
                 new BlockFill(
                         new Cuboid(-17, 17, -60, -31, -81, -47), Material.AIR),
@@ -43,13 +45,19 @@ class ArenaFillPlanTest {
                         Material.WHITE_CONCRETE),
                 plan.fills().get(4));
         assertEquals(Material.AIR, plan.fills().get(5).material());
+        assertEquals(
+                new BlockFill(new Cuboid(2, 2, -60, -60, 0, 0), Material.CHEST),
+                plan.fills().getLast());
     }
 
     @Test
     void listsEveryTouchedChunkIncludingNegativeCoordinates() {
         ArenaFillPlan plan =
                 ArenaFillPlan.forPlots(
-                        List.of(new PlotBounds(-17, 15, -17, 15)), -61, 30);
+                        List.of(new PlotBounds(-17, 15, -17, 15)),
+                        -61,
+                        30,
+                        new SecretChestPosition(2, -60, 0));
 
         assertEquals(16, plan.chunkCoordinates().size());
         assertEquals(

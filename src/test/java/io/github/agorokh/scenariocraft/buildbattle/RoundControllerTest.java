@@ -24,14 +24,19 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -43,6 +48,112 @@ import org.bukkit.scheduler.BukkitTask;
 import org.junit.jupiter.api.Test;
 
 class RoundControllerTest {
+    @Test
+    void nonPickerCannotOpenTheSecretChestAndReceivesFriendlyFeedback() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        PlayerInteractEvent interaction = rig.chestInteraction(rig.spectator);
+
+        rig.controller.onPlayerInteract(interaction);
+
+        assertTrue(interaction.isCancelled());
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("belongs to BuilderKid")));
+        rig.close();
+    }
+
+    @Test
+    void secretChestCannotBeBrokenByAWaitingPlayer() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        BlockBreakEvent breakEvent =
+                new BlockBreakEvent(rig.secretChestBlock, rig.spectator);
+
+        rig.controller.onSecretChestBreak(breakEvent);
+
+        assertTrue(breakEvent.isCancelled());
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("stays right here")));
+        rig.close();
+    }
+
+    @Test
+    void pickerOpeningChestRevealsTaskToEveryPlayerAndStartsBuilding() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        PlayerInteractEvent interaction = rig.chestInteraction(rig.player);
+        assertEquals("A dragon treehouse", rig.placedTask.get());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+        assertTrue(
+                rig.spectatorMessages.contains(
+                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+        assertTrue(
+                rig.playerTitles.contains(
+                        "BuilderKid has the secret note! | Open the chest at the hub!"));
+        assertTrue(
+                rig.spectatorTitles.contains(
+                        "BuilderKid has the secret note! | They'll reveal the build idea!"));
+
+        rig.controller.onPlayerInteract(interaction);
+
+        assertFalse(interaction.isCancelled());
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        assertTrue(
+                rig.spectatorMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        assertTrue(rig.playerTitles.contains("Build idea! | A dragon treehouse"));
+        assertTrue(rig.spectatorTitles.contains("Build idea! | A dragon treehouse"));
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
+    void afkTimeoutRevealsTaskAndProceedsToBuildingWithoutInteraction() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        assertFalse(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        assertTrue(
+                rig.spectatorMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        assertTrue(
+                rig.messages.stream()
+                        .anyMatch(message -> message.contains("secret note opened itself")));
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
+    void schedulerRejectionAfterPickerRevealStillProceedsToBuilding() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.failRunTask.set(true);
+
+        rig.controller.onPlayerInteract(rig.chestInteraction(rig.player));
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "Your build idea is: A dragon treehouse!"));
+        rig.close();
+    }
+
     @Test
     void onePlayerAndDebugFillRunTheCompleteTimedCycle() {
         TestRig rig = new TestRig();
@@ -267,6 +378,22 @@ class RoundControllerTest {
     }
 
     @Test
+    void paperEmptyItemStacksAreSavedAsVacantSlots() {
+        TestRig rig = new TestRig();
+        ItemStack empty = new EmptyItemStack();
+        rig.inventoryContents.set(new ItemStack[] {empty});
+        rig.enderChestContents.set(new ItemStack[] {empty});
+        rig.cursorItem.set(empty);
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        assertFalse(rig.persistentData.isEmpty());
+        rig.controller.stop(rig.player);
+        rig.close();
+    }
+
+    @Test
     void contestantDropsAreBlockedOnlyDuringAnActiveRound() {
         TestRig rig = new TestRig();
         Item droppedItem =
@@ -328,6 +455,7 @@ class RoundControllerTest {
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicBoolean failSaveData = new AtomicBoolean();
+        private final AtomicBoolean failRunTask = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -343,11 +471,16 @@ class RoundControllerTest {
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
         private final AtomicReference<ItemStack> cursorItem = new AtomicReference<>();
+        private final AtomicReference<String> placedTask = new AtomicReference<>();
         private final AtomicReference<ItemStack[]> inventoryContents =
                 new AtomicReference<>(new ItemStack[2]);
         private final AtomicReference<ItemStack[]> enderChestContents =
                 new AtomicReference<>(new ItemStack[3]);
         private final List<String> messages = new ArrayList<>();
+        private final List<String> playerMessages = new ArrayList<>();
+        private final List<String> spectatorMessages = new ArrayList<>();
+        private final List<String> playerTitles = new ArrayList<>();
+        private final List<String> spectatorTitles = new ArrayList<>();
         private final List<String> starterMessages = new ArrayList<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
@@ -356,6 +489,7 @@ class RoundControllerTest {
         private final Inventory enderChest;
         private final PersistentDataContainer persistentDataContainer;
         private final PersistentDataContainer spectatorPersistentDataContainer;
+        private final Block secretChestBlock;
         private final Player player;
         private final Player spectator;
         private final CommandSender consoleStarter;
@@ -393,14 +527,21 @@ class RoundControllerTest {
                                 }
                                 return defaultValue(method.getReturnType());
                             });
-            Block block =
+            secretChestBlock =
                     proxy(
                             Block.class,
                             (ignored, method, arguments) -> {
-                                if (method.getName().equals("setType")) {
-                                    blockMutations.incrementAndGet();
-                                }
-                                return defaultValue(method.getReturnType());
+                                return switch (method.getName()) {
+                                    case "setType" -> {
+                                        blockMutations.incrementAndGet();
+                                        yield null;
+                                    }
+                                    case "getWorld" -> worldRef();
+                                    case "getX" -> 2;
+                                    case "getY" -> floorY + 1;
+                                    case "getZ" -> 0;
+                                    default -> defaultValue(method.getReturnType());
+                                };
                             });
             world =
                     proxy(
@@ -419,7 +560,7 @@ class RoundControllerTest {
                                                     chunk((int) arguments[0], (int) arguments[1]));
                                         }
                                         case "addPluginChunkTicket", "removePluginChunkTicket" -> true;
-                                        case "getBlockAt" -> block;
+                                        case "getBlockAt" -> secretChestBlock;
                                         default -> defaultValue(method.getReturnType());
                                     });
             playerInventory =
@@ -474,11 +615,14 @@ class RoundControllerTest {
                                         case "sendMessage" -> {
                                             if (arguments[0] instanceof String message) {
                                                 messages.add(message);
+                                                playerMessages.add(message);
                                             }
                                             yield null;
                                         }
                                         case "sendTitle" -> {
                                             titles.incrementAndGet();
+                                            playerTitles.add(
+                                                    arguments[0] + " | " + arguments[1]);
                                             yield null;
                                         }
                                         default -> defaultValue(method.getReturnType());
@@ -508,7 +652,14 @@ class RoundControllerTest {
                                         case "sendMessage" -> {
                                             if (arguments[0] instanceof String message) {
                                                 messages.add(message);
+                                                spectatorMessages.add(message);
                                             }
+                                            yield null;
+                                        }
+                                        case "sendTitle" -> {
+                                            titles.incrementAndGet();
+                                            spectatorTitles.add(
+                                                    arguments[0] + " | " + arguments[1]);
                                             yield null;
                                         }
                                         default -> defaultValue(method.getReturnType());
@@ -548,6 +699,10 @@ class RoundControllerTest {
                                             yield task;
                                         }
                                         case "runTask" -> {
+                                            if (failRunTask.get()) {
+                                                throw new IllegalStateException(
+                                                        "test scheduler rejection");
+                                            }
                                             ((Runnable) arguments[1]).run();
                                             yield task;
                                         }
@@ -600,7 +755,9 @@ class RoundControllerTest {
                             settings,
                             arena,
                             editor,
-                            Logger.getAnonymousLogger());
+                            Logger.getAnonymousLogger(),
+                            ignored -> 0,
+                            placedTask::set);
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
@@ -636,6 +793,16 @@ class RoundControllerTest {
 
         private void runTimerTick() {
             timerTick.get().run();
+        }
+
+        private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
+            return new PlayerInteractEvent(
+                    interactingPlayer,
+                    Action.RIGHT_CLICK_BLOCK,
+                    null,
+                    secretChestBlock,
+                    BlockFace.UP,
+                    EquipmentSlot.HAND);
         }
 
         private void close() {
@@ -703,6 +870,27 @@ class RoundControllerTest {
         return (T)
                 Proxy.newProxyInstance(
                         type.getClassLoader(), new Class<?>[] {type}, handler);
+    }
+
+    private static final class EmptyItemStack extends ItemStack {
+        private EmptyItemStack() {
+            super();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return true;
+        }
+
+        @Override
+        public ItemStack clone() {
+            return this;
+        }
+
+        @Override
+        public byte[] serializeAsBytes() {
+            throw new AssertionError("empty item stacks must not be serialized");
+        }
     }
 
     private static Object defaultValue(Class<?> type) {
