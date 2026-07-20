@@ -57,6 +57,7 @@ session.
 | 2026-07-20 | Allow only same-plot `FallingBlock` settlement, reject contestant teleports outside their boundary during BUILDING, and cancel active-arena block formation. | Gravity builds need their source and target validated together; chorus fruit and similar server teleports can cross solid walls; Frost Walker, weather, and freezing must not bypass the mutation policy. |
 | 2026-07-20 | Extend teleport containment through the NOTE_PICK plot-entry wait; allow plot-local passive block formation and contestant-owned entity formation; document failed recovery-marker saves as volatile. | A confirmed early arrival must remain contained while peers are still moving, concrete powder should remain usable, and operators must know that a failed player-data save cannot survive restart. |
 | 2026-07-20 | Cancel leaf decay throughout the active arena. | Vanilla leaf decay is a distinct mutation event and must not erase contestant builds or bypass arena containment. |
+| 2026-07-20 | Cancel block fading throughout the active arena. | Melting ice or snow and drying farmland use a distinct fade event and must not erase contestant builds during a round. |
 
 ## Surprises & Discoveries
 

@@ -44,6 +44,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
 import org.bukkit.event.block.BlockFertilizeEvent;
 import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
@@ -1281,6 +1282,10 @@ class RoundControllerTest {
         LeavesDecayEvent leavesDecay = new LeavesDecayEvent(arenaBlock);
         rig.controller.onArenaLeavesDecay(leavesDecay);
         assertTrue(leavesDecay.isCancelled());
+
+        BlockFadeEvent blockFade = new BlockFadeEvent(arenaBlock, blockState);
+        rig.controller.onArenaBlockFade(blockFade);
+        assertTrue(blockFade.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =
