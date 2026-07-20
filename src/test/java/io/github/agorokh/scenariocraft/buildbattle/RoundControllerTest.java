@@ -479,6 +479,24 @@ class RoundControllerTest {
     }
 
     @Test
+    void failedSpectatorRestoreKeepsTheOriginalGameMode() {
+        TestRig rig = new TestRig();
+        GameMode originalGameMode = rig.spectatorGameMode.get();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runBlockTick();
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(originalGameMode, rig.spectatorGameMode.get());
+        rig.runDelayedTasks();
+        assertEquals(originalGameMode, rig.spectatorGameMode.get());
+        rig.failTeleportDispatch.set(false);
+        rig.close();
+    }
+
+    @Test
     void teleportCoordinatesUsePlainLocaleIndependentDecimals() {
         TestRig rig = new TestRig();
         rig.spectatorLocation.set(
@@ -885,6 +903,7 @@ class RoundControllerTest {
                         net.kyori.adventure.text.Component.empty(),
                         PlayerQuitEvent.QuitReason.DISCONNECTED));
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
 
         rig.ignoreTeleportCommand.set(false);
         rig.controller.onPlayerJoin(

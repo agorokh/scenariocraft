@@ -62,6 +62,7 @@ session.
 | 2026-07-20 | Return immediately after starting pending-inventory recovery on join, and protect hanging/decorative entity interactions with the plot policy. | A REVEAL join must not supersede its recovery teleport, and item frames, paintings, and armor stands are part of a build even though they are not blocks. |
 | 2026-07-20 | Reject non-contestant teleports into occupied private plots and apply the plot policy to armor-stand damage, including player-fired projectiles. | Edit denial alone does not prevent peeking, and left-click damage is distinct from decorative-entity interaction. |
 | 2026-07-20 | Treat null entity-placement faces as the event block, delay Creative until every plot arrival confirms, persist every stranded path and recovery failure, and send alerts to console plus `scenariocraft.alerts`. | Nullable Paper event fields must not bypass policy, partial arrival must not grant early controls, restart recovery needs a marker from every containment path, and an alert must have a durable/operator-visible recipient. |
+| 2026-07-20 | Keep close-created restore attempts live through their callbacks, finish plot-entry state before restoring a quitter, and restore spectator gamemode before dispatch. | Disable must leave durable recovery rather than orphan attempts, a quitting player must not retain Creative with restored items, and a failed spectator move must not lose their original mode. |
 
 ## Surprises & Discoveries
 
@@ -107,7 +108,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 87 tests.
+- `make ci-fast` passed on Java 21 with 88 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

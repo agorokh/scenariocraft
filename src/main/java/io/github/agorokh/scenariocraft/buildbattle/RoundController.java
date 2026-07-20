@@ -393,6 +393,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         boolean abandonedPlotEntry =
                 pendingPlotEntries.remove(player.getUniqueId());
         buildBossBar.removePlayer(player);
+        if (abandonedPlotEntry) {
+            finishBeginBuildingIfReady();
+        }
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null) {
             restoreContestantToHub(player, contestant);
@@ -400,9 +403,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         Spectator spectator = revealSpectators.get(player.getUniqueId());
         if (spectator != null) {
             restoreSpectator(player, spectator);
-        }
-        if (abandonedPlotEntry) {
-            finishBeginBuildingIfReady();
         }
     }
 
@@ -803,9 +803,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         restoreRoundPlayers();
         contestants.clear();
         revealSpectators.clear();
-        strandedArenaPlayers.clear();
-        teleportAttempts.clear();
-        expectedTeleportDestinations.clear();
         pendingPlotEntries.clear();
         awaitingPlotEntries = false;
         roundStarter = null;
@@ -1271,11 +1268,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void restoreSpectator(Player player, Spectator spectator) {
+        player.setGameMode(spectator.originalGameMode());
         teleport(
                 player,
                 spectator.originalLocation(),
-                () -> player.setGameMode(spectator.originalGameMode()),
-                () -> player.setGameMode(GameMode.ADVENTURE));
+                () -> {},
+                () -> player.setGameMode(spectator.originalGameMode()));
     }
 
     private void forEachOnlineContestant(OnlineContestantAction action) {
@@ -1578,6 +1576,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 if (!isCurrentTeleportAttempt(player, attempt)) {
                                     return;
                                 }
+                                if (playerReached(player, destination)) {
+                                    finishTeleportSuccess(
+                                            player, attempt, onSuccess);
+                                    return;
+                                }
                                 if (closed || !player.isOnline()) {
                                     reportTeleportFailure(
                                             player,
@@ -1586,11 +1589,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                             null,
                                             attempt,
                                             onFailure);
-                                    return;
-                                }
-                                if (playerReached(player, destination)) {
-                                    finishTeleportSuccess(
-                                            player, attempt, onSuccess);
                                     return;
                                 }
                                 try {
@@ -1654,27 +1652,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 if (!isCurrentTeleportAttempt(player, attempt)) {
                                     return;
                                 }
-                                if (closed) {
-                                    teleportAttempts.remove(
-                                            player.getUniqueId(), attempt);
-                                    expectedTeleportDestinations.remove(
-                                            player.getUniqueId());
-                                    strandedArenaPlayers.remove(player.getUniqueId());
-                                    return;
-                                }
-                                if (!player.isOnline()) {
-                                    reportTeleportFailure(
-                                            player,
-                                            destination,
-                                            "player disconnected before teleport confirmation",
-                                            null,
-                                            attempt,
-                                            onFailure);
-                                    return;
-                                }
                                 if (playerReached(player, destination)) {
                                     finishTeleportSuccess(
                                             player, attempt, onSuccess);
+                                    return;
+                                }
+                                if (closed || !player.isOnline()) {
+                                    reportTeleportFailure(
+                                            player,
+                                            destination,
+                                            closed
+                                                    ? "controller closed before teleport confirmation"
+                                                    : "player disconnected before teleport confirmation",
+                                            null,
+                                            attempt,
+                                            onFailure);
                                     return;
                                 }
                                 int nextDelayIndex = delayIndex + 1;
