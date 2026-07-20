@@ -39,6 +39,8 @@ session.
 | 2026-07-20 | Deny non-contestant edits and cancel fire spread, burn, and ignition throughout an active arena. | Bystanders and indirect fire events do not pass through ordinary contestant place/break policy, but they can still damage walls, caps, and builds. |
 | 2026-07-20 | Namespace vanilla `execute`/`tp`, emit plain decimal arguments, and verify the player's resulting location after every dispatch. | Command acceptance alone does not prove that an entity matched or moved; every caller now receives a real success/failure result without falling back to the forbidden direct teleport API. |
 | 2026-07-20 | Attempt hub extraction after inventory restoration regardless of decode, write, or save failure. | Physical round cleanup is a separate invariant from item recovery and must not be skipped by an inventory exception. |
+| 2026-07-20 | Keep the personal border cleared after a failed round-exit hub teleport, while retaining it for a failed in-round REVEAL move. | Round teardown removes the privacy requirement and must not leave a player permanently constrained after contestant state is cleared. |
+| 2026-07-20 | Cancel active-arena entity block changes and null-player hanging/entity placements. | Automated or entity-driven mutations do not have a contestant identity to evaluate, so they must be denied throughout an active arena. |
 
 ## Surprises & Discoveries
 
@@ -65,10 +67,17 @@ session.
   while failed reveal/restore moves retain Adventure mode and a contestant's personal border.
 - The reported missing cap-height budget was already covered by startup validation:
   `capY` must be below the arena world's exclusive maximum block height.
+- A claimed fire-based teardown path does not exist in this repository. Arena cleanup and
+  reset use the batched fill plan, so active-round fire cancellation does not interfere with
+  `/battle stop`.
+- Teleport verification failures emit the greppable
+  `SCENARIOCRAFT_TELEPORT_FAILURE` marker. Operators should run `/battle stop`, then use a
+  manual explicit-world teleport for any player named by the marker if the console command
+  subsystem remains unavailable.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 75 tests.
+- `make ci-fast` passed on Java 21 with 76 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

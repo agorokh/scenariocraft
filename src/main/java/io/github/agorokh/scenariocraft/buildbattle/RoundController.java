@@ -46,6 +46,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -465,9 +466,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler
     public void onContestantHangingPlace(HangingPlaceEvent event) {
         Player player = event.getPlayer();
-        if (player != null
-                && !mayContestantEdit(
-                        player, event.getBlock().getRelative(event.getBlockFace()))) {
+        Block placedBlock =
+                event.getBlock().getRelative(event.getBlockFace());
+        if (player == null
+                ? isActiveArenaBlock(placedBlock)
+                : !mayContestantEdit(player, placedBlock)) {
             event.setCancelled(true);
         }
     }
@@ -475,9 +478,18 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler
     public void onContestantEntityPlace(EntityPlaceEvent event) {
         Player player = event.getPlayer();
-        if (player != null
-                && !mayContestantEdit(
-                        player, event.getBlock().getRelative(event.getBlockFace()))) {
+        Block placedBlock =
+                event.getBlock().getRelative(event.getBlockFace());
+        if (player == null
+                ? isActiveArenaBlock(placedBlock)
+                : !mayContestantEdit(player, placedBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaEntityChangeBlock(EntityChangeBlockEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -875,8 +887,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
         resetPersonalBorder(player);
+        boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
+            inventoryRestored = true;
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -884,9 +898,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     failure);
             player.sendMessage(
                     "Your saved items need a grown-up helper before the next battle.");
+            player.setGameMode(GameMode.ADVENTURE);
         }
-        if (!teleport(player, hubLocation())) {
-            constrainContestantAfterFailedExit(player, contestant);
+        if (!teleport(player, hubLocation()) && !inventoryRestored) {
+            player.setGameMode(GameMode.ADVENTURE);
         }
     }
 
@@ -1056,7 +1071,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         String worldKey = world.getKey().toString();
         if (!COMMAND_WORLD_KEY.matcher(worldKey).matches()) {
             logger.severe(
-                    "Arena world key cannot be used in an explicit teleport command: "
+                    "SCENARIOCRAFT_TELEPORT_FAILURE invalid arena world key: "
                             + worldKey);
             player.sendMessage(
                     "The battle could not move you safely. Please ask a grown-up helper.");
@@ -1083,14 +1098,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 return true;
             }
             logger.severe(
-                    "Console teleport command did not move "
+                    "SCENARIOCRAFT_TELEPORT_FAILURE console command did not move "
                             + player.getName()
                             + " in "
                             + worldKey);
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
-                    "Console teleport failed for "
+                    "SCENARIOCRAFT_TELEPORT_FAILURE console dispatch failed for "
                             + player.getName()
                             + " in "
                             + world.getKey(),

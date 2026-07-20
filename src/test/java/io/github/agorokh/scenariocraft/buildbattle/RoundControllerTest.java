@@ -49,6 +49,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -365,10 +366,25 @@ class RoundControllerTest {
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertEquals(0.5, rig.lastTeleport.get().getX());
         assertEquals(0.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("saved items need")));
         rig.failSaveData.set(false);
+        rig.close();
+    }
+
+    @Test
+    void failedRoundExitTeleportDoesNotReapplyPersonalBorder() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         rig.close();
     }
 
@@ -796,6 +812,15 @@ class RoundControllerTest {
                         EquipmentSlot.HAND);
         rig.controller.onContestantHangingPlace(hangingPlace);
         assertTrue(hangingPlace.isCancelled());
+        HangingPlaceEvent automatedHangingPlace =
+                new HangingPlaceEvent(
+                        hanging,
+                        null,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantHangingPlace(automatedHangingPlace);
+        assertTrue(automatedHangingPlace.isCancelled());
 
         Entity entity =
                 proxy(
@@ -811,6 +836,15 @@ class RoundControllerTest {
                         EquipmentSlot.HAND);
         rig.controller.onContestantEntityPlace(entityPlace);
         assertTrue(entityPlace.isCancelled());
+        EntityPlaceEvent automatedEntityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        null,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(automatedEntityPlace);
+        assertTrue(automatedEntityPlace.isCancelled());
         rig.close();
     }
 
@@ -876,6 +910,11 @@ class RoundControllerTest {
                         rig.player);
         rig.controller.onArenaBlockIgnite(ignite);
         assertTrue(ignite.isCancelled());
+
+        EntityChangeBlockEvent entityChange =
+                new EntityChangeBlockEvent(entity, arenaBlock, null);
+        rig.controller.onArenaEntityChangeBlock(entityChange);
+        assertTrue(entityChange.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =
