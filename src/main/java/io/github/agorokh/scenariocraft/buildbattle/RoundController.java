@@ -424,7 +424,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (event.getAction() == Action.PHYSICAL) {
             Block clicked = event.getClickedBlock();
             if (clicked != null
-                    && isActiveArenaBlock(clicked)
                     && !mayContestantEdit(event.getPlayer(), clicked)) {
                 event.setCancelled(true);
             }
@@ -563,9 +562,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockIgnite(BlockIgniteEvent event) {
         Player player = event.getPlayer();
-        if (isActiveArenaBlock(event.getBlock())
-                && (player == null
-                        || !mayContestantEdit(player, event.getBlock()))) {
+        if (player == null
+                ? isActiveArenaBlock(event.getBlock())
+                : !mayContestantEdit(player, event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -667,9 +666,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityBlockForm(EntityBlockFormEvent event) {
-        if (isActiveArenaBlock(event.getBlock())
-                && (!(event.getEntity() instanceof Player player)
-                        || !mayContestantEdit(player, event.getBlock()))) {
+        if (event.getEntity() instanceof Player player
+                ? !mayContestantEdit(player, event.getBlock())
+                : isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -1104,14 +1103,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     }
                 },
                 () -> {
-                    resetPersonalBorder(player);
-                    player.setGameMode(GameMode.ADVENTURE);
                     strandedArenaPlayers.add(player.getUniqueId());
                     buildBossBar.removePlayer(player);
                     pendingPlotEntries.remove(player.getUniqueId());
                     if (phase() == RoundPhase.BUILDING
-                            || (phase() == RoundPhase.NOTE_PICK
-                                    && awaitingPlotEntries)) {
+                            && contestants.get(player.getUniqueId())
+                                    == contestant) {
+                        constrainContestantAfterFailedExit(player, contestant);
+                    } else {
+                        resetPersonalBorder(player);
+                        player.setGameMode(GameMode.ADVENTURE);
+                    }
+                    if (phase() == RoundPhase.NOTE_PICK
+                            && awaitingPlotEntries) {
                         plotEntryFailed = true;
                         if (!movingContestantsToPlots) {
                             abortAfterPlotEntryFailure();
@@ -1121,9 +1125,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void abortAfterPlotEntryFailure() {
-        if (phase() != RoundPhase.BUILDING
-                && !(phase() == RoundPhase.NOTE_PICK
-                        && awaitingPlotEntries)) {
+        if (phase() != RoundPhase.NOTE_PICK || !awaitingPlotEntries) {
             return;
         }
         awaitingPlotEntries = false;
@@ -1142,12 +1144,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void moveContestantToTour(Player player, Contestant contestant) {
         clearRoundInventory(player);
-        resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
                 player,
                 tourLocation(),
-                () -> {},
+                () -> resetPersonalBorder(player),
                 () -> {
                     if (phase() == RoundPhase.REVEAL
                             && contestants.get(player.getUniqueId()) == contestant) {
@@ -1707,12 +1708,23 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void retryStrandedExit(Player player) {
         GameMode recoveredGameMode = player.getGameMode();
         strandedArenaPlayers.add(player.getUniqueId());
-        persistTeleportRecovery(player);
         resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
+        Location destination = hubLocation();
+        if (playerReached(player, destination)) {
+            clearTeleportRecovery(player);
+            strandedArenaPlayers.remove(player.getUniqueId());
+            player.setGameMode(recoveredGameMode);
+            logger.info(
+                    "Cleared recovered hub marker for "
+                            + player.getName()
+                            + " after confirming they were already safe.");
+            return;
+        }
+        persistTeleportRecovery(player);
         teleport(
                 player,
-                hubLocation(),
+                destination,
                 () -> {
                     player.setGameMode(recoveredGameMode);
                     strandedArenaPlayers.remove(player.getUniqueId());

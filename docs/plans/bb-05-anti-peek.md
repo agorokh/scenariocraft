@@ -58,6 +58,7 @@ session.
 | 2026-07-20 | Extend teleport containment through the NOTE_PICK plot-entry wait; allow plot-local passive block formation and contestant-owned entity formation; document failed recovery-marker saves as volatile. | A confirmed early arrival must remain contained while peers are still moving, concrete powder should remain usable, and operators must know that a failed player-data save cannot survive restart. |
 | 2026-07-20 | Cancel leaf decay throughout the active arena. | Vanilla leaf decay is a distinct mutation event and must not erase contestant builds or bypass arena containment. |
 | 2026-07-20 | Cancel block fading throughout the active arena. | Melting ice or snow and drying farmland use a distinct fade event and must not erase contestant builds during a round. |
+| 2026-07-20 | Require the exact namespaced transport commands, contain failed BUILDING rejoins without aborting the round, preserve the plot border until reveal arrival, and apply stranded-player edit guards in IDLE. | The startup probe must match dispatch, one reconnect must not stop every builder, deferred reveal must not open a peek window, and containment must outlive the round phase. |
 
 ## Surprises & Discoveries
 
@@ -103,7 +104,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 84 tests.
+- `make ci-fast` passed on Java 21 with 86 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

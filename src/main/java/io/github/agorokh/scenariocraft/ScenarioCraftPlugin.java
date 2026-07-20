@@ -9,6 +9,7 @@ import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import java.util.Objects;
+import org.bukkit.command.CommandMap;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /** ScenarioCraft's Paper entry point. */
@@ -35,16 +36,7 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                             + "; lower wall-height by at least "
                             + (capY - arena.world().getMaxHeight() + 1));
         }
-        boolean executeAvailable =
-                getServer().getCommandMap().getCommand("minecraft:execute")
-                                != null
-                        || getServer().getCommandMap().getCommand("execute")
-                                != null;
-        boolean teleportAvailable =
-                getServer().getCommandMap().getCommand("minecraft:tp")
-                                != null
-                        || getServer().getCommandMap().getCommand("tp") != null;
-        if (!executeAvailable || !teleportAvailable) {
+        if (!requiredTeleportCommandsAvailable(getServer().getCommandMap())) {
             throw new IllegalStateException(
                     "ScenarioCraft requires the vanilla minecraft:execute and minecraft:tp console commands; restore them in the server command configuration before enabling the plugin");
         }
@@ -85,5 +77,10 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         if (blockEditor != null) {
             blockEditor.close();
         }
+    }
+
+    static boolean requiredTeleportCommandsAvailable(CommandMap commandMap) {
+        return commandMap.getCommand("minecraft:execute") != null
+                && commandMap.getCommand("minecraft:tp") != null;
     }
 }

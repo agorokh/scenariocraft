@@ -58,8 +58,8 @@ reduction.
 Controller-owned moves use explicit-world console teleports and verify the result on the
 server, including bounded confirmation after 1, 5, and 20 total ticks for chunk-loading or
 lifecycle delays. Startup fails fast if the vanilla `minecraft:execute` or `minecraft:tp`
-console command is missing; both plain and namespaced Bukkit registrations are accepted.
-Keep both commands available in server command configuration. A failed
+console command is missing; the exact namespaced registrations used for dispatch are
+required. Keep both commands available in server command configuration. A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
 `/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
@@ -70,9 +70,9 @@ pending receive another alert.
 
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 recovery marker fails, online operators receive a separate persistence alert; keep the
-server running and retry the player's hub return so player data can be saved again. Until
-that save succeeds, the in-memory containment does not survive a restart; manually contain
-the named player before any unavoidable restart.
+server running and have the named player reconnect so the hub return and player-data save
+are retried. Until that save succeeds, the in-memory containment does not survive a restart;
+manually contain the named player before any unavoidable restart.
 
 ## How this was built
 

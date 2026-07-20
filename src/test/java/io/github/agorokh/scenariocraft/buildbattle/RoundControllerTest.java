@@ -404,6 +404,35 @@ class RoundControllerTest {
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
         rig.controller.onContestantBlockBreak(strandedBreak);
         assertTrue(strandedBreak.isCancelled());
+        PlayerInteractEvent strandedPhysical =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.PHYSICAL,
+                        null,
+                        rig.blockAt(0, 1, -3),
+                        BlockFace.SELF,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(strandedPhysical);
+        assertTrue(strandedPhysical.isCancelled());
+        BlockIgniteEvent strandedIgnite =
+                new BlockIgniteEvent(
+                        rig.blockAt(0, 1, -3),
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.player);
+        rig.controller.onArenaBlockIgnite(strandedIgnite);
+        assertTrue(strandedIgnite.isCancelled());
+        BlockState strandedState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        EntityBlockFormEvent strandedForm =
+                new EntityBlockFormEvent(
+                        rig.player,
+                        rig.blockAt(0, 1, -3),
+                        strandedState);
+        rig.controller.onArenaEntityBlockForm(strandedForm);
+        assertTrue(strandedForm.isCancelled());
         rig.controller.onPlayerQuit(
                 new PlayerQuitEvent(
                         rig.player,
@@ -693,6 +722,7 @@ class RoundControllerTest {
         rig.ignoreTeleportCommand.set(true);
 
         rig.runTimerTick();
+        assertNotNull(rig.playerWorldBorder.get());
         rig.runDelayedTasks();
 
         assertEquals(RoundPhase.REVEAL, rig.controller.phase());
@@ -700,6 +730,26 @@ class RoundControllerTest {
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         assertEquals(plotLocation.getX(), rig.lastTeleport.get().getX());
         assertEquals(plotLocation.getZ(), rig.lastTeleport.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void failedBuildingRejoinStaysContainedWithoutAbortingRound() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.failTeleportDispatch.set(false);
+        rig.controller.stop(rig.player);
         rig.close();
     }
 
