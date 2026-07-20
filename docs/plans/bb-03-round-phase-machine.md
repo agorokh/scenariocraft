@@ -29,7 +29,7 @@ session.
 | --- | --- | --- |
 | 2026-07-19 | Keep the phase graph and countdown arithmetic in Paper-independent types, with the runtime controller translating their decisions into Bukkit effects. | The issue explicitly requires transition-table and timer-arithmetic unit tests, and pure logic makes every legal and illegal edge deterministic. |
 | 2026-07-19 | Treat `PREPARING` as asynchronous arena reset completion rather than a wall-clock phase, then drive all timed phases from one scheduler tick. | Arena edits remain behind BB-02's block budget, while the controller has one cancellable source of phase and warning events. |
-| 2026-07-19 | Snapshot each non-exempt online player's pre-round location and game mode, assign plots in stable join order, and retain assignments for reconnect handling. | Stop can restore participants cleanly, and reconnect behavior can be selected from the current phase without inventing a broader persistence system. |
+| 2026-07-19 | Snapshot each non-exempt online player's pre-round game mode, assign plots in stable case-insensitive player-name order, and retain assignments for reconnect handling. | The issue requires participants to return to the hub, while deterministic assignment and retained state make stop and reconnect behavior predictable without inventing a broader persistence system. |
 | 2026-07-19 | Reuse the arena editor for reveal by adding a pure, batched wall-removal plan rather than directly clearing walls. | The standing main-thread rule applies to wall dissolution just as it does to arena reset. |
 | 2026-07-19 | Use the first configured task as the temporary hardcoded round task. | BB-03 requires a hardcoded task string and explicitly excludes the task chest/deck interaction owned by BB-04. |
 | 2026-07-19 | Restore contestants during `PlayerQuitEvent`, while retaining their assignment until the round ends. | Paper can persist the safe hub/game-mode state before a disconnect or shutdown completes, and a player who rejoins during the same round can still receive the current phase state. |
@@ -55,6 +55,10 @@ session.
   reused short-phase countdown announcements. Resolution adds lifecycle and countdown
   regression coverage. A separate suggestion to let configured non-operators stop a round
   was rejected because issue #5 explicitly requires `/battle stop` to be admin-only.
+- Follow-up current-head review caught that restored reveal spectators still kept an
+  interactive game mode during the tour. Spectators now use Adventure mode until their
+  snapshotted state is restored. The same pass exposed stale plan wording about contestant
+  locations and assignment order; the Decision Log now matches the issue and implementation.
 
 ## Acceptance evidence
 

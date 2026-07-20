@@ -453,6 +453,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveSpectatorToTour(Player player, Spectator ignored) {
+        player.setGameMode(GameMode.ADVENTURE);
         player.teleport(tourLocation());
     }
 

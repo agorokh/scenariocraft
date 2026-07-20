@@ -152,6 +152,7 @@ class RoundControllerTest {
         GameMode originalGameMode = rig.spectatorGameMode.get();
 
         rig.advanceTo(RoundPhase.REVEAL);
+        assertEquals(GameMode.ADVENTURE, rig.spectatorGameMode.get());
         assertEquals(0.5, rig.spectatorLocation.get().getX());
         assertEquals(0.5, rig.spectatorLocation.get().getZ());
 
