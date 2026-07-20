@@ -635,7 +635,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     public void onContestantTeleport(PlayerTeleportEvent event) {
         Contestant contestant = contestants.get(event.getPlayer().getUniqueId());
         Location destination = event.getTo();
-        if (phase() != RoundPhase.BUILDING
+        boolean plotContainmentActive =
+                phase() == RoundPhase.BUILDING
+                        || (phase() == RoundPhase.NOTE_PICK
+                                && awaitingPlotEntries);
+        if (!plotContainmentActive
                 || contestant == null
                 || destination == null
                 || matchesExpectedTeleport(event.getPlayer(), destination)) {
@@ -653,14 +657,17 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockForm(BlockFormEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
+        if (isActiveArenaBlock(event.getBlock())
+                && !isEditableByAnyContestant(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityBlockForm(EntityBlockFormEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
+        if (isActiveArenaBlock(event.getBlock())
+                && (!(event.getEntity() instanceof Player player)
+                        || !mayContestantEdit(player, event.getBlock()))) {
             event.setCancelled(true);
         }
     }
@@ -1329,6 +1336,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                                 target.getX(),
                                                 target.getY(),
                                                 target.getZ()));
+    }
+
+    private boolean isEditableByAnyContestant(Block block) {
+        if (phase() != RoundPhase.BUILDING
+                || block.getWorld() != arena.world()) {
+            return false;
+        }
+        return contestants.values().stream()
+                .map(Contestant::boundary)
+                .anyMatch(
+                        boundary ->
+                                boundary.containsEditableBlock(
+                                        block.getX(),
+                                        block.getY(),
+                                        block.getZ()));
     }
 
     private boolean matchesExpectedTeleport(

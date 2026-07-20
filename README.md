@@ -42,9 +42,9 @@ The plugin jar is written to `build/libs/`.
 
 During an active Build Battle, ScenarioCraft protects the entire configured
 `battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, and
-entity-driven/block-form changes until the controller returns to `IDLE`. Contestant
-teleports during BUILDING are accepted only inside their assigned boundary (controller-owned
-phase moves are tracked explicitly). The plugin logs one
+entity-driven/block-form changes until the controller returns to `IDLE`. During plot entry
+and BUILDING, contestant teleports are accepted only inside their assigned boundary
+(controller-owned phase moves are tracked explicitly). The plugin logs one
 activation message when each round starts. Keep unrelated builds and minigames in a
 different world.
 
@@ -62,14 +62,16 @@ Keep both commands available in server command configuration. A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
 `/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
-containment. The recovery marker is stored with player data, so disable/reload cannot lose
-an unconfirmed exit. Verify that the player is at the hub with the default world border and can
+containment. Once its player-data save succeeds, the recovery marker survives disable/reload
+until the exit is confirmed. Verify that the player is at the hub with the default world border and can
 drop/pick up items before starting the next round. Operators who join while recovery is
 pending receive another alert.
 
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 recovery marker fails, online operators receive a separate persistence alert; keep the
-server running and retry the player's hub return so player data can be saved again.
+server running and retry the player's hub return so player data can be saved again. Until
+that save succeeds, the in-memory containment does not survive a restart; manually contain
+the named player before any unavoidable restart.
 
 ## How this was built
 

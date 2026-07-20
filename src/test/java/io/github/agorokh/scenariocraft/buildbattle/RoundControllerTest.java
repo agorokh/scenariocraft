@@ -741,6 +741,24 @@ class RoundControllerTest {
 
         rig.runTimerTick();
         assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        Location expectedPlotEntry =
+                new Location(rig.world, 0.5, 1.0, -2.5);
+        PlayerTeleportEvent controllerPlotEntry =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        expectedPlotEntry,
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(controllerPlotEntry);
+        assertFalse(controllerPlotEntry.isCancelled());
+        PlayerTeleportEvent outsideDuringPlotEntry =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(outsideDuringPlotEntry);
+        assertTrue(outsideDuringPlotEntry.isCancelled());
         rig.runNextDelayedTask();
         rig.applyTeleportCommand(rig.consoleCommands.getLast());
         rig.runNextDelayedTask();
@@ -1242,12 +1260,22 @@ class RoundControllerTest {
 
         BlockFormEvent blockForm = new BlockFormEvent(arenaBlock, blockState);
         rig.controller.onArenaBlockForm(blockForm);
-        assertTrue(blockForm.isCancelled());
+        assertFalse(blockForm.isCancelled());
 
         EntityBlockFormEvent entityBlockForm =
                 new EntityBlockFormEvent(entity, arenaBlock, blockState);
         rig.controller.onArenaEntityBlockForm(entityBlockForm);
         assertTrue(entityBlockForm.isCancelled());
+
+        EntityBlockFormEvent contestantBlockForm =
+                new EntityBlockFormEvent(rig.player, arenaBlock, blockState);
+        rig.controller.onArenaEntityBlockForm(contestantBlockForm);
+        assertFalse(contestantBlockForm.isCancelled());
+
+        BlockFormEvent outsideBlockForm =
+                new BlockFormEvent(rig.blockAt(1, 1, -3), blockState);
+        rig.controller.onArenaBlockForm(outsideBlockForm);
+        assertTrue(outsideBlockForm.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =
