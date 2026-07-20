@@ -34,14 +34,17 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -424,6 +427,33 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @EventHandler
+    public void onArenaBlockDispense(BlockDispenseEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onContestantHangingPlace(HangingPlaceEvent event) {
+        Player player = event.getPlayer();
+        if (player != null
+                && !mayContestantEdit(
+                        player, event.getBlock().getRelative(event.getBlockFace()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onContestantEntityPlace(EntityPlaceEvent event) {
+        Player player = event.getPlayer();
+        if (player != null
+                && !mayContestantEdit(
+                        player, event.getBlock().getRelative(event.getBlockFace()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
     public void onContestantBucketEmpty(PlayerBucketEmptyEvent event) {
         if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
             event.setCancelled(true);
@@ -776,13 +806,18 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.setGameMode(GameMode.CREATIVE);
         PlotBounds plot = contestant.plot();
         applyPersonalBorder(player, contestant);
-        teleport(
+        if (!teleport(
                 player,
                 new Location(
                         arena.world(),
                         plot.centerX() + 0.5,
                         arena.floorY() + 1.0,
-                        plot.centerZ() + 0.5));
+                        plot.centerZ() + 0.5))) {
+            resetPersonalBorder(player);
+            player.setGameMode(GameMode.ADVENTURE);
+            buildBossBar.removePlayer(player);
+            return;
+        }
         buildBossBar.addPlayer(player);
     }
 
@@ -971,7 +1006,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.setWorldBorder(null);
     }
 
-    private void teleport(Player player, Location destination) {
+    private boolean teleport(Player player, Location destination) {
         World world =
                 Objects.requireNonNull(
                         destination.getWorld(), "teleport destination world");
@@ -979,7 +1014,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 "execute in "
                         + world.getKey()
                         + " run tp "
-                        + player.getName()
+                        + player.getUniqueId()
                         + " "
                         + Double.toString(destination.getX())
                         + " "
@@ -992,7 +1027,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         + Float.toString(destination.getPitch());
         try {
             if (server.dispatchCommand(server.getConsoleSender(), command)) {
-                return;
+                return true;
             }
             logger.severe(
                     "Console teleport command was not accepted for "
@@ -1010,6 +1045,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         player.sendMessage(
                 "The battle could not move you safely. Please ask a grown-up helper.");
+        return false;
     }
 
     private Location tourLocation() {

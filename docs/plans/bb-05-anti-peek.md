@@ -34,6 +34,8 @@ session.
 | 2026-07-20 | Route controller-owned teleports through console-dispatched `execute in <dimension> run tp` commands. | This matches the issue contract and avoids player-context command aliases or implicit-world ambiguity. |
 | 2026-07-20 | Build the invisible barrier cap and remove it through the existing per-tick arena queue. | The cap must be a real vertical anti-peek boundary, but it must preserve the repository rule that arena block work is always budgeted. |
 | 2026-07-20 | Cancel active-arena explosions and pistons, validate every replaced block in multi-place events, and contain bucket/fluid changes within one editable plot. | `/review` exposed indirect mutations as a P1 bypass; covering the related event surfaces keeps the plot policy server-authoritative instead of relying on only ordinary place/break events. |
+| 2026-07-20 | Target console teleports by player UUID and roll back the personal border when dispatch fails. | UUIDs are safe Brigadier entity arguments, and a failed plot move must not strand a player outside a plot-sized client border. |
+| 2026-07-20 | Cancel dispensers throughout an active arena and apply the plot/phase policy to hanging and entity placements. | Dispenser effects and entity-backed decorations otherwise bypass ordinary block place events and can cross the assigned volume. |
 
 ## Surprises & Discoveries
 
@@ -48,10 +50,17 @@ session.
 - `/review` found that explosions and pistons could bypass the direct place/break policy.
   Those paths, multi-place events, buckets, and cross-boundary fluid flow now have regression
   coverage.
+- External review correctly identified console target hardening, failed-teleport border
+  rollback, and entity-backed placement gaps. Its direct `Player.teleport` fallback conflicted
+  with the issue's explicit console-only contract, so the failure remains visible and safe
+  instead of silently changing transport mechanisms.
+- The reported vertical look-over gap was a coordinate misunderstanding: a wall block at
+  `maxBuildY` occupies space through `maxBuildY + 1`, exactly where the barrier roof begins.
+  The existing local-server evidence therefore remains valid without changing build height.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 69 tests.
+- `make ci-fast` passed on Java 21 with 71 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit `execute in minecraft:battle_world run tp ...`
   console commands.

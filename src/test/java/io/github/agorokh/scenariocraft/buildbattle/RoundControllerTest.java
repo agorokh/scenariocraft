@@ -33,19 +33,23 @@ import org.bukkit.block.BlockState;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
-import org.bukkit.entity.Item;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Hanging;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -61,6 +65,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 import org.junit.jupiter.api.Test;
 
 class RoundControllerTest {
@@ -540,6 +545,24 @@ class RoundControllerTest {
     }
 
     @Test
+    void failedPlotTeleportRestoresDefaultBorderAndAdventureMode() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(0, rig.bossbarPlayers.get());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        rig.close();
+    }
+
+    @Test
     void adminStopRestoresWorldDefaultBorderDuringBuilding() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
@@ -668,6 +691,50 @@ class RoundControllerTest {
     }
 
     @Test
+    void dispensersAndPlacedEntitiesCannotBypassPlotProtection() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Block insidePlot = rig.blockAt(0, 1, -3);
+
+        BlockDispenseEvent dispense =
+                new BlockDispenseEvent(
+                        insidePlot, new EmptyItemStack(), new Vector());
+        rig.controller.onArenaBlockDispense(dispense);
+        assertTrue(dispense.isCancelled());
+
+        Hanging hanging =
+                proxy(
+                        Hanging.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        HangingPlaceEvent hangingPlace =
+                new HangingPlaceEvent(
+                        hanging,
+                        rig.player,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantHangingPlace(hangingPlace);
+        assertTrue(hangingPlace.isCancelled());
+
+        Entity entity =
+                proxy(
+                        Entity.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        EntityPlaceEvent entityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        rig.player,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(entityPlace);
+        assertTrue(entityPlace.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void activeArenaCancelsIndirectExplosionAndPistonMutations() {
         TestRig rig = new TestRig();
         Block arenaBlock = rig.blockAt(0, 1, -3);
@@ -730,6 +797,7 @@ class RoundControllerTest {
         private final AtomicBoolean failSaveData = new AtomicBoolean();
         private final AtomicBoolean failRunTask = new AtomicBoolean();
         private final AtomicBoolean failTaskBookPlacement = new AtomicBoolean();
+        private final AtomicBoolean failTeleportDispatch = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -764,6 +832,10 @@ class RoundControllerTest {
         private final List<String> consoleCommands = new ArrayList<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
+        private final UUID playerId =
+                UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
+        private final UUID spectatorId =
+                UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
         private final World world;
         private final PlayerInventory playerInventory;
         private final Inventory enderChest;
@@ -855,7 +927,6 @@ class RoundControllerTest {
             persistentDataContainer = trackedPersistentData(persistentData);
             spectatorPersistentDataContainer =
                     trackedPersistentData(spectatorPersistentData);
-            UUID playerId = UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
             player =
                     proxy(
                             Player.class,
@@ -915,7 +986,6 @@ class RoundControllerTest {
                                         }
                                         default -> defaultValue(method.getReturnType());
                                     });
-            UUID spectatorId = UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
             spectatorLocation.set(new Location(world, 40.5, 8.0, -12.5));
             spectator =
                     proxy(
@@ -1020,6 +1090,9 @@ class RoundControllerTest {
                                         case "dispatchCommand" -> {
                                             String command = (String) arguments[1];
                                             consoleCommands.add(command);
+                                            if (failTeleportDispatch.get()) {
+                                                yield false;
+                                            }
                                             applyTeleportCommand(command);
                                             yield true;
                                         }
@@ -1087,7 +1160,9 @@ class RoundControllerTest {
             assertEquals(11, parts.length);
             assertEquals("execute", parts[0]);
             assertEquals("in", parts[1]);
-            assertEquals("minecraft:battle_world", parts[2]);
+            assertEquals(
+                    new NamespacedKey("minecraft", ArenaWorldService.WORLD_NAME).toString(),
+                    parts[2]);
             assertEquals("run", parts[3]);
             assertEquals("tp", parts[4]);
             Location destination =
@@ -1098,11 +1173,11 @@ class RoundControllerTest {
                             Double.parseDouble(parts[8]),
                             Float.parseFloat(parts[9]),
                             Float.parseFloat(parts[10]));
-            if (parts[5].equals("BuilderKid")) {
+            if (parts[5].equals(playerId.toString())) {
                 lastTeleport.set(destination);
                 return;
             }
-            assertEquals("Parent", parts[5]);
+            assertEquals(spectatorId.toString(), parts[5]);
             spectatorLocation.set(destination);
         }
 
@@ -1115,6 +1190,13 @@ class RoundControllerTest {
                                 case "getX" -> x;
                                 case "getY" -> y;
                                 case "getZ" -> z;
+                                case "getRelative" -> {
+                                    BlockFace face = (BlockFace) arguments[0];
+                                    yield blockAt(
+                                            x + face.getModX(),
+                                            y + face.getModY(),
+                                            z + face.getModZ());
+                                }
                                 default -> defaultValue(method.getReturnType());
                             });
         }
