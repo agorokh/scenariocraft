@@ -33,6 +33,7 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -44,6 +45,7 @@ import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFertilizeEvent;
+import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
@@ -51,6 +53,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -62,6 +65,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
@@ -99,6 +103,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
     private final Set<UUID> strandedArenaPlayers = new LinkedHashSet<>();
     private final Map<UUID, Long> teleportAttempts = new LinkedHashMap<>();
+    private final Map<UUID, Location> expectedTeleportDestinations =
+            new LinkedHashMap<>();
     private final Set<UUID> pendingPlotEntries = new LinkedHashSet<>();
     private final NamespacedKey inventorySnapshotKey;
     private final NamespacedKey teleportRecoveryKey;
@@ -617,7 +623,44 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityChangeBlock(EntityChangeBlockEvent event) {
         if (isActiveArenaBlock(event.getBlock())
-                && !isEditableByAnyContestant(event.getBlock())) {
+                && (!(event.getEntity() instanceof FallingBlock fallingBlock)
+                        || !isSameEditablePlot(
+                                fallingBlock.getSourceLoc(),
+                                event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onContestantTeleport(PlayerTeleportEvent event) {
+        Contestant contestant = contestants.get(event.getPlayer().getUniqueId());
+        Location destination = event.getTo();
+        if (phase() != RoundPhase.BUILDING
+                || contestant == null
+                || destination == null
+                || matchesExpectedTeleport(event.getPlayer(), destination)) {
+            return;
+        }
+        if (destination.getWorld() != arena.world()
+                || !contestant.boundary()
+                        .containsEditableBlock(
+                                destination.getBlockX(),
+                                destination.getBlockY(),
+                                destination.getBlockZ())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onArenaBlockForm(BlockFormEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onArenaEntityBlockForm(EntityBlockFormEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -689,6 +732,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         revealSpectators.clear();
         strandedArenaPlayers.clear();
         teleportAttempts.clear();
+        expectedTeleportDestinations.clear();
         pendingPlotEntries.clear();
         awaitingPlotEntries = false;
         roundStarter = null;
@@ -1266,9 +1310,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return false;
     }
 
-    private boolean isEditableByAnyContestant(Block block) {
+    private boolean isSameEditablePlot(Location source, Block target) {
         if (phase() != RoundPhase.BUILDING
-                || block.getWorld() != arena.world()) {
+                || source == null
+                || source.getWorld() != arena.world()
+                || target.getWorld() != arena.world()) {
             return false;
         }
         return contestants.values().stream()
@@ -1276,9 +1322,27 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 .anyMatch(
                         boundary ->
                                 boundary.containsEditableBlock(
-                                        block.getX(),
-                                        block.getY(),
-                                        block.getZ()));
+                                                source.getBlockX(),
+                                                source.getBlockY(),
+                                                source.getBlockZ())
+                                        && boundary.containsEditableBlock(
+                                                target.getX(),
+                                                target.getY(),
+                                                target.getZ()));
+    }
+
+    private boolean matchesExpectedTeleport(
+            Player player, Location destination) {
+        Location expected =
+                expectedTeleportDestinations.get(player.getUniqueId());
+        return expected != null
+                && expected.getWorld() == destination.getWorld()
+                && Math.abs(expected.getX() - destination.getX())
+                        <= TELEPORT_CONFIRMATION_EPSILON
+                && Math.abs(expected.getY() - destination.getY())
+                        <= TELEPORT_CONFIRMATION_EPSILON
+                && Math.abs(expected.getZ() - destination.getZ())
+                        <= TELEPORT_CONFIRMATION_EPSILON;
     }
 
     private void applyPersonalBorder(Player player, Contestant contestant) {
@@ -1310,6 +1374,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             Runnable onFailure) {
         long attempt = ++nextTeleportAttempt;
         teleportAttempts.put(player.getUniqueId(), attempt);
+        expectedTeleportDestinations.put(
+                player.getUniqueId(), destination.clone());
         World world =
                 Objects.requireNonNull(
                         destination.getWorld(), "teleport destination world");
@@ -1466,6 +1532,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 if (closed) {
                                     teleportAttempts.remove(
                                             player.getUniqueId(), attempt);
+                                    expectedTeleportDestinations.remove(
+                                            player.getUniqueId());
                                     strandedArenaPlayers.remove(player.getUniqueId());
                                     return;
                                 }
@@ -1526,6 +1594,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (!teleportAttempts.remove(player.getUniqueId(), attempt)) {
             return;
         }
+        expectedTeleportDestinations.remove(player.getUniqueId());
         strandedArenaPlayers.remove(player.getUniqueId());
         clearTeleportRecovery(player);
         onSuccess.run();
@@ -1534,6 +1603,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void finishTeleportFailure(
             Player player, long attempt, Runnable onFailure) {
         if (teleportAttempts.remove(player.getUniqueId(), attempt)) {
+            expectedTeleportDestinations.remove(player.getUniqueId());
             onFailure.run();
         }
     }

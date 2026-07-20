@@ -54,6 +54,7 @@ session.
 | 2026-07-20 | Keep NOTE_PICK as the holding phase until every online contestant's plot arrival is confirmed; allow player ignition and gravity settlement only inside an editable plot. | Build time and Creative controls must not begin on dispatch alone, while valid fire, portal, sand, gravel, concrete-powder, and anvil builds should work without opening out-of-plot mutation paths. |
 | 2026-07-20 | Retry a rejected console dispatch once and retry saving an existing recovery marker on every recovery attempt. | A transient command-registry edge should not abort immediately, and a player-data save failure must remain operator-visible and get another durability attempt on rejoin/recovery. |
 | 2026-07-20 | Remove disconnecting players from the plot-entry wait set and route NOTE_PICK rejoins back to their plot while confirmations are pending. | A superseded attempt must not leave a stale UUID that softlocks BUILDING, and a returning contestant must not be confirmed at the hub. |
+| 2026-07-20 | Allow only same-plot `FallingBlock` settlement, reject contestant teleports outside their boundary during BUILDING, and cancel active-arena block formation. | Gravity builds need their source and target validated together; chorus fruit and similar server teleports can cross solid walls; Frost Walker, weather, and freezing must not bypass the mutation policy. |
 
 ## Surprises & Discoveries
 

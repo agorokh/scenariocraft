@@ -35,6 +35,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Hanging;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
@@ -44,6 +45,7 @@ import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFertilizeEvent;
+import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
@@ -51,6 +53,7 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -62,6 +65,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
@@ -866,6 +870,25 @@ class RoundControllerTest {
         rig.controller.onContestantBlockBreak(insideBreak);
         assertFalse(insideBreak.isCancelled());
 
+        Location plotLocation = rig.lastTeleport.get().clone();
+        PlayerTeleportEvent insideTeleport =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        plotLocation,
+                        plotLocation.clone().add(0.1, 0.0, 0.1),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(insideTeleport);
+        assertFalse(insideTeleport.isCancelled());
+
+        PlayerTeleportEvent outsideTeleport =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        plotLocation,
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(outsideTeleport);
+        assertTrue(outsideTeleport.isCancelled());
+
         Block outsidePlot = rig.blockAt(1, 1, -3);
         BlockBreakEvent outsideBreak = new BlockBreakEvent(outsidePlot, rig.player);
         rig.controller.onContestantBlockBreak(outsideBreak);
@@ -1196,13 +1219,35 @@ class RoundControllerTest {
         EntityChangeBlockEvent entityChange =
                 new EntityChangeBlockEvent(entity, arenaBlock, null);
         rig.controller.onArenaEntityChangeBlock(entityChange);
-        assertFalse(entityChange.isCancelled());
+        assertTrue(entityChange.isCancelled());
+
+        FallingBlock fallingBlock =
+                proxy(
+                        FallingBlock.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getSourceLoc")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityChangeBlockEvent inPlotFallingChange =
+                new EntityChangeBlockEvent(
+                        fallingBlock, arenaBlock, null);
+        rig.controller.onArenaEntityChangeBlock(inPlotFallingChange);
+        assertFalse(inPlotFallingChange.isCancelled());
 
         EntityChangeBlockEvent outsideEntityChange =
                 new EntityChangeBlockEvent(
                         entity, rig.blockAt(1, 1, -3), null);
         rig.controller.onArenaEntityChangeBlock(outsideEntityChange);
         assertTrue(outsideEntityChange.isCancelled());
+
+        BlockFormEvent blockForm = new BlockFormEvent(arenaBlock, blockState);
+        rig.controller.onArenaBlockForm(blockForm);
+        assertTrue(blockForm.isCancelled());
+
+        EntityBlockFormEvent entityBlockForm =
+                new EntityBlockFormEvent(entity, arenaBlock, blockState);
+        rig.controller.onArenaEntityBlockForm(entityBlockForm);
+        assertTrue(entityBlockForm.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =

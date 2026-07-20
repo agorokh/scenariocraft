@@ -42,7 +42,9 @@ The plugin jar is written to `build/libs/`.
 
 During an active Build Battle, ScenarioCraft protects the entire configured
 `battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, and
-entity-driven block changes until the controller returns to `IDLE`. The plugin logs one
+entity-driven/block-form changes until the controller returns to `IDLE`. Contestant
+teleports during BUILDING are accepted only inside their assigned boundary (controller-owned
+phase moves are tracked explicitly). The plugin logs one
 activation message when each round starts. Keep unrelated builds and minigames in a
 different world.
 
