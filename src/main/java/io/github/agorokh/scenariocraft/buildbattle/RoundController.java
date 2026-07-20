@@ -17,7 +17,6 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.IntUnaryOperator;
-import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -36,6 +35,8 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Event.Result;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -80,6 +81,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int MAX_SNAPSHOT_SECTION_BYTES = 4 * 1024 * 1024;
     private static final int MAX_SNAPSHOT_SLOTS = 128;
     private static final double TELEPORT_CONFIRMATION_EPSILON = 1.0E-6;
+    private static final long[] TELEPORT_CONFIRMATION_DELAYS = {1L, 4L, 15L};
     private static final Pattern COMMAND_WORLD_KEY =
             Pattern.compile("[a-z0-9._-]+:[a-z0-9/._-]+");
 
@@ -92,7 +94,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final PickerSelector pickerSelector;
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
-    private final Predicate<Material> blockMaterial;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
@@ -127,8 +128,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 blockEditor,
                 logger,
                 bound -> ThreadLocalRandom.current().nextInt(bound),
-                ignored -> placeTaskBook(arena),
-                Material::isBlock);
+                ignored -> placeTaskBook(arena));
     }
 
     RoundController(
@@ -138,8 +138,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             BatchedBlockEditor blockEditor,
             Logger logger,
             IntUnaryOperator randomIndex,
-            Consumer<String> taskBookPlacer,
-            Predicate<Material> blockMaterial) {
+            Consumer<String> taskBookPlacer) {
         Objects.requireNonNull(plugin, "plugin");
         this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
@@ -150,7 +149,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.pickerSelector = new PickerSelector(randomIndex);
         this.taskDeck = new TaskDeck(settings.tasks(), randomIndex);
         this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
-        this.blockMaterial = Objects.requireNonNull(blockMaterial, "blockMaterial");
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
         this.teleportRecoveryKey =
@@ -327,7 +325,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         logger.info("Round stopped from " + stoppedPhase + " and returned to IDLE.");
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         notifyJoiningOperatorOfPendingTeleportFailures(player);
@@ -369,7 +367,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         buildBossBar.removePlayer(player);
@@ -383,7 +381,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerDropItem(PlayerDropItemEvent event) {
         UUID playerId = event.getPlayer().getUniqueId();
         if ((phase() != RoundPhase.IDLE && contestants.containsKey(playerId))
@@ -393,7 +391,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEntityPickupItem(EntityPickupItemEvent event) {
         if (event.getEntity() instanceof Player player) {
             UUID playerId = player.getUniqueId();
@@ -406,7 +404,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerInteract(PlayerInteractEvent event) {
         if (event.getAction() == Action.PHYSICAL) {
             Block clicked = event.getClickedBlock();
@@ -425,15 +423,20 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         if (!isSecretChest(clicked)) {
-            ItemStack item = event.getItem();
-            boolean editablePlacementTarget =
-                    item != null
-                            && blockMaterial.test(item.getType())
-                            && mayContestantEdit(
-                                    event.getPlayer(),
-                                    clicked.getRelative(event.getBlockFace()));
-            if (!mayContestantEdit(event.getPlayer(), clicked)
-                    && !editablePlacementTarget) {
+            boolean editableClickedBlock =
+                    mayContestantEdit(event.getPlayer(), clicked);
+            boolean editableAdjacentBlock =
+                    mayContestantEdit(
+                            event.getPlayer(),
+                            clicked.getRelative(event.getBlockFace()));
+            if (!editableClickedBlock) {
+                event.setUseInteractedBlock(Result.DENY);
+            }
+            if (!editableClickedBlock
+                    && editableAdjacentBlock
+                    && event.useItemInHand() != Result.DENY) {
+                event.setUseItemInHand(Result.ALLOW);
+            } else if (!editableClickedBlock) {
                 event.setCancelled(true);
             }
             return;
@@ -486,7 +489,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onSecretChestBreak(BlockBreakEvent event) {
         if (!isSecretChest(event.getBlock())) {
             return;
@@ -497,7 +500,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         "That secret chest is part of the game, so it stays right here!");
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantBlockBreak(BlockBreakEvent event) {
         if (isSecretChest(event.getBlock())) {
             return;
@@ -507,7 +510,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantBlockPlace(BlockPlaceEvent event) {
         boolean mayPlace =
                 event instanceof BlockMultiPlaceEvent multiPlace
@@ -521,35 +524,35 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockDispense(BlockDispenseEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockSpread(BlockSpreadEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockBurn(BlockBurnEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockIgnite(BlockIgniteEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockFertilize(BlockFertilizeEvent event) {
         Player player = event.getPlayer();
         if (event.getBlocks().stream()
@@ -563,7 +566,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaStructureGrow(StructureGrowEvent event) {
         Player player = event.getPlayer();
         if (event.getBlocks().stream()
@@ -577,7 +580,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantHangingPlace(HangingPlaceEvent event) {
         Player player = event.getPlayer();
         Block placedBlock =
@@ -589,7 +592,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantEntityPlace(EntityPlaceEvent event) {
         Player player = event.getPlayer();
         Block placedBlock =
@@ -601,28 +604,28 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityChangeBlock(EntityChangeBlockEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantBucketEmpty(PlayerBucketEmptyEvent event) {
         if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantBucketFill(PlayerBucketFillEvent event) {
         if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaFluidFlow(BlockFromToEvent event) {
         if (isActiveArenaBlock(event.getBlock())
                 && !mayFluidFlow(event.getBlock(), event.getToBlock())) {
@@ -630,14 +633,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockExplode(BlockExplodeEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityExplode(EntityExplodeEvent event) {
         if (phase() != RoundPhase.IDLE
                 && event.getLocation().getWorld() == arena.world()) {
@@ -645,14 +648,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaPistonExtend(BlockPistonExtendEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaPistonRetract(BlockPistonRetractEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
@@ -1285,6 +1288,32 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 finishTeleportSuccess(player, attempt, onSuccess);
                 return;
             }
+            scheduleTeleportConfirmation(
+                    player,
+                    destination,
+                    attempt,
+                    onSuccess,
+                    onFailure,
+                    0);
+        } catch (RuntimeException failure) {
+            reportTeleportFailure(
+                    player,
+                    destination,
+                    "console dispatch or verification scheduling failed",
+                    failure,
+                    attempt,
+                    onFailure);
+        }
+    }
+
+    private void scheduleTeleportConfirmation(
+            Player player,
+            Location destination,
+            long attempt,
+            Runnable onSuccess,
+            Runnable onFailure,
+            int delayIndex) {
+        try {
             server.getScheduler()
                     .runTaskLater(
                             plugin,
@@ -1313,20 +1342,32 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                             player, attempt, onSuccess);
                                     return;
                                 }
+                                int nextDelayIndex = delayIndex + 1;
+                                if (nextDelayIndex
+                                        < TELEPORT_CONFIRMATION_DELAYS.length) {
+                                    scheduleTeleportConfirmation(
+                                            player,
+                                            destination,
+                                            attempt,
+                                            onSuccess,
+                                            onFailure,
+                                            nextDelayIndex);
+                                    return;
+                                }
                                 reportTeleportFailure(
                                         player,
                                         destination,
-                                        "console command did not move the player after one tick",
+                                        "console command did not move the player after 20 ticks",
                                         null,
                                         attempt,
                                         onFailure);
                             },
-                            1L);
+                            TELEPORT_CONFIRMATION_DELAYS[delayIndex]);
         } catch (RuntimeException failure) {
             reportTeleportFailure(
                     player,
                     destination,
-                    "console dispatch or verification scheduling failed",
+                    "teleport verification scheduling failed",
                     failure,
                     attempt,
                     onFailure);

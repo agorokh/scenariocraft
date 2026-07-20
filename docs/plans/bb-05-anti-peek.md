@@ -44,12 +44,13 @@ session.
 | 2026-07-20 | Extend each barrier roof across the outer wall footprint and remove that full footprint during REVEAL. | Covering the wall ring closes the last overhead line around the plot perimeter without changing the contestant's editable volume. |
 | 2026-07-20 | Track contestants whose round-exit teleport fails and continue denying their arena edits without restoring a personal border. | An IDLE phase must not turn a failed extraction into permission to edit the arena, while teardown must still release the client-side privacy constraint. |
 | 2026-07-20 | Apply plot permission to non-secret right-click block interactions and notify every online operator when a controller teleport fails. | Tool transformations can mutate blocks without a place event, and an operator-visible alert makes manual recovery actionable immediately. |
-| 2026-07-20 | Permit block-item interactions when the clicked face's placement target is editable, while keeping tool transformations subject to the clicked-block policy. | First-block placement commonly clicks the protected plot floor or wall, so the interaction guard must distinguish the eventual placement target from the transformed block. |
-| 2026-07-20 | Confirm handled-but-not-yet-observed console teleports one tick later before applying failure containment. | Cross-chunk and player lifecycle edges can defer the authoritative location update; callers now receive success or failure only after a server-state confirmation. |
+| 2026-07-20 | Deny use of a protected clicked block while allowing the held item to act on an editable face-relative target. | First-block placement, buckets, redstone, and entity attachments commonly click the protected plot floor or wall; Bukkit's split interaction result blocks tool transformations without suppressing their dedicated placement events. |
+| 2026-07-20 | Confirm handled-but-not-yet-observed console teleports after 1, 5, and 20 total ticks before applying failure containment. | Cross-chunk and player lifecycle edges can defer the authoritative location update; callers now receive a bounded success/failure result without misclassifying ordinary slow loads. |
 | 2026-07-20 | Freeze each contestant's `PlotBoundary` at round preparation and clear failed-exit containment on confirmed controller moves, close, and new participation. | Logical edit and border geometry must stay aligned with the already-built walls, and recovery state must not leak into another world or round. An unconfirmed disconnect retains containment until rejoin retries the hub return. |
 | 2026-07-20 | Mark round exits contained before dispatch, and keep plot entrants in Adventure without a personal border until the destination is confirmed. | Deferred verification must not create an IDLE edit window or apply a distant plot-centered border to a player who remains at the hub. Failed plot entry aborts the round safely. |
 | 2026-07-20 | Apply the plot policy to fertilization and structure growth. | Bone meal and trees can change multiple blocks beyond the interacted block, so every resulting block must stay inside the assigned editable volume. |
 | 2026-07-20 | Persist an unconfirmed-exit recovery marker in player data until a hub arrival is authoritative, and guard physical block interactions. | Reload must not erase containment after inventory restoration, and spectator farmland trampling must follow the same active-arena policy as other mutations. |
+| 2026-07-20 | Run mutation guards at `HIGHEST` while ignoring already-cancelled events, require vanilla teleport commands at startup, and keep adjacent-item use separate from clicked-block use. | ScenarioCraft should be final among normal protection listeners without reviving their denials, fail before a live round if its transport commands are missing, and allow buckets/redstone/attachments into editable space without permitting tool transforms on the protected floor or wall. |
 
 ## Surprises & Discoveries
 
@@ -81,8 +82,8 @@ session.
   `/battle stop`.
 - Vanilla command dispatch is synchronous, but the player's authoritative location may still
   settle later around chunk or lifecycle edges. Immediate successes are accepted; an
-  unobserved handled command receives one scheduled tick of confirmation before any caller
-  applies failure containment.
+  unobserved handled command receives bounded checks after 1, 5, and 20 total ticks before
+  any caller applies failure containment.
 - Teleport verification failures emit the greppable
   `SCENARIOCRAFT_TELEPORT_FAILURE` marker. Operators should run `/battle stop`, then use a
   manual explicit-world teleport for any player named by the marker if the console command
@@ -95,7 +96,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 81 tests.
+- `make ci-fast` passed on Java 21 with 82 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

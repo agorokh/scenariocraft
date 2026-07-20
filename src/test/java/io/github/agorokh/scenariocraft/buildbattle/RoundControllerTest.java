@@ -719,6 +719,32 @@ class RoundControllerTest {
     }
 
     @Test
+    void plotTeleportMaySettleAtTheFiveTickConfirmation() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        long alertsBefore =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+
+        rig.runTimerTick();
+        rig.runNextDelayedTask();
+        rig.applyTeleportCommand(rig.consoleCommands.getLast());
+        rig.runNextDelayedTask();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(
+                alertsBefore,
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count());
+        rig.close();
+    }
+
+    @Test
     void deferredRoundExitIsContainedBeforeReturningToIdle() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
@@ -894,14 +920,19 @@ class RoundControllerTest {
                 new PlayerInteractEvent(
                         rig.player,
                         Action.RIGHT_CLICK_BLOCK,
-                        new BlockItemStack(),
+                        null,
                         floor,
                         BlockFace.UP,
                         EquipmentSlot.HAND);
 
         rig.controller.onPlayerInteract(placementInteraction);
 
-        assertFalse(placementInteraction.isCancelled());
+        assertEquals(
+                org.bukkit.event.Event.Result.DENY,
+                placementInteraction.useInteractedBlock());
+        assertEquals(
+                org.bukkit.event.Event.Result.ALLOW,
+                placementInteraction.useItemInHand());
         rig.close();
     }
 
@@ -1471,8 +1502,7 @@ class RoundControllerTest {
                                             "test cosmetic book failure");
                                 }
                                 placedTask.set(prompt);
-                            },
-                            ignored -> true);
+                            });
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
@@ -1580,6 +1610,10 @@ class RoundControllerTest {
             }
         }
 
+        private void runNextDelayedTask() {
+            delayedTasks.removeFirst().run();
+        }
+
         private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
             return chestInteraction(interactingPlayer, EquipmentSlot.HAND);
         }
@@ -1680,22 +1714,6 @@ class RoundControllerTest {
         @Override
         public byte[] serializeAsBytes() {
             throw new AssertionError("empty item stacks must not be serialized");
-        }
-    }
-
-    private static final class BlockItemStack extends ItemStack {
-        private BlockItemStack() {
-            super();
-        }
-
-        @Override
-        public Material getType() {
-            return Material.STONE;
-        }
-
-        @Override
-        public boolean isEmpty() {
-            return false;
         }
     }
 

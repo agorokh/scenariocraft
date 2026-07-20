@@ -1,4 +1,6 @@
 # Arena geometry and block-edit budget
+# ScenarioCraft also requires vanilla minecraft:execute and minecraft:tp to
+# remain available to the server console; plugin startup fails if either is missing.
 plot-size: 33
 # The roof occupies floor-y + wall-height + 1; that Y must stay below the
 # battle world's exclusive maximum height. The startup error gives the exact
