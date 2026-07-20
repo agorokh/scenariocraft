@@ -1,6 +1,8 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.google.gson.JsonObject;
@@ -8,6 +10,7 @@ import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -120,6 +123,35 @@ class RoundExportWriterTest {
         assertTrue(voxels.blocks().isEmpty());
         assertEquals(1, manifest.plots().size());
         assertEquals(List.of(2, 0, 2), manifest.plots().getFirst().size());
+    }
+
+    @Test
+    void unsupportedAtomicMoveFailsWithoutExposingTheFinalRoundDirectory() throws IOException {
+        Path roundsDirectory = temporaryDirectory.resolve("rounds");
+        RoundExportRequest.Plot metadata =
+                new RoundExportRequest.Plot("p1", "KidAva", 0, 64, 0, 1, 1, 1);
+        RoundSnapshot snapshot =
+                new RoundSnapshot(
+                        "round-20260720-204209",
+                        "Pirate ship",
+                        "battle_world",
+                        List.of(
+                                new RoundSnapshot.Plot(
+                                        metadata, List.of("minecraft:oak_planks"))));
+        RoundExportWriter writer =
+                new RoundExportWriter(
+                        roundsDirectory,
+                        (source, target) -> {
+                            throw new AtomicMoveNotSupportedException(
+                                    source.toString(), target.toString(), "test filesystem");
+                        });
+
+        assertThrows(AtomicMoveNotSupportedException.class, () -> writer.write(snapshot));
+
+        assertFalse(Files.exists(roundsDirectory.resolve(snapshot.roundId())));
+        try (var paths = Files.list(roundsDirectory)) {
+            assertTrue(paths.findAny().isEmpty());
+        }
     }
 
     private static JsonObject schema(String name) throws IOException {

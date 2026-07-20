@@ -20,6 +20,8 @@ contract that cannot change after merge without a schema bump.
 - [x] Complete `/review` and resolve P1 findings.
 - [x] Resolve external lifecycle review by canceling mutable snapshots before abort reset and
       blocking new rounds during immutable writes (2026-07-20).
+- [x] Resolve final-head failure-path review by canceling partial chunk loads and requiring
+      atomic final-directory publication (2026-07-20).
 - [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -36,6 +38,7 @@ session.
 | 2026-07-20 | Load every source chunk asynchronously and hold plugin chunk tickets while the per-tick snapshot is read. Start export after reveal-wall removal completes so the editor and exporter never compete for the same plugin-owned ticket. | A bounded `getBlockAt` loop is not watchdog-safe if its first access synchronously loads an unloaded chunk, and Bukkit plugin tickets are not reference-counted between two services using the same plugin. |
 | 2026-07-20 | Export contestant plots, not the controller's extra debug/practice plots. | The manifest's `player` field identifies builds that the renderer and judge should process; an unowned debug plot is arena capacity, not a contestant submission. |
 | 2026-07-20 | Cancel mutable snapshot work when a round aborts, preserve arena protection while a normal completion still has mutable reads, and keep a new round IDLE while an immutable export write is finishing. | Arena mutations must never race snapshot reads, while an already-captured immutable snapshot can finish safely without dropping the next round's export. |
+| 2026-07-20 | Track each chunk future immediately and fail closed when the filesystem cannot atomically rename the completed temporary round directory. | Partial preparation failure must not orphan work, and publishing under the consumer-visible round ID is safe only when the visibility transition is atomic. |
 
 ## Surprises & Discoveries
 
@@ -60,10 +63,13 @@ session.
   protection before snapshotting finished. The exporter now exposes mutable-read state for
   protection, supports reusable cancellation, and keeps round start waiting through any
   already-immutable write.
+- Final-head review caught two failure paths that the happy-path tests did not exercise:
+  partially started chunk loads were registered too late for cleanup, and the atomic move
+  fallback weakened the all-or-nothing publication guarantee. Both paths now fail closed.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 97 tests, zero failures, and the plugin jar built at
+- `make ci-fast` passed on Java 21 with 99 tests, zero failures, and the plugin jar built at
   `build/libs/ScenarioCraft-0.1.0-SNAPSHOT.jar`.
 - `RoundExportWriterTest.normativeWorkedExampleRoundTripsExactly` loads the committed
   `fixtures/schema-v1/p1.voxels.json`, programmatically constructs the amendment's single
@@ -88,6 +94,10 @@ session.
   `newRoundWaitsForAnImmutableExportWriteToFinish` pin both sides of the export lifecycle gate;
   `idleArenaProtectionLastsUntilMutableSnapshotReadsFinish` keeps external mutation protection
   active only through the mutable-read portion.
+- `RoundExportServiceTest.partialChunkPreparationFailureCancelsLoadsThatAlreadyStarted` proves
+  a later synchronous load failure cancels earlier futures, while
+  `RoundExportWriterTest.unsupportedAtomicMoveFailsWithoutExposingTheFinalRoundDirectory`
+  proves unsupported atomic publication leaves no consumer-visible or temporary directory.
 - Review against `code_review.md` found no P1: export logic has focused tests, adds no block
   mutation, adds no player-facing output or inventory UI, and contains no credential material.
 

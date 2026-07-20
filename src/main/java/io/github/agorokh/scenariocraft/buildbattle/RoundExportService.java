@@ -169,8 +169,8 @@ final class RoundExportService implements RoundExporter {
         try {
             for (ChunkCoordinate chunk : chunkCoordinates(request)) {
                 futures.add(world.getChunkAtAsync(chunk.x(), chunk.z(), true));
+                chunkLoads = List.copyOf(futures);
             }
-            chunkLoads = List.copyOf(futures);
             preparationTimeoutTask =
                     plugin.getServer()
                             .getScheduler()

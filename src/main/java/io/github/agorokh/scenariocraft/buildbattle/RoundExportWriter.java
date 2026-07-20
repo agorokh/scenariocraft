@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -19,9 +18,15 @@ final class RoundExportWriter {
             new GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create();
 
     private final Path roundsDirectory;
+    private final DirectoryPublisher publisher;
 
     RoundExportWriter(Path roundsDirectory) {
+        this(roundsDirectory, RoundExportWriter::publishAtomically);
+    }
+
+    RoundExportWriter(Path roundsDirectory, DirectoryPublisher publisher) {
         this.roundsDirectory = Objects.requireNonNull(roundsDirectory, "roundsDirectory");
+        this.publisher = Objects.requireNonNull(publisher, "publisher");
     }
 
     Path write(RoundSnapshot snapshot) throws IOException {
@@ -57,7 +62,7 @@ final class RoundExportWriter {
                             snapshot.world(),
                             manifestPlots);
             writeJson(temporaryDirectory.resolve("manifest.json"), manifest);
-            movePublishedDirectory(temporaryDirectory, finalDirectory);
+            publisher.publish(temporaryDirectory, finalDirectory);
             published = true;
             return finalDirectory;
         } finally {
@@ -76,12 +81,8 @@ final class RoundExportWriter {
                 path, JSON.toJson(value) + System.lineSeparator(), StandardCharsets.UTF_8);
     }
 
-    private static void movePublishedDirectory(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException unsupported) {
-            Files.move(source, target);
-        }
+    private static void publishAtomically(Path source, Path target) throws IOException {
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private static void deleteTemporaryDirectory(Path directory) throws IOException {
@@ -93,5 +94,10 @@ final class RoundExportWriter {
                 Files.deleteIfExists(path);
             }
         }
+    }
+
+    @FunctionalInterface
+    interface DirectoryPublisher {
+        void publish(Path source, Path target) throws IOException;
     }
 }

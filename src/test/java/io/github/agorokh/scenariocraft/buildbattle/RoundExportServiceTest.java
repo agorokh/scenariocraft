@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import org.bukkit.Chunk;
@@ -150,6 +151,67 @@ class RoundExportServiceTest {
         Path roundDirectory = roundsDirectory.resolve("round-20260720-204209");
         assertTrue(Files.isRegularFile(roundDirectory.resolve("manifest.json")));
         assertTrue(Files.isRegularFile(roundDirectory.resolve("p1.voxels.json")));
+        assertFalse(exporter.isBusy());
+        exporter.close();
+    }
+
+    @Test
+    void partialChunkPreparationFailureCancelsLoadsThatAlreadyStarted() {
+        CompletableFuture<Chunk> firstLoad = new CompletableFuture<>();
+        AtomicInteger loadAttempts = new AtomicInteger();
+        BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
+        BukkitScheduler scheduler =
+                proxy(
+                        BukkitScheduler.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("runTaskTimer")
+                                        ? task
+                                        : defaultValue(method.getReturnType()));
+        Server server =
+                proxy(
+                        Server.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getScheduler")
+                                        ? scheduler
+                                        : defaultValue(method.getReturnType()));
+        Plugin plugin =
+                proxy(
+                        Plugin.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getServer")
+                                        ? server
+                                        : defaultValue(method.getReturnType()));
+        World world =
+                proxy(
+                        World.class,
+                        (ignored, method, arguments) -> {
+                            if (!method.getName().equals("getChunkAtAsync")) {
+                                return defaultValue(method.getReturnType());
+                            }
+                            if (loadAttempts.getAndIncrement() == 0) {
+                                return firstLoad;
+                            }
+                            throw new IllegalStateException("second chunk load failed");
+                        });
+        RoundExportService exporter =
+                new RoundExportService(
+                        plugin,
+                        world,
+                        4,
+                        Clock.systemUTC(),
+                        new RoundExportWriter(temporaryDirectory.resolve("rounds")),
+                        Logger.getAnonymousLogger());
+        RoundExportRequest request =
+                new RoundExportRequest(
+                        "Pirate ship",
+                        "battle_world",
+                        List.of(
+                                new RoundExportRequest.Plot(
+                                        "p1", "KidAva", 0, 64, 0, 17, 1, 1)));
+
+        exporter.export(request);
+
+        assertTrue(firstLoad.isCancelled());
         assertFalse(exporter.isBusy());
         exporter.close();
     }
