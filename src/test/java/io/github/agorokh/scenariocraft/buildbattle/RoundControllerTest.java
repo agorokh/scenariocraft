@@ -34,6 +34,8 @@ import org.bukkit.block.BlockState;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Hanging;
@@ -57,11 +59,13 @@ import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
+import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -978,6 +982,24 @@ class RoundControllerTest {
         rig.controller.onContestantTeleport(outsideTeleport);
         assertTrue(outsideTeleport.isCancelled());
 
+        PlayerTeleportEvent spectatorIntoPlot =
+                new PlayerTeleportEvent(
+                        rig.spectator,
+                        rig.spectatorLocation.get().clone(),
+                        plotLocation,
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(spectatorIntoPlot);
+        assertTrue(spectatorIntoPlot.isCancelled());
+
+        PlayerTeleportEvent spectatorOutsidePlots =
+                new PlayerTeleportEvent(
+                        rig.spectator,
+                        rig.spectatorLocation.get().clone(),
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(spectatorOutsidePlots);
+        assertFalse(spectatorOutsidePlots.isCancelled());
+
         Block outsidePlot = rig.blockAt(1, 1, -3);
         BlockBreakEvent outsideBreak = new BlockBreakEvent(outsidePlot, rig.player);
         rig.controller.onContestantBlockBreak(outsideBreak);
@@ -1226,6 +1248,26 @@ class RoundControllerTest {
                         rig.spectator, protectedHanging);
         rig.controller.onProtectedEntityInteract(entityInteraction);
         assertTrue(entityInteraction.isCancelled());
+
+        ArmorStand protectedArmorStand =
+                proxy(
+                        ArmorStand.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityDamageByEntityEvent armorStandAttack =
+                new EntityDamageByEntityEvent(
+                        rig.spectator,
+                        protectedArmorStand,
+                        EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                        proxy(
+                                DamageSource.class,
+                                (ignored, method, arguments) ->
+                                        defaultValue(method.getReturnType())),
+                        1.0);
+        rig.controller.onProtectedArmorStandDamage(armorStandAttack);
+        assertTrue(armorStandAttack.isCancelled());
 
         Entity entity =
                 proxy(

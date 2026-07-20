@@ -33,8 +33,10 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Event.Result;
@@ -57,12 +59,13 @@ import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
+import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -635,6 +638,20 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onProtectedArmorStandDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof ArmorStand)) {
+            return;
+        }
+        Block occupiedBlock = event.getEntity().getLocation().getBlock();
+        Player responsiblePlayer = responsiblePlayer(event.getDamager());
+        if (responsiblePlayer == null
+                ? isActiveArenaBlock(occupiedBlock)
+                : !mayContestantEdit(responsiblePlayer, occupiedBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantEntityPlace(EntityPlaceEvent event) {
         Player player = event.getPlayer();
         Block placedBlock =
@@ -665,10 +682,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 phase() == RoundPhase.BUILDING
                         || (phase() == RoundPhase.NOTE_PICK
                                 && awaitingPlotEntries);
-        if (!plotContainmentActive
-                || contestant == null
-                || destination == null
-                || matchesExpectedTeleport(event.getPlayer(), destination)) {
+        if (!plotContainmentActive || destination == null) {
+            return;
+        }
+        if (contestant == null) {
+            if (isInsidePrivatePlot(destination)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
+        if (matchesExpectedTeleport(event.getPlayer(), destination)) {
             return;
         }
         if (destination.getWorld() != arena.world()
@@ -1393,6 +1416,33 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                         block.getX(),
                                         block.getY(),
                                         block.getZ()));
+    }
+
+    private boolean isInsidePrivatePlot(Location destination) {
+        if (destination.getWorld() != arena.world()) {
+            return false;
+        }
+        int x = destination.getBlockX();
+        int z = destination.getBlockZ();
+        return contestants.values().stream()
+                .map(Contestant::plot)
+                .anyMatch(
+                        plot ->
+                                x >= plot.minX()
+                                        && x <= plot.maxX()
+                                        && z >= plot.minZ()
+                                        && z <= plot.maxZ());
+    }
+
+    private static Player responsiblePlayer(org.bukkit.entity.Entity entity) {
+        if (entity instanceof Player player) {
+            return player;
+        }
+        if (entity instanceof Projectile projectile
+                && projectile.getShooter() instanceof Player player) {
+            return player;
+        }
+        return null;
     }
 
     private boolean matchesExpectedTeleport(

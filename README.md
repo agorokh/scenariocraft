@@ -45,7 +45,7 @@ During an active Build Battle, ScenarioCraft protects the entire configured
 and leaf decay, decorative-entity interactions, and entity-driven/block-form changes until
 the controller returns to `IDLE`.
 During plot entry and BUILDING, contestant teleports are accepted only inside their assigned
-boundary
+boundary, and non-contestant teleports into private plots are rejected
 (controller-owned phase moves are tracked explicitly). The plugin logs one
 activation message when each round starts. Keep unrelated builds and minigames in a
 different world.

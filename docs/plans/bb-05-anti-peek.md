@@ -60,6 +60,7 @@ session.
 | 2026-07-20 | Cancel block fading throughout the active arena. | Melting ice or snow and drying farmland use a distinct fade event and must not erase contestant builds during a round. |
 | 2026-07-20 | Require the exact namespaced transport commands, contain failed BUILDING rejoins without aborting the round, preserve the plot border until reveal arrival, and apply stranded-player edit guards in IDLE. | The startup probe must match dispatch, one reconnect must not stop every builder, deferred reveal must not open a peek window, and containment must outlive the round phase. |
 | 2026-07-20 | Return immediately after starting pending-inventory recovery on join, and protect hanging/decorative entity interactions with the plot policy. | A REVEAL join must not supersede its recovery teleport, and item frames, paintings, and armor stands are part of a build even though they are not blocks. |
+| 2026-07-20 | Reject non-contestant teleports into occupied private plots and apply the plot policy to armor-stand damage, including player-fired projectiles. | Edit denial alone does not prevent peeking, and left-click damage is distinct from decorative-entity interaction. |
 
 ## Surprises & Discoveries
 
