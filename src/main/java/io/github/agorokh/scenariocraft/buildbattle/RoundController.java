@@ -113,6 +113,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         contestants.clear();
         for (int index = 0; index < players.size(); index++) {
             Player player = players.get(index);
+            player.closeInventory();
             contestants.put(
                     player.getUniqueId(),
                     new Contestant(
@@ -125,6 +126,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
         transitionTo(RoundPhase.PREPARING);
         roundStarter = sender;
+        forEachOnlineContestant(this::prepareContestant);
         if (players.isEmpty()) {
             sender.sendMessage("Starting a two-plot practice round.");
         } else if (players.size() == 1) {
@@ -306,8 +308,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         for (Player player : server.getOnlinePlayers()) {
             Contestant contestant = contestants.get(player.getUniqueId());
             if (contestant != null) {
-                player.setGameMode(GameMode.ADVENTURE);
-                player.teleport(tourLocation());
+                moveContestantToTour(player, contestant);
                 continue;
             }
             Spectator spectator =
@@ -413,6 +414,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void applyCurrentPhase(Player player, Contestant contestant) {
+        clearRoundInventory(player);
         switch (phase()) {
             case PREPARING, GATHERING -> moveToHub(player, contestant);
             case NOTE_PICK -> {
@@ -453,6 +455,17 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         buildBossBar.addPlayer(player);
     }
 
+    private void prepareContestant(Player player, Contestant contestant) {
+        clearRoundInventory(player);
+        moveToHub(player, contestant);
+    }
+
+    private void moveContestantToTour(Player player, Contestant ignored) {
+        clearRoundInventory(player);
+        player.setGameMode(GameMode.ADVENTURE);
+        player.teleport(tourLocation());
+    }
+
     private void restoreRoundPlayers() {
         forEachOnlineContestant(this::restoreContestantToHub);
         for (Spectator spectator : revealSpectators.values()) {
@@ -465,10 +478,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
+        clearRoundInventory(player);
         player.getInventory().setContents(cloneContents(contestant.inventoryContents()));
         player.getEnderChest().setContents(cloneContents(contestant.enderChestContents()));
         player.setGameMode(contestant.originalGameMode());
         player.teleport(hubLocation());
+        player.updateInventory();
+    }
+
+    private void clearRoundInventory(Player player) {
+        player.closeInventory();
+        player.setItemOnCursor(null);
+        player.getInventory().clear();
+        player.getEnderChest().clear();
         player.updateInventory();
     }
 

@@ -42,6 +42,11 @@ class RoundControllerTest {
 
         rig.controller.start(rig.player);
         assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.inventoryClears.get() > 0);
+        assertTrue(rig.enderChestClears.get() > 0);
+        assertTrue(rig.closedInventories.get() > 0);
+        assertTrue(rig.cursorClears.get() > 0);
 
         rig.runBlockTick();
         assertEquals(RoundPhase.GATHERING, rig.controller.phase());
@@ -54,10 +59,12 @@ class RoundControllerTest {
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
         assertEquals(GameMode.CREATIVE, rig.gameMode.get());
         assertTrue(rig.bossbarPlayers.get() > 0);
+        int inventoryClearsBeforeReveal = rig.inventoryClears.get();
 
         rig.runTimerTick();
         assertEquals(RoundPhase.REVEAL, rig.controller.phase());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.inventoryClears.get() > inventoryClearsBeforeReveal);
 
         rig.runBlockTick();
         rig.runTimerTick();
@@ -219,6 +226,10 @@ class RoundControllerTest {
         private final AtomicInteger blockMutations = new AtomicInteger();
         private final AtomicInteger bossbarPlayers = new AtomicInteger();
         private final AtomicInteger titles = new AtomicInteger();
+        private final AtomicInteger inventoryClears = new AtomicInteger();
+        private final AtomicInteger enderChestClears = new AtomicInteger();
+        private final AtomicInteger closedInventories = new AtomicInteger();
+        private final AtomicInteger cursorClears = new AtomicInteger();
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
         private final AtomicReference<ItemStack[]> inventoryContents =
@@ -290,8 +301,11 @@ class RoundControllerTest {
                                         case "getBlockAt" -> block;
                                         default -> defaultValue(method.getReturnType());
                                     });
-            playerInventory = trackedInventory(PlayerInventory.class, inventoryContents);
-            enderChest = trackedInventory(Inventory.class, enderChestContents);
+            playerInventory =
+                    trackedInventory(
+                            PlayerInventory.class, inventoryContents, inventoryClears);
+            enderChest =
+                    trackedInventory(Inventory.class, enderChestContents, enderChestClears);
             UUID playerId = UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
             player =
                     proxy(
@@ -309,6 +323,14 @@ class RoundControllerTest {
                                         }
                                         case "isOnline" -> playerOnline.get();
                                         case "isOp" -> true;
+                                        case "closeInventory" -> {
+                                            closedInventories.incrementAndGet();
+                                            yield null;
+                                        }
+                                        case "setItemOnCursor" -> {
+                                            cursorClears.incrementAndGet();
+                                            yield null;
+                                        }
                                         case "teleport" -> {
                                             lastTeleport.set((Location) arguments[0]);
                                             yield true;
@@ -491,7 +513,9 @@ class RoundControllerTest {
         }
 
         private static <T extends Inventory> T trackedInventory(
-                Class<T> type, AtomicReference<ItemStack[]> contents) {
+                Class<T> type,
+                AtomicReference<ItemStack[]> contents,
+                AtomicInteger clearCount) {
             return proxy(
                     type,
                     (ignored, method, arguments) ->
@@ -499,6 +523,11 @@ class RoundControllerTest {
                                 case "getContents" -> contents.get();
                                 case "setContents" -> {
                                     contents.set(((ItemStack[]) arguments[0]).clone());
+                                    yield null;
+                                }
+                                case "clear" -> {
+                                    clearCount.incrementAndGet();
+                                    contents.set(new ItemStack[contents.get().length]);
                                     yield null;
                                 }
                                 default -> defaultValue(method.getReturnType());
