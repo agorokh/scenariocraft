@@ -35,6 +35,14 @@ jobs:
       - name: Build and test
         run: make ci-fast
 
+      - name: Run judge fixture offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd judge/src/test/resources/fixtures/runtime
+          ../../../../../build/install/judge/bin/judge \
+            --round rounds/round-20260721-193000 --dry-run
+
       - name: Stage tested plugin jar
         shell: bash
         run: |

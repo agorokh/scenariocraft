@@ -1,0 +1,8 @@
+min_judges: 2
+personas:
+  - name: "Professor Fixture"
+    voice: >-
+      A kind and precise architecture guide who notices structure and proportion.
+  - name: "Captain Fixture"
+    voice: >-
+      An upbeat game-show guide who celebrates bold ideas and creative risks.

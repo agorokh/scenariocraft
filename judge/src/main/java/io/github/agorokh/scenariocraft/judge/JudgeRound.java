@@ -1,0 +1,114 @@
+package io.github.agorokh.scenariocraft.judge;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
+import java.io.IOException;
+import java.io.Reader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+record JudgeRound(int schema, String roundId, String task, String world, List<Plot> plots) {
+    JudgeRound {
+        plots = List.copyOf(plots);
+        if (schema != 1) {
+            throw new IllegalArgumentException("manifest schema must be 1");
+        }
+        if (roundId == null || !roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
+            throw new IllegalArgumentException("round_id has an invalid format");
+        }
+        if (task == null || task.isBlank() || world == null || world.isBlank()) {
+            throw new IllegalArgumentException("manifest task and world must be non-blank");
+        }
+        if (plots.isEmpty()) {
+            throw new IllegalArgumentException("manifest must contain at least one plot");
+        }
+        Set<String> ids = new HashSet<>();
+        for (Plot plot : plots) {
+            if (!ids.add(plot.plotId())) {
+                throw new IllegalArgumentException("manifest plot_id values must be unique");
+            }
+        }
+    }
+
+    static JudgeRound read(Path path) throws IOException {
+        try (Reader reader = Files.newBufferedReader(path)) {
+            JsonElement root = JsonParser.parseReader(reader);
+            if (!root.isJsonObject()) {
+                throw new IllegalArgumentException("manifest.json must contain an object");
+            }
+            JsonObject object = root.getAsJsonObject();
+            int schema = requireInteger(object, "schema");
+            String roundId = requireString(object, "round_id");
+            String task = requireString(object, "task");
+            String world = requireString(object, "world");
+            JsonArray plotValues = requireArray(object, "plots");
+            List<Plot> plots = new ArrayList<>();
+            for (JsonElement value : plotValues) {
+                if (!value.isJsonObject()) {
+                    throw new IllegalArgumentException("manifest plots must contain objects");
+                }
+                JsonObject plot = value.getAsJsonObject();
+                plots.add(new Plot(
+                        requireString(plot, "plot_id"),
+                        requireString(plot, "player")));
+            }
+            return new JudgeRound(schema, roundId, task, world, plots);
+        } catch (JsonParseException exception) {
+            throw new IllegalArgumentException(
+                    "Invalid manifest JSON: " + exception.getMessage(), exception);
+        }
+    }
+
+    private static int requireInteger(JsonObject object, String name) {
+        JsonElement value = object.get(name);
+        if (value == null || !value.isJsonPrimitive()) {
+            throw new IllegalArgumentException(name + " must be a JSON integer");
+        }
+        JsonPrimitive primitive = value.getAsJsonPrimitive();
+        String token = primitive.getAsString();
+        if (!primitive.isNumber() || !token.matches("-?(0|[1-9][0-9]*)")) {
+            throw new IllegalArgumentException(name + " must be a JSON integer");
+        }
+        try {
+            return Integer.parseInt(token);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(name + " must fit in a 32-bit integer", exception);
+        }
+    }
+
+    private static String requireString(JsonObject object, String name) {
+        JsonElement value = object.get(name);
+        if (value == null || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(name + " must be a JSON string");
+        }
+        return value.getAsString();
+    }
+
+    private static JsonArray requireArray(JsonObject object, String name) {
+        JsonElement value = object.get(name);
+        if (value == null || !value.isJsonArray()) {
+            throw new IllegalArgumentException(name + " must be a JSON array");
+        }
+        return value.getAsJsonArray();
+    }
+
+    record Plot(String plotId, String player) {
+        Plot {
+            if (plotId == null || !plotId.matches("[A-Za-z0-9][A-Za-z0-9_-]*")) {
+                throw new IllegalArgumentException("plot_id has an unsafe format");
+            }
+            if (player == null || player.isBlank()) {
+                throw new IllegalArgumentException("player must be non-blank");
+            }
+        }
+    }
+}
