@@ -35,6 +35,7 @@ session.
 | 2026-07-19 | Treat the written book as cosmetic and use chat plus title for the actual task reveal to every online player. | Book rendering is unreliable through Geyser, and the issue names chat plus title as the authoritative cross-platform path. |
 | 2026-07-19 | Normalize Paper's empty `ItemStack` values to `null` before cloning or serializing inventory snapshots. | A real client exposed that Paper may return a non-null empty stack which cannot be serialized; snapshot persistence must treat it exactly like an empty slot. |
 | 2026-07-19 | Cancel off-hand secret-chest events without processing them, and continue the round when cosmetic book placement fails. | Paper can emit an interaction for each hand, while the issue makes title and chat authoritative; neither an off-hand duplicate nor a prop failure should alter the reveal flow. |
+| 2026-07-19 | Keep the configured task out of book NBT entirely; the written book contains only generic cosmetic text. | A neighboring double chest or item transport could expose the book inventory without interacting with the gated block. Controller state plus title/chat remains the only authoritative task channel. |
 
 ## Surprises & Discoveries
 
@@ -54,6 +55,9 @@ session.
   handoff. The same review proposed scanning for a chest location, but `battle_world` is
   required to be superflat and the stable hub-relative chest is intentionally created by
   the bounded arena plan.
+- A later review found that storing the real task in the cosmetic book made the prompt
+  readable through alternate inventory access such as a neighboring double chest. The
+  finalized book page is generic; the configured task never enters book NBT.
 
 ## Acceptance evidence
 
@@ -66,8 +70,9 @@ session.
 - Paper 1.21.11 build 132 loaded and enabled the built plugin. With a deliberately small
   arena, setup completed as 35 mutations through the configured 1,000-block tick budget,
   including the hub chest.
-- Live block inspection found a `minecraft:written_book` in chest slot 13 with author
-  `ScenarioCraft`, title `Secret Build Idea`, and one of the configured random tasks.
+- Live block inspection verified the `minecraft:written_book` placement in chest slot 13;
+  review hardening then removed the configured task from book NBT so only title and chat
+  carry the secret prompt.
 - An unattended real client received the picker announcement, waited through the
   10-second note timer, received the task through both chat and title, and observed the
   `NOTE_PICK -> BUILDING` transition.

@@ -92,7 +92,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 blockEditor,
                 logger,
                 bound -> ThreadLocalRandom.current().nextInt(bound),
-                task -> placeTaskBook(arena, task));
+                ignored -> placeTaskBook(arena));
     }
 
     RoundController(
@@ -979,7 +979,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return snapshot;
     }
 
-    private static void placeTaskBook(ArenaWorld arena, String task) {
+    private static void placeTaskBook(ArenaWorld arena) {
         SecretChestPosition chestPosition = SecretChestPosition.atHub(arena);
         Block block =
                 arena.world()
@@ -997,7 +997,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         bookMeta.setTitle("Secret Build Idea");
         bookMeta.setAuthor("ScenarioCraft");
-        bookMeta.setPages(task);
+        bookMeta.setPages(
+                "The secret build idea appears in chat and a title when the picker opens this chest!");
         writtenBook.setItemMeta(bookMeta);
 
         Inventory inventory = chest.getBlockInventory();
