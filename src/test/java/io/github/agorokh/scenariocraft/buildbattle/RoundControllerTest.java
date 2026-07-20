@@ -54,6 +54,7 @@ import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -1276,6 +1277,10 @@ class RoundControllerTest {
                 new BlockFormEvent(rig.blockAt(1, 1, -3), blockState);
         rig.controller.onArenaBlockForm(outsideBlockForm);
         assertTrue(outsideBlockForm.isCancelled());
+
+        LeavesDecayEvent leavesDecay = new LeavesDecayEvent(arenaBlock);
+        rig.controller.onArenaLeavesDecay(leavesDecay);
+        assertTrue(leavesDecay.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =

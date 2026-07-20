@@ -54,6 +54,7 @@ import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -668,6 +669,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (isActiveArenaBlock(event.getBlock())
                 && (!(event.getEntity() instanceof Player player)
                         || !mayContestantEdit(player, event.getBlock()))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onArenaLeavesDecay(LeavesDecayEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }

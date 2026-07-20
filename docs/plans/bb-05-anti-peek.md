@@ -56,6 +56,7 @@ session.
 | 2026-07-20 | Remove disconnecting players from the plot-entry wait set and route NOTE_PICK rejoins back to their plot while confirmations are pending. | A superseded attempt must not leave a stale UUID that softlocks BUILDING, and a returning contestant must not be confirmed at the hub. |
 | 2026-07-20 | Allow only same-plot `FallingBlock` settlement, reject contestant teleports outside their boundary during BUILDING, and cancel active-arena block formation. | Gravity builds need their source and target validated together; chorus fruit and similar server teleports can cross solid walls; Frost Walker, weather, and freezing must not bypass the mutation policy. |
 | 2026-07-20 | Extend teleport containment through the NOTE_PICK plot-entry wait; allow plot-local passive block formation and contestant-owned entity formation; document failed recovery-marker saves as volatile. | A confirmed early arrival must remain contained while peers are still moving, concrete powder should remain usable, and operators must know that a failed player-data save cannot survive restart. |
+| 2026-07-20 | Cancel leaf decay throughout the active arena. | Vanilla leaf decay is a distinct mutation event and must not erase contestant builds or bypass arena containment. |
 
 ## Surprises & Discoveries
 
