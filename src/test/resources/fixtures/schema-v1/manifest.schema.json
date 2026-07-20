@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "required": ["schema", "round_id", "task", "world", "plots"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "integer", "const": 1},
+    "round_id": {"type": "string", "pattern": "^round-[0-9]{8}-[0-9]{6}$"},
+    "task": {"type": "string", "minLength": 1},
+    "world": {"type": "string", "minLength": 1},
+    "plots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["plot_id", "player", "origin", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "plot_id": {"type": "string", "pattern": "^p[1-9][0-9]*$"},
+          "player": {"type": "string", "minLength": 1},
+          "origin": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {"type": "integer"}
+          },
+          "size": {
+            "type": "array",
+            "minItems": 3,
+            "maxItems": 3,
+            "items": {"type": "integer"}
+          }
+        }
+      }
+    }
+  }
+}

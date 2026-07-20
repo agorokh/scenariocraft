@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "p1",
+  "origin": [100, 64, 200],
+  "size": [2, 2, 2],
+  "palette": ["minecraft:air", "minecraft:oak_planks"],
+  "blocks": [0, 1, 0, 0, 0, 0, 0, 0]
+}

@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "required": ["schema", "plot_id", "origin", "size", "palette", "blocks"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"type": "integer", "const": 1},
+    "plot_id": {"type": "string", "pattern": "^p[1-9][0-9]*$"},
+    "origin": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "integer"}
+    },
+    "size": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "integer"}
+    },
+    "palette": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "pattern": "^[a-z0-9._-]+:[a-z0-9/._-]+$"}
+    },
+    "blocks": {
+      "type": "array",
+      "items": {"type": "integer"}
+    }
+  }
+}

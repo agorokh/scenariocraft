@@ -108,6 +108,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final PickerSelector pickerSelector;
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
+    private final RoundExporter roundExporter;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
@@ -146,7 +147,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 blockEditor,
                 logger,
                 bound -> ThreadLocalRandom.current().nextInt(bound),
-                ignored -> placeTaskBook(arena));
+                ignored -> placeTaskBook(arena),
+                RoundExportService.forPlugin(
+                        plugin,
+                        arena.world(),
+                        settings.arena().blocksPerTick(),
+                        logger));
     }
 
     RoundController(
@@ -157,6 +163,26 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             Logger logger,
             IntUnaryOperator randomIndex,
             Consumer<String> taskBookPlacer) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                randomIndex,
+                taskBookPlacer,
+                ignored -> {});
+    }
+
+    RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            IntUnaryOperator randomIndex,
+            Consumer<String> taskBookPlacer,
+            RoundExporter roundExporter) {
         Objects.requireNonNull(plugin, "plugin");
         this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
@@ -167,6 +193,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.pickerSelector = new PickerSelector(randomIndex);
         this.taskDeck = new TaskDeck(settings.tasks(), randomIndex);
         this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
+        this.roundExporter = Objects.requireNonNull(roundExporter, "roundExporter");
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
         this.teleportRecoveryKey =
@@ -209,6 +236,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (blockEditor.isBusy()) {
             sender.sendMessage(
                     "The arena is already getting ready — just a few more blocks to go!");
+            return;
+        }
+        if (roundExporter.isBusy()) {
+            sender.sendMessage(
+                    "The last build is still being packed up safely — just a moment!");
             return;
         }
 
@@ -261,6 +293,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         player.getUniqueId(),
                         new Contestant(
                                 player.getUniqueId(),
+                                player.getName(),
                                 plots.get(index),
                                 boundaries.get(index),
                                 inventorySnapshot));
@@ -769,8 +802,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityExplode(EntityExplodeEvent event) {
-        if (phase() != RoundPhase.IDLE
-                && event.getLocation().getWorld() == arena.world()) {
+        if (isArenaProtected() && event.getLocation().getWorld() == arena.world()) {
             event.setCancelled(true);
         }
     }
@@ -800,6 +832,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         timer = null;
         buildBossBar.removeAll();
         buildBossBar.setVisible(false);
+        try {
+            roundExporter.close();
+        } catch (Exception failure) {
+            logger.log(Level.WARNING, "Could not close the round exporter cleanly", failure);
+        }
         restoreRoundPlayers();
         contestants.clear();
         revealSpectators.clear();
@@ -1023,6 +1060,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         + " plots ("
                         + mutations
                         + " block mutations).");
+        exportRound();
         broadcast(
                 "The walls are down! Enjoy the build tour for "
                         + settings.timings().revealLingerSeconds()
@@ -1045,7 +1083,40 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         logger.info("Round complete: returned to IDLE.");
     }
 
+    private void exportRound() {
+        if (currentTask == null) {
+            logger.severe("SCENARIOCRAFT_EXPORT_FAILURE no task is available at REVEAL");
+            return;
+        }
+        int originY = Math.addExact(arena.floorY(), 1);
+        int plotHeight = settings.arena().wallHeight();
+        List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
+        int plotNumber = 1;
+        for (Contestant contestant : contestants.values()) {
+            PlotBounds plot = contestant.plot();
+            exportPlots.add(
+                    new RoundExportRequest.Plot(
+                            "p" + plotNumber,
+                            contestant.playerName(),
+                            plot.minX(),
+                            originY,
+                            plot.minZ(),
+                            plot.width(),
+                            plotHeight,
+                            plot.depth()));
+            plotNumber++;
+        }
+        try {
+            roundExporter.export(
+                    new RoundExportRequest(
+                            currentTask, arena.world().getName(), exportPlots));
+        } catch (RuntimeException failure) {
+            logger.log(Level.SEVERE, "SCENARIOCRAFT_EXPORT_FAILURE export did not start", failure);
+        }
+    }
+
     private void abortRound() {
+        roundExporter.cancel();
         blockEditor.cancel();
         timer = null;
         pendingPlotEntries.clear();
@@ -1344,7 +1415,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private boolean isActiveArenaBlock(Block block) {
-        return phase() != RoundPhase.IDLE && block.getWorld() == arena.world();
+        return isArenaProtected() && block.getWorld() == arena.world();
+    }
+
+    private boolean isArenaProtected() {
+        return phase() != RoundPhase.IDLE || roundExporter.isReadingArena();
     }
 
     private boolean mayContestantEdit(Player player, Block block) {
@@ -2125,6 +2200,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private record Contestant(
             UUID playerId,
+            String playerName,
             PlotBounds plot,
             PlotBoundary boundary,
             InventorySnapshot inventorySnapshot) {}

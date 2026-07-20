@@ -309,6 +309,55 @@ class RoundControllerTest {
     }
 
     @Test
+    void stoppingRevealCancelsTheMutableSnapshotBeforeAnotherArenaReset() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        assertTrue(rig.exportBusy.get());
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(1, rig.exportCancels.get());
+        assertFalse(rig.exportBusy.get());
+        rig.controller.start(rig.player);
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        rig.close();
+    }
+
+    @Test
+    void newRoundWaitsForAnImmutableExportWriteToFinish() {
+        TestRig rig = new TestRig();
+        rig.exportBusy.set(true);
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("packed up safely")));
+        rig.close();
+    }
+
+    @Test
+    void idleArenaProtectionLastsUntilMutableSnapshotReadsFinish() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        rig.runTimerTick();
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+
+        BlockBreakEvent duringSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(duringSnapshot);
+        assertTrue(duringSnapshot.isCancelled());
+
+        rig.exportReading.set(false);
+        BlockBreakEvent afterSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterSnapshot);
+        assertFalse(afterSnapshot.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void reconnectingContestantReceivesTheCurrentPhaseState() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -538,6 +587,30 @@ class RoundControllerTest {
     }
 
     @Test
+    void fullRoundQueuesOnlyContestantPlotsForExportAtReveal() {
+        TestRig rig = new TestRig();
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+
+        assertEquals(1, rig.exportRequests.size());
+        RoundExportRequest request = rig.exportRequests.getFirst();
+        assertEquals("A dragon treehouse", request.task());
+        assertEquals(ArenaWorldService.WORLD_NAME, request.world());
+        assertEquals(1, request.plots().size());
+        RoundExportRequest.Plot plot = request.plots().getFirst();
+        assertEquals("p1", plot.plotId());
+        assertEquals("BuilderKid", plot.player());
+        assertEquals(0, plot.originX());
+        assertEquals(1, plot.originY());
+        assertEquals(-3, plot.originZ());
+        assertEquals(1, plot.sizeX());
+        assertEquals(1, plot.sizeY());
+        assertEquals(1, plot.sizeZ());
+        rig.close();
+    }
+
+    @Test
     void arenaFailureNotifiesConsoleStarterDirectly() {
         TestRig rig = new TestRig();
         rig.failChunkLoads.set(true);
@@ -584,7 +657,10 @@ class RoundControllerTest {
                         rig.settings,
                         rig.arena,
                         rig.editor,
-                        Logger.getAnonymousLogger());
+                        Logger.getAnonymousLogger(),
+                        ignored -> 0,
+                        ignored -> {},
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(2, rig.inventoryContents.get().length);
@@ -627,7 +703,10 @@ class RoundControllerTest {
                         rig.settings,
                         rig.arena,
                         rig.editor,
-                        Logger.getAnonymousLogger());
+                        Logger.getAnonymousLogger(),
+                        ignored -> 0,
+                        ignored -> {},
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(0.5, rig.lastTeleport.get().getX());
@@ -1502,6 +1581,10 @@ class RoundControllerTest {
         private final List<String> spectatorTitles = new ArrayList<>();
         private final List<String> starterMessages = new ArrayList<>();
         private final List<String> consoleCommands = new ArrayList<>();
+        private final List<RoundExportRequest> exportRequests = new ArrayList<>();
+        private final AtomicBoolean exportBusy = new AtomicBoolean();
+        private final AtomicBoolean exportReading = new AtomicBoolean();
+        private final AtomicInteger exportCancels = new AtomicInteger();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
@@ -1817,6 +1900,31 @@ class RoundControllerTest {
                                             "test cosmetic book failure");
                                 }
                                 placedTask.set(prompt);
+                            },
+                            new RoundExporter() {
+                                @Override
+                                public void export(RoundExportRequest request) {
+                                    exportRequests.add(request);
+                                    exportBusy.set(true);
+                                    exportReading.set(true);
+                                }
+
+                                @Override
+                                public void cancel() {
+                                    exportCancels.incrementAndGet();
+                                    exportBusy.set(false);
+                                    exportReading.set(false);
+                                }
+
+                                @Override
+                                public boolean isBusy() {
+                                    return exportBusy.get();
+                                }
+
+                                @Override
+                                public boolean isReadingArena() {
+                                    return exportReading.get();
+                                }
                             });
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
