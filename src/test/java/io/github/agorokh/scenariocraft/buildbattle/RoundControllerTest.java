@@ -538,6 +538,30 @@ class RoundControllerTest {
     }
 
     @Test
+    void fullRoundQueuesOnlyContestantPlotsForExportAtReveal() {
+        TestRig rig = new TestRig();
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+
+        assertEquals(1, rig.exportRequests.size());
+        RoundExportRequest request = rig.exportRequests.getFirst();
+        assertEquals("A dragon treehouse", request.task());
+        assertEquals(ArenaWorldService.WORLD_NAME, request.world());
+        assertEquals(1, request.plots().size());
+        RoundExportRequest.Plot plot = request.plots().getFirst();
+        assertEquals("p1", plot.plotId());
+        assertEquals("BuilderKid", plot.player());
+        assertEquals(0, plot.originX());
+        assertEquals(1, plot.originY());
+        assertEquals(-3, plot.originZ());
+        assertEquals(1, plot.sizeX());
+        assertEquals(1, plot.sizeY());
+        assertEquals(1, plot.sizeZ());
+        rig.close();
+    }
+
+    @Test
     void arenaFailureNotifiesConsoleStarterDirectly() {
         TestRig rig = new TestRig();
         rig.failChunkLoads.set(true);
@@ -584,7 +608,10 @@ class RoundControllerTest {
                         rig.settings,
                         rig.arena,
                         rig.editor,
-                        Logger.getAnonymousLogger());
+                        Logger.getAnonymousLogger(),
+                        ignored -> 0,
+                        ignored -> {},
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(2, rig.inventoryContents.get().length);
@@ -627,7 +654,10 @@ class RoundControllerTest {
                         rig.settings,
                         rig.arena,
                         rig.editor,
-                        Logger.getAnonymousLogger());
+                        Logger.getAnonymousLogger(),
+                        ignored -> 0,
+                        ignored -> {},
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(0.5, rig.lastTeleport.get().getX());
@@ -1502,6 +1532,7 @@ class RoundControllerTest {
         private final List<String> spectatorTitles = new ArrayList<>();
         private final List<String> starterMessages = new ArrayList<>();
         private final List<String> consoleCommands = new ArrayList<>();
+        private final List<RoundExportRequest> exportRequests = new ArrayList<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
@@ -1817,7 +1848,8 @@ class RoundControllerTest {
                                             "test cosmetic book failure");
                                 }
                                 placedTask.set(prompt);
-                            });
+                            },
+                            exportRequests::add);
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
