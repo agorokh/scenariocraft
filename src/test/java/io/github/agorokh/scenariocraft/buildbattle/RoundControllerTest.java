@@ -530,6 +530,32 @@ class RoundControllerTest {
     }
 
     @Test
+    void failedExitRecoverySurvivesControllerReinitialization() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+
+        assertFalse(rig.persistentData.isEmpty());
+        rig.controller.close();
+        rig.failTeleportDispatch.set(false);
+        RoundController replacement =
+                new RoundController(
+                        rig.plugin,
+                        rig.settings,
+                        rig.arena,
+                        rig.editor,
+                        Logger.getAnonymousLogger());
+
+        assertTrue(rig.persistentData.isEmpty());
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        replacement.close();
+        rig.close();
+    }
+
+    @Test
     void paperEmptyItemStacksAreSavedAsVacantSlots() {
         TestRig rig = new TestRig();
         ItemStack empty = new EmptyItemStack();
@@ -839,6 +865,17 @@ class RoundControllerTest {
                         EquipmentSlot.HAND);
         rig.controller.onPlayerInteract(activeInteraction);
         assertTrue(activeInteraction.isCancelled());
+
+        PlayerInteractEvent trampling =
+                new PlayerInteractEvent(
+                        rig.spectator,
+                        Action.PHYSICAL,
+                        null,
+                        arenaBlock,
+                        BlockFace.SELF,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(trampling);
+        assertTrue(trampling.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockBreakEvent idleBreak =

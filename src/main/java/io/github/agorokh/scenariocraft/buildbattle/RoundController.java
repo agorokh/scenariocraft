@@ -99,6 +99,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final Set<UUID> strandedArenaPlayers = new LinkedHashSet<>();
     private final Map<UUID, Long> teleportAttempts = new LinkedHashMap<>();
     private final NamespacedKey inventorySnapshotKey;
+    private final NamespacedKey teleportRecoveryKey;
     private final BossBar buildBossBar;
     private final BukkitTask timerTask;
     private List<PlotBounds> plots = List.of();
@@ -152,6 +153,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.blockMaterial = Objects.requireNonNull(blockMaterial, "blockMaterial");
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
+        this.teleportRecoveryKey =
+                new NamespacedKey(plugin, "teleport-recovery-pending");
         this.buildBossBar =
                 server.createBossBar(
                         "Build time", BarColor.BLUE, BarStyle.SOLID);
@@ -160,7 +163,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.timerTask =
                 server.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
         for (Player player : server.getOnlinePlayers()) {
+            boolean hadPendingInventory =
+                    player.getPersistentDataContainer()
+                            .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
             restorePendingInventory(player);
+            if (!hadPendingInventory && hasPendingTeleportRecovery(player)) {
+                retryStrandedExit(player);
+            }
         }
     }
 
@@ -342,7 +351,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         restorePendingInventory(player);
         if (!hadPendingInventory
-                && strandedArenaPlayers.contains(player.getUniqueId())) {
+                && (strandedArenaPlayers.contains(player.getUniqueId())
+                        || hasPendingTeleportRecovery(player))) {
             retryStrandedExit(player);
             return;
         }
@@ -398,6 +408,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler
     public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getAction() == Action.PHYSICAL) {
+            Block clicked = event.getClickedBlock();
+            if (clicked != null
+                    && isActiveArenaBlock(clicked)
+                    && !mayContestantEdit(event.getPlayer(), clicked)) {
+                event.setCancelled(true);
+            }
+            return;
+        }
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
@@ -1032,6 +1051,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         buildBossBar.removePlayer(player);
         resetPersonalBorder(player);
         strandedArenaPlayers.add(player.getUniqueId());
+        persistTeleportRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
@@ -1324,6 +1344,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         strandedArenaPlayers.remove(player.getUniqueId());
+        clearTeleportRecovery(player);
         onSuccess.run();
     }
 
@@ -1394,6 +1415,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void retryStrandedExit(Player player) {
         GameMode recoveredGameMode = player.getGameMode();
+        strandedArenaPlayers.add(player.getUniqueId());
+        persistTeleportRecovery(player);
         resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
@@ -1464,6 +1487,47 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.saveData();
     }
 
+    private boolean hasPendingTeleportRecovery(Player player) {
+        return player.getPersistentDataContainer()
+                .has(teleportRecoveryKey, PersistentDataType.BYTE);
+    }
+
+    private void persistTeleportRecovery(Player player) {
+        if (hasPendingTeleportRecovery(player)) {
+            return;
+        }
+        player.getPersistentDataContainer()
+                .set(
+                        teleportRecoveryKey,
+                        PersistentDataType.BYTE,
+                        (byte) 1);
+        try {
+            player.saveData();
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.SEVERE,
+                    "Could not persist teleport recovery marker for "
+                            + player.getName(),
+                    failure);
+        }
+    }
+
+    private void clearTeleportRecovery(Player player) {
+        if (!hasPendingTeleportRecovery(player)) {
+            return;
+        }
+        player.getPersistentDataContainer().remove(teleportRecoveryKey);
+        try {
+            player.saveData();
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.WARNING,
+                    "Could not persist cleared teleport recovery marker for "
+                            + player.getName(),
+                    failure);
+        }
+    }
+
     private void restorePendingInventory(Player player) {
         PersistentDataContainer data = player.getPersistentDataContainer();
         byte[] encoded =
@@ -1473,6 +1537,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         resetPersonalBorder(player);
         strandedArenaPlayers.add(player.getUniqueId());
+        persistTeleportRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));

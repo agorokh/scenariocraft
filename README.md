@@ -57,7 +57,8 @@ server, including a one-tick confirmation for chunk-loading or lifecycle delays.
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
 `/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
-containment. Verify that the player is at the hub with the default world border and can
+containment. The recovery marker is stored with player data, so disable/reload cannot lose
+an unconfirmed exit. Verify that the player is at the hub with the default world border and can
 drop/pick up items before starting the next round. Operators who join while recovery is
 pending receive another alert.
 

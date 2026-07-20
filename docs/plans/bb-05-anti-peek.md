@@ -49,6 +49,7 @@ session.
 | 2026-07-20 | Freeze each contestant's `PlotBoundary` at round preparation and clear failed-exit containment on confirmed controller moves, close, and new participation. | Logical edit and border geometry must stay aligned with the already-built walls, and recovery state must not leak into another world or round. An unconfirmed disconnect retains containment until rejoin retries the hub return. |
 | 2026-07-20 | Mark round exits contained before dispatch, and keep plot entrants in Adventure without a personal border until the destination is confirmed. | Deferred verification must not create an IDLE edit window or apply a distant plot-centered border to a player who remains at the hub. Failed plot entry aborts the round safely. |
 | 2026-07-20 | Apply the plot policy to fertilization and structure growth. | Bone meal and trees can change multiple blocks beyond the interacted block, so every resulting block must stay inside the assigned editable volume. |
+| 2026-07-20 | Persist an unconfirmed-exit recovery marker in player data until a hub arrival is authoritative, and guard physical block interactions. | Reload must not erase containment after inventory restoration, and spectator farmland trampling must follow the same active-arena policy as other mutations. |
 
 ## Surprises & Discoveries
 
@@ -94,7 +95,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 80 tests.
+- `make ci-fast` passed on Java 21 with 81 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.
