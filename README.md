@@ -11,10 +11,10 @@ welcome whatever scenario comes up in the car next week.
 
 ## The co-creators
 
-- A 7-year-old game designer and judge auditor.
-- A 10-year-old game designer and judge auditor.
-- A 17-year-old contributing engineer working in his own Codex sessions.
-- Their parent, facilitating the build and playing every round.
+- A 7-year-old game brainstormer and judge auditor.
+- A 10-year-old idea author, gaem designer, logo designer and UX lead, judge auditor.
+- A 17-year-old contributing engineer working in his own Codex sessions, tester.
+- Their dad, facilitating the build and playing every round.
 
 Their design feedback is product input. Relevant choices are recorded as “Decisions by the
 design council” without publishing any child's name.
