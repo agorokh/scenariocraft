@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Set;
 import org.bukkit.Material;
 
-/** Pure clear-and-wall plan that is later consumed by the per-tick block queue. */
+/** Pure arena mutation plan that is later consumed by the per-tick block queue. */
 public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
     private static final Material WALL_MATERIAL = Material.WHITE_CONCRETE;
 
@@ -104,6 +104,77 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                                     plot.minZ(),
                                     plot.maxZ()),
                             WALL_MATERIAL);
+        }
+        return new ArenaFillPlan(fills, total);
+    }
+
+    public static ArenaFillPlan forWallRemoval(
+            List<PlotBounds> plots, int floorY, int wallHeight) {
+        if (plots.isEmpty()) {
+            throw new IllegalArgumentException("at least one plot is required");
+        }
+        if (wallHeight <= 0) {
+            throw new IllegalArgumentException("wallHeight must be positive");
+        }
+        int minY = Math.addExact(floorY, 1);
+        int maxY = Math.addExact(floorY, wallHeight);
+        List<BlockFill> fills = new ArrayList<>(Math.multiplyExact(plots.size(), 4));
+        long total = 0L;
+
+        for (PlotBounds plot : plots) {
+            int outerMinX = Math.subtractExact(plot.minX(), 1);
+            int outerMaxX = Math.addExact(plot.maxX(), 1);
+            int outerMinZ = Math.subtractExact(plot.minZ(), 1);
+            int outerMaxZ = Math.addExact(plot.maxZ(), 1);
+
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMinX,
+                                    outerMaxX,
+                                    minY,
+                                    maxY,
+                                    outerMinZ,
+                                    outerMinZ),
+                            Material.AIR);
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMinX,
+                                    outerMaxX,
+                                    minY,
+                                    maxY,
+                                    outerMaxZ,
+                                    outerMaxZ),
+                            Material.AIR);
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMinX,
+                                    outerMinX,
+                                    minY,
+                                    maxY,
+                                    plot.minZ(),
+                                    plot.maxZ()),
+                            Material.AIR);
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMaxX,
+                                    outerMaxX,
+                                    minY,
+                                    maxY,
+                                    plot.minZ(),
+                                    plot.maxZ()),
+                            Material.AIR);
         }
         return new ArenaFillPlan(fills, total);
     }

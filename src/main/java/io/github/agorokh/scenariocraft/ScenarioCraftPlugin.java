@@ -7,12 +7,14 @@ import io.github.agorokh.scenariocraft.buildbattle.BatchedBlockEditor;
 import io.github.agorokh.scenariocraft.buildbattle.BattleCommand;
 import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
+import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import java.util.Objects;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /** ScenarioCraft's Paper entry point. */
 public final class ScenarioCraftPlugin extends JavaPlugin {
     private BatchedBlockEditor blockEditor;
+    private RoundController roundController;
 
     @Override
     public void onEnable() {
@@ -32,8 +34,9 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         blockEditor =
                 new BatchedBlockEditor(
                         this, arena.world(), settings.arena().blocksPerTick(), getLogger());
-        BattleCommand battleCommand =
-                new BattleCommand(settings, arena, blockEditor, getLogger());
+        roundController =
+                new RoundController(this, settings, arena, blockEditor, getLogger());
+        BattleCommand battleCommand = new BattleCommand(settings, roundController);
         Objects.requireNonNull(getCommand("battle"), "battle command missing from plugin.yml")
                 .setExecutor(battleCommand);
 
@@ -55,6 +58,9 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (roundController != null) {
+            roundController.close();
+        }
         if (blockEditor != null) {
             blockEditor.close();
         }

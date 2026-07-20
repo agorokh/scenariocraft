@@ -21,4 +21,8 @@ public record BattleSettings(
                 || operator
                 || exemptNames.stream().anyMatch(name -> name.equalsIgnoreCase(senderName));
     }
+
+    public boolean isExempt(String playerName) {
+        return exemptNames.stream().anyMatch(name -> name.equalsIgnoreCase(playerName));
+    }
 }

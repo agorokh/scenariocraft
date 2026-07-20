@@ -41,6 +41,8 @@ class ArenaConfigLoaderTest {
         assertTrue(settings.canStart("builderkid", false));
         assertTrue(settings.canStart("Console", true));
         assertFalse(settings.canStart("Visitor", false));
+        assertTrue(settings.isExempt("BUILDERKID"));
+        assertFalse(settings.isExempt("Visitor"));
     }
 
     private static YamlConfiguration packagedConfig() {
