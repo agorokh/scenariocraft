@@ -27,6 +27,9 @@ import org.bukkit.scheduler.BukkitTask;
 import org.junit.jupiter.api.Test;
 
 final class BatchedBlockEditorTest {
+    private static final SecretChestPosition SECRET_CHEST =
+            new SecretChestPosition(2, 1, 0);
+
     @Test
     void preparesAndTicketsChunksBeforeRunningBudgetedBlockEdits() {
         TestRig rig = new TestRig(false, false, false);
@@ -41,10 +44,11 @@ final class BatchedBlockEditorTest {
                         List.of(new PlotBounds(0, 0, 0, 0)),
                         0,
                         1,
+                        SECRET_CHEST,
                         completedMutations::set,
                         failure::set);
 
-        assertEquals(17, scheduled);
+        assertEquals(18, scheduled);
         assertEquals(4, rig.chunkLoads.get());
         assertEquals(4, rig.ticketsAdded.get());
         assertTrue(editor.isBusy());
@@ -58,8 +62,8 @@ final class BatchedBlockEditorTest {
             assertTrue(++ticks < 10);
         }
 
-        assertEquals(17, completedMutations.get());
-        assertEquals(17, rig.blockMutations.get());
+        assertEquals(18, completedMutations.get());
+        assertEquals(18, rig.blockMutations.get());
         assertEquals(4, rig.ticketsRemoved.get());
         assertNull(failure.get());
         editor.close();
@@ -77,6 +81,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 ignored -> {},
                 failure::set);
 
@@ -99,6 +104,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 ignored -> {},
                 failure::set);
 
@@ -120,6 +126,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 ignored -> {},
                 failure::set);
         assertTrue(editor.isBusy());
@@ -147,6 +154,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 completedMutations::set,
                 failure::set);
         assertNotNull(rig.preparationHandoff.get());
@@ -160,7 +168,7 @@ final class BatchedBlockEditorTest {
             rig.tick.get().run();
         }
 
-        assertEquals(17, completedMutations.get());
+        assertEquals(18, completedMutations.get());
         assertNull(failure.get());
         editor.close();
     }
@@ -178,6 +186,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 completedMutations::set,
                 failure::set);
         rig.tick.get().run();
@@ -202,6 +211,7 @@ final class BatchedBlockEditorTest {
                 List.of(new PlotBounds(0, 0, 0, 0)),
                 0,
                 1,
+                SECRET_CHEST,
                 completedMutations::set,
                 ignored -> {});
         rig.tick.get().run();

@@ -26,16 +26,21 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
     }
 
     public static ArenaFillPlan forPlots(
-            List<PlotBounds> plots, int floorY, int wallHeight) {
+            List<PlotBounds> plots,
+            int floorY,
+            int wallHeight,
+            SecretChestPosition secretChest) {
         if (plots.isEmpty()) {
             throw new IllegalArgumentException("at least one plot is required");
         }
         if (wallHeight <= 0) {
             throw new IllegalArgumentException("wallHeight must be positive");
         }
+        java.util.Objects.requireNonNull(secretChest, "secretChest");
         int minY = Math.addExact(floorY, 1);
         int maxY = Math.addExact(floorY, wallHeight);
-        List<BlockFill> fills = new ArrayList<>(Math.multiplyExact(plots.size(), 5));
+        List<BlockFill> fills =
+                new ArrayList<>(Math.addExact(Math.multiplyExact(plots.size(), 5), 1));
         long total = 0L;
 
         for (PlotBounds plot : plots) {
@@ -105,6 +110,7 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                                     plot.maxZ()),
                             WALL_MATERIAL);
         }
+        total = add(fills, total, secretChest.asCuboid(), Material.CHEST);
         return new ArenaFillPlan(fills, total);
     }
 
