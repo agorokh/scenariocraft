@@ -13,6 +13,11 @@ interface RoundExporter extends AutoCloseable {
         return false;
     }
 
+    /** Reports whether mutable arena blocks are still being prepared or read. */
+    default boolean isReadingArena() {
+        return false;
+    }
+
     @Override
     default void close() {}
 }

@@ -339,6 +339,25 @@ class RoundControllerTest {
     }
 
     @Test
+    void idleArenaProtectionLastsUntilMutableSnapshotReadsFinish() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        rig.runTimerTick();
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+
+        BlockBreakEvent duringSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(duringSnapshot);
+        assertTrue(duringSnapshot.isCancelled());
+
+        rig.exportReading.set(false);
+        BlockBreakEvent afterSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterSnapshot);
+        assertFalse(afterSnapshot.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void reconnectingContestantReceivesTheCurrentPhaseState() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -1564,6 +1583,7 @@ class RoundControllerTest {
         private final List<String> consoleCommands = new ArrayList<>();
         private final List<RoundExportRequest> exportRequests = new ArrayList<>();
         private final AtomicBoolean exportBusy = new AtomicBoolean();
+        private final AtomicBoolean exportReading = new AtomicBoolean();
         private final AtomicInteger exportCancels = new AtomicInteger();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
@@ -1886,17 +1906,24 @@ class RoundControllerTest {
                                 public void export(RoundExportRequest request) {
                                     exportRequests.add(request);
                                     exportBusy.set(true);
+                                    exportReading.set(true);
                                 }
 
                                 @Override
                                 public void cancel() {
                                     exportCancels.incrementAndGet();
                                     exportBusy.set(false);
+                                    exportReading.set(false);
                                 }
 
                                 @Override
                                 public boolean isBusy() {
                                     return exportBusy.get();
+                                }
+
+                                @Override
+                                public boolean isReadingArena() {
+                                    return exportReading.get();
                                 }
                             });
             assertNotNull(blockTick.get());

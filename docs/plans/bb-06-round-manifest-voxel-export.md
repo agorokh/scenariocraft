@@ -35,7 +35,7 @@ session.
 | 2026-07-20 | Implement the normative amendment literally: `blocks` is an integer array, x varies fastest under `x + sizeX * (z + sizeZ * y)`, block-state data is omitted, and an empty build publishes height zero plus an empty array. | Issue #8 now freezes these choices for both BB-07 and BB-08; later representation changes require a new schema version. |
 | 2026-07-20 | Load every source chunk asynchronously and hold plugin chunk tickets while the per-tick snapshot is read. Start export after reveal-wall removal completes so the editor and exporter never compete for the same plugin-owned ticket. | A bounded `getBlockAt` loop is not watchdog-safe if its first access synchronously loads an unloaded chunk, and Bukkit plugin tickets are not reference-counted between two services using the same plugin. |
 | 2026-07-20 | Export contestant plots, not the controller's extra debug/practice plots. | The manifest's `player` field identifies builds that the renderer and judge should process; an unowned debug plot is arena capacity, not a contestant submission. |
-| 2026-07-20 | Cancel mutable snapshot work when a round aborts and keep a new round IDLE while an immutable export write is still finishing. | Arena reset must never race snapshot reads, while an already-captured immutable snapshot can finish safely without dropping the next round's export. |
+| 2026-07-20 | Cancel mutable snapshot work when a round aborts, preserve arena protection while a normal completion still has mutable reads, and keep a new round IDLE while an immutable export write is finishing. | Arena mutations must never race snapshot reads, while an already-captured immutable snapshot can finish safely without dropping the next round's export. |
 
 ## Surprises & Discoveries
 
@@ -56,12 +56,14 @@ session.
   unit test. Matching the three air materials explicitly preserves the runtime semantics and
   makes the async-boundary integration test independent of a booted server.
 - Review found that `/battle stop` could return the controller to IDLE while the exporter was
-  still reading mutable plot blocks. The exporter now supports reusable cancellation, and
-  round start also waits for any already-immutable write to finish.
+  still reading mutable plot blocks, and normal completion could similarly remove event
+  protection before snapshotting finished. The exporter now exposes mutable-read state for
+  protection, supports reusable cancellation, and keeps round start waiting through any
+  already-immutable write.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 96 tests, zero failures, and the plugin jar built at
+- `make ci-fast` passed on Java 21 with 97 tests, zero failures, and the plugin jar built at
   `build/libs/ScenarioCraft-0.1.0-SNAPSHOT.jar`.
 - `RoundExportWriterTest.normativeWorkedExampleRoundTripsExactly` loads the committed
   `fixtures/schema-v1/p1.voxels.json`, programmatically constructs the amendment's single
@@ -83,7 +85,9 @@ session.
   controller supplies the frozen task, world, player, origin, and configured volume after the
   reveal walls finish their bounded removal.
 - `RoundControllerTest.stoppingRevealCancelsTheMutableSnapshotBeforeAnotherArenaReset` and
-  `newRoundWaitsForAnImmutableExportWriteToFinish` pin both sides of the export lifecycle gate.
+  `newRoundWaitsForAnImmutableExportWriteToFinish` pin both sides of the export lifecycle gate;
+  `idleArenaProtectionLastsUntilMutableSnapshotReadsFinish` keeps external mutation protection
+  active only through the mutable-read portion.
 - Review against `code_review.md` found no P1: export logic has focused tests, adds no block
   mutation, adds no player-facing output or inventory UI, and contains no credential material.
 

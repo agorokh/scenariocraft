@@ -96,6 +96,11 @@ final class RoundExportService implements RoundExporter {
     }
 
     @Override
+    public synchronized boolean isReadingArena() {
+        return activeSnapshot != null;
+    }
+
+    @Override
     public synchronized void cancel() {
         preparationGeneration++;
         activeSnapshot = null;

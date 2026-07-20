@@ -802,8 +802,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityExplode(EntityExplodeEvent event) {
-        if (phase() != RoundPhase.IDLE
-                && event.getLocation().getWorld() == arena.world()) {
+        if (isArenaProtected() && event.getLocation().getWorld() == arena.world()) {
             event.setCancelled(true);
         }
     }
@@ -1416,7 +1415,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private boolean isActiveArenaBlock(Block block) {
-        return phase() != RoundPhase.IDLE && block.getWorld() == arena.world();
+        return isArenaProtected() && block.getWorld() == arena.world();
+    }
+
+    private boolean isArenaProtected() {
+        return phase() != RoundPhase.IDLE || roundExporter.isReadingArena();
     }
 
     private boolean mayContestantEdit(Player player, Block block) {
