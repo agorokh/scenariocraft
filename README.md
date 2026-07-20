@@ -38,6 +38,20 @@ can build the scaffold now with Java 21:
 
 The plugin jar is written to `build/libs/`.
 
+## Build Battle operator notes
+
+During an active Build Battle, ScenarioCraft protects the entire configured
+`battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, and
+entity-driven block changes until the controller returns to `IDLE`. The plugin logs one
+activation message when each round starts. Keep unrelated builds and minigames in a
+different world.
+
+Controller-owned moves use explicit-world console teleports and verify the result on the
+server, including a one-tick confirmation for chunk-loading or lifecycle delays. A failed
+move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
+`/battle stop`, move the named player safely if needed, and have them reconnect; disconnect
+cleanup clears the temporary failed-exit containment state.
+
 ## How this was built
 
 ScenarioCraft is being built in the open for **OpenAI Build Week (July 2026)**. Every change

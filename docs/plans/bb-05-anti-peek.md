@@ -44,6 +44,9 @@ session.
 | 2026-07-20 | Extend each barrier roof across the outer wall footprint and remove that full footprint during REVEAL. | Covering the wall ring closes the last overhead line around the plot perimeter without changing the contestant's editable volume. |
 | 2026-07-20 | Track contestants whose round-exit teleport fails and continue denying their arena edits without restoring a personal border. | An IDLE phase must not turn a failed extraction into permission to edit the arena, while teardown must still release the client-side privacy constraint. |
 | 2026-07-20 | Apply plot permission to non-secret right-click block interactions and notify every online operator when a controller teleport fails. | Tool transformations can mutate blocks without a place event, and an operator-visible alert makes manual recovery actionable immediately. |
+| 2026-07-20 | Permit block-item interactions when the clicked face's placement target is editable, while keeping tool transformations subject to the clicked-block policy. | First-block placement commonly clicks the protected plot floor or wall, so the interaction guard must distinguish the eventual placement target from the transformed block. |
+| 2026-07-20 | Confirm handled-but-not-yet-observed console teleports one tick later before applying failure containment. | Cross-chunk and player lifecycle edges can defer the authoritative location update; callers now receive success or failure only after a server-state confirmation. |
+| 2026-07-20 | Freeze each contestant's `PlotBoundary` at round preparation and clear failed-exit containment on successful controller moves, quit, close, and new participation. | Logical edit and border geometry must stay aligned with the already-built walls, and recovery state must not leak into another world or round. |
 
 ## Surprises & Discoveries
 
@@ -73,21 +76,23 @@ session.
 - A claimed fire-based teardown path does not exist in this repository. Arena cleanup and
   reset use the batched fill plan, so active-round fire cancellation does not interfere with
   `/battle stop`.
-- Bukkit's synchronous `dispatchCommand` completes the vanilla `tp` mutation before returning
-  on the server thread, so the immediate authoritative location check does not introduce a
-  one-tick race. A later task-based check would instead permit callers to act on an
-  unconfirmed result.
+- Vanilla command dispatch is synchronous, but the player's authoritative location may still
+  settle later around chunk or lifecycle edges. Immediate successes are accepted; an
+  unobserved handled command receives one scheduled tick of confirmation before any caller
+  applies failure containment.
 - Teleport verification failures emit the greppable
   `SCENARIOCRAFT_TELEPORT_FAILURE` marker. Operators should run `/battle stop`, then use a
   manual explicit-world teleport for any player named by the marker if the console command
   subsystem remains unavailable.
-- Indirect-mutation cancellation is always on while a round is active; no operator toggle is
-  required. Once the controller returns to IDLE, normal arena-world behavior resumes except
-  for a contestant whose failed exit is still being contained.
+- Indirect-mutation cancellation is always on across `battle_world` while a round is active;
+  no operator toggle is required. The README documents the dedicated-world expectation and
+  recovery runbook, and round start logs the protection scope. Once the controller returns
+  to IDLE, normal arena-world behavior resumes except for a contestant whose failed exit is
+  still being contained.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 76 tests.
+- `make ci-fast` passed on Java 21 with 78 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

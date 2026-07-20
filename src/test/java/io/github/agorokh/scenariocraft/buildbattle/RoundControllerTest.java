@@ -389,6 +389,15 @@ class RoundControllerTest {
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
         rig.controller.onContestantBlockBreak(strandedBreak);
         assertTrue(strandedBreak.isCancelled());
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        BlockBreakEvent afterDisconnect =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterDisconnect);
+        assertFalse(afterDisconnect.isCancelled());
         rig.close();
     }
 
@@ -609,7 +618,7 @@ class RoundControllerTest {
     }
 
     @Test
-    void failedPlotTeleportRestoresDefaultBorderAndAdventureMode() {
+    void failedPlotTeleportKeepsAntiPeekBorderAndAdventureMode() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
         rig.failTeleportDispatch.set(true);
@@ -617,7 +626,7 @@ class RoundControllerTest {
         rig.runTimerTick();
 
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
-        assertNull(rig.playerWorldBorder.get());
+        assertNotNull(rig.playerWorldBorder.get());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         assertEquals(0, rig.bossbarPlayers.get());
         assertTrue(
@@ -637,12 +646,41 @@ class RoundControllerTest {
         rig.ignoreTeleportCommand.set(true);
 
         rig.runTimerTick();
+        rig.runDelayedTasks();
 
         assertEquals(RoundPhase.REVEAL, rig.controller.phase());
         assertNotNull(rig.playerWorldBorder.get());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         assertEquals(plotLocation.getX(), rig.lastTeleport.get().getX());
         assertEquals(plotLocation.getZ(), rig.lastTeleport.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void handledTeleportMaySettleBeforeTheOneTickConfirmation() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.ignoreTeleportCommand.set(true);
+        long alertsBefore =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+
+        rig.runTimerTick();
+        List<String> pendingCommands =
+                rig.consoleCommands.subList(
+                        rig.consoleCommands.size() - 2,
+                        rig.consoleCommands.size());
+        pendingCommands.forEach(rig::applyTeleportCommand);
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(
+                alertsBefore,
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count());
         rig.close();
     }
 
@@ -760,6 +798,26 @@ class RoundControllerTest {
                 new BlockBreakEvent(arenaBlock, rig.spectator);
         rig.controller.onContestantBlockBreak(idleBreak);
         assertFalse(idleBreak.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void blockPlacementInteractionMayTargetEditableSpaceAboveTheFloor() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Block floor = rig.blockAt(0, 0, -3);
+        PlayerInteractEvent placementInteraction =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.RIGHT_CLICK_BLOCK,
+                        new BlockItemStack(),
+                        floor,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+
+        rig.controller.onPlayerInteract(placementInteraction);
+
+        assertFalse(placementInteraction.isCancelled());
         rig.close();
     }
 
@@ -946,6 +1004,7 @@ class RoundControllerTest {
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
+        private final List<Runnable> delayedTasks = new ArrayList<>();
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicBoolean failSaveData = new AtomicBoolean();
@@ -1091,6 +1150,7 @@ class RoundControllerTest {
                                         case "getName" -> "BuilderKid";
                                         case "getGameMode" -> gameMode.get();
                                         case "getLocation" -> lastTeleport.get().clone();
+                                        case "getWorld" -> lastTeleport.get().getWorld();
                                         case "getInventory" -> playerInventory;
                                         case "getEnderChest" -> enderChest;
                                         case "getPersistentDataContainer" ->
@@ -1158,6 +1218,7 @@ class RoundControllerTest {
                                             yield null;
                                         }
                                         case "getLocation" -> spectatorLocation.get().clone();
+                                        case "getWorld" -> spectatorLocation.get().getWorld();
                                         case "isOnline", "isOp" -> true;
                                         case "teleport" -> {
                                             throw new AssertionError(
@@ -1220,7 +1281,10 @@ class RoundControllerTest {
                                             ((Runnable) arguments[1]).run();
                                             yield task;
                                         }
-                                        case "runTaskLater" -> task;
+                                        case "runTaskLater" -> {
+                                            delayedTasks.add((Runnable) arguments[1]);
+                                            yield task;
+                                        }
                                         default -> defaultValue(method.getReturnType());
                                     });
             Server server =
@@ -1291,7 +1355,8 @@ class RoundControllerTest {
                                             "test cosmetic book failure");
                                 }
                                 placedTask.set(prompt);
-                            });
+                            },
+                            ignored -> true);
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
@@ -1391,6 +1456,12 @@ class RoundControllerTest {
 
         private void runTimerTick() {
             timerTick.get().run();
+        }
+
+        private void runDelayedTasks() {
+            while (!delayedTasks.isEmpty()) {
+                delayedTasks.removeFirst().run();
+            }
         }
 
         private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
@@ -1493,6 +1564,22 @@ class RoundControllerTest {
         @Override
         public byte[] serializeAsBytes() {
             throw new AssertionError("empty item stacks must not be serialized");
+        }
+    }
+
+    private static final class BlockItemStack extends ItemStack {
+        private BlockItemStack() {
+            super();
+        }
+
+        @Override
+        public Material getType() {
+            return Material.STONE;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return false;
         }
     }
 
