@@ -26,6 +26,9 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.scheduler.BukkitScheduler;
@@ -122,6 +125,8 @@ class RoundControllerTest {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
         assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        rig.inventoryContents.set(new ItemStack[1]);
+        rig.enderChestContents.set(new ItemStack[1]);
 
         rig.controller.onPlayerQuit(
                 new PlayerQuitEvent(
@@ -131,6 +136,8 @@ class RoundControllerTest {
         rig.playerOnline.set(false);
 
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertEquals(2, rig.inventoryContents.get().length);
+        assertEquals(3, rig.enderChestContents.get().length);
         assertEquals(0.5, rig.lastTeleport.get().getX());
         assertEquals(0.5, rig.lastTeleport.get().getZ());
 
@@ -185,10 +192,26 @@ class RoundControllerTest {
         rig.close();
     }
 
+    @Test
+    void arenaFailureNotifiesConsoleStarterDirectly() {
+        TestRig rig = new TestRig();
+        rig.failChunkLoads.set(true);
+
+        rig.controller.start(rig.consoleStarter);
+        rig.runBlockTick();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(
+                rig.starterMessages.stream()
+                        .anyMatch(message -> message.startsWith("The arena could not get ready")));
+        rig.close();
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
+        private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -198,10 +221,18 @@ class RoundControllerTest {
         private final AtomicInteger titles = new AtomicInteger();
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
+        private final AtomicReference<ItemStack[]> inventoryContents =
+                new AtomicReference<>(new ItemStack[2]);
+        private final AtomicReference<ItemStack[]> enderChestContents =
+                new AtomicReference<>(new ItemStack[3]);
         private final List<String> messages = new ArrayList<>();
+        private final List<String> starterMessages = new ArrayList<>();
         private final World world;
+        private final PlayerInventory playerInventory;
+        private final Inventory enderChest;
         private final Player player;
         private final Player spectator;
+        private final CommandSender consoleStarter;
         private final Plugin plugin;
         private final BatchedBlockEditor editor;
         private final RoundController controller;
@@ -246,13 +277,21 @@ class RoundControllerTest {
                                     switch (method.getName()) {
                                         case "getSpawnLocation" -> new Location(worldRef(), 0, 1, 0);
                                         case "getName" -> ArenaWorldService.WORLD_NAME;
-                                        case "getChunkAtAsync" ->
-                                            CompletableFuture.completedFuture(
+                                        case "getChunkAtAsync" -> {
+                                            if (failChunkLoads.get()) {
+                                                yield CompletableFuture.failedFuture(
+                                                        new IllegalStateException(
+                                                                "test chunk load failure"));
+                                            }
+                                            yield CompletableFuture.completedFuture(
                                                     chunk((int) arguments[0], (int) arguments[1]));
+                                        }
                                         case "addPluginChunkTicket", "removePluginChunkTicket" -> true;
                                         case "getBlockAt" -> block;
                                         default -> defaultValue(method.getReturnType());
                                     });
+            playerInventory = trackedInventory(PlayerInventory.class, inventoryContents);
+            enderChest = trackedInventory(Inventory.class, enderChestContents);
             UUID playerId = UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
             player =
                     proxy(
@@ -262,6 +301,8 @@ class RoundControllerTest {
                                         case "getUniqueId" -> playerId;
                                         case "getName" -> "BuilderKid";
                                         case "getGameMode" -> gameMode.get();
+                                        case "getInventory" -> playerInventory;
+                                        case "getEnderChest" -> enderChest;
                                         case "setGameMode" -> {
                                             gameMode.set((GameMode) arguments[0]);
                                             yield null;
@@ -307,6 +348,21 @@ class RoundControllerTest {
                                         case "sendMessage" -> {
                                             if (arguments[0] instanceof String message) {
                                                 messages.add(message);
+                                            }
+                                            yield null;
+                                        }
+                                        default -> defaultValue(method.getReturnType());
+                                    });
+            consoleStarter =
+                    proxy(
+                            CommandSender.class,
+                            (ignored, method, arguments) ->
+                                    switch (method.getName()) {
+                                        case "getName" -> "CONSOLE";
+                                        case "isOp" -> true;
+                                        case "sendMessage" -> {
+                                            if (arguments[0] instanceof String message) {
+                                                starterMessages.add(message);
                                             }
                                             yield null;
                                         }
@@ -430,6 +486,21 @@ class RoundControllerTest {
                             switch (method.getName()) {
                                 case "getX" -> x;
                                 case "getZ" -> z;
+                                    default -> defaultValue(method.getReturnType());
+                                });
+        }
+
+        private static <T extends Inventory> T trackedInventory(
+                Class<T> type, AtomicReference<ItemStack[]> contents) {
+            return proxy(
+                    type,
+                    (ignored, method, arguments) ->
+                            switch (method.getName()) {
+                                case "getContents" -> contents.get();
+                                case "setContents" -> {
+                                    contents.set(((ItemStack[]) arguments[0]).clone());
+                                    yield null;
+                                }
                                 default -> defaultValue(method.getReturnType());
                             });
         }

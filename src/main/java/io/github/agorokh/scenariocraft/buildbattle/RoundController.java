@@ -20,6 +20,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -41,6 +43,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final BukkitTask timerTask;
     private List<PlotBounds> plots = List.of();
     private RoundTimer timer;
+    private CommandSender roundStarter;
     private boolean closed;
 
     public RoundController(
@@ -112,10 +115,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             Player player = players.get(index);
             contestants.put(
                     player.getUniqueId(),
-                    new Contestant(player.getUniqueId(), plots.get(index), player.getGameMode()));
+                    new Contestant(
+                            player.getUniqueId(),
+                            plots.get(index),
+                            player.getGameMode(),
+                            snapshotContents(player.getInventory()),
+                            snapshotContents(player.getEnderChest())));
         }
 
         transitionTo(RoundPhase.PREPARING);
+        roundStarter = sender;
         if (players.isEmpty()) {
             sender.sendMessage("Starting a two-plot practice round.");
         } else if (players.size() == 1) {
@@ -209,6 +218,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         restoreRoundPlayers();
         contestants.clear();
         revealSpectators.clear();
+        roundStarter = null;
         plots = List.of();
     }
 
@@ -354,6 +364,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         timer = null;
         contestants.clear();
         revealSpectators.clear();
+        roundStarter = null;
         plots = List.of();
         broadcast("Build Battle complete — amazing creating, everyone!");
         logger.info("Round complete: returned to IDLE.");
@@ -368,6 +379,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         transitionTo(RoundPhase.IDLE);
         contestants.clear();
         revealSpectators.clear();
+        roundStarter = null;
         plots = List.of();
     }
 
@@ -375,10 +387,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (phase() == RoundPhase.IDLE) {
             return;
         }
+        CommandSender starter = roundStarter;
         logger.log(Level.SEVERE, "Build Battle arena work failed; aborting round", failure);
         abortRound();
-        broadcast(
-                "The arena could not get ready this time. Please ask a grown-up helper to check the server.");
+        String message =
+                "The arena could not get ready this time. Please ask a grown-up helper to check the server.";
+        broadcast(message);
+        if (starter != null && !(starter instanceof Player)) {
+            starter.sendMessage(message);
+        }
     }
 
     private void transitionTo(RoundPhase next) {
@@ -448,8 +465,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
+        player.getInventory().setContents(cloneContents(contestant.inventoryContents()));
+        player.getEnderChest().setContents(cloneContents(contestant.enderChestContents()));
         player.setGameMode(contestant.originalGameMode());
         player.teleport(hubLocation());
+        player.updateInventory();
     }
 
     private void moveSpectatorToTour(Player player, Spectator ignored) {
@@ -490,6 +510,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return hubLocation();
     }
 
+    private static ItemStack[] snapshotContents(Inventory inventory) {
+        return cloneContents(inventory.getContents());
+    }
+
+    private static ItemStack[] cloneContents(ItemStack[] contents) {
+        ItemStack[] snapshot = new ItemStack[contents.length];
+        for (int slot = 0; slot < contents.length; slot++) {
+            ItemStack item = contents[slot];
+            snapshot[slot] = item == null ? null : item.clone();
+        }
+        return snapshot;
+    }
+
     private static String formatTime(int seconds) {
         return "%d:%02d".formatted(seconds / 60, seconds % 60);
     }
@@ -498,7 +531,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return phase.name().toLowerCase().replace('_', ' ');
     }
 
-    private record Contestant(UUID playerId, PlotBounds plot, GameMode originalGameMode) {}
+    private record Contestant(
+            UUID playerId,
+            PlotBounds plot,
+            GameMode originalGameMode,
+            ItemStack[] inventoryContents,
+            ItemStack[] enderChestContents) {}
 
     private record Spectator(
             UUID playerId, Location originalLocation, GameMode originalGameMode) {}

@@ -35,6 +35,7 @@ session.
 | 2026-07-19 | Restore contestants during `PlayerQuitEvent`, while retaining their assignment until the round ends. | Paper can persist the safe hub/game-mode state before a disconnect or shutdown completes, and a player who rejoins during the same round can still receive the current phase state. |
 | 2026-07-19 | Snapshot non-contestant spectators when reveal moves them to the tour point, then restore their original location and game mode. | BB-03 requires all players to join the reveal tour, but unrelated exempt helpers and late joiners must not be stranded by the round lifecycle. |
 | 2026-07-19 | Limit periodic short-countdown chat to `GATHERING` and `NOTE_PICK`. | The configurable reveal linger can be much longer, so ten-second announcements there would create avoidable chat spam. |
+| 2026-07-19 | Snapshot contestant inventory and ender-chest contents before the round and restore them whenever the contestant leaves round-controlled Creative mode. | Game-mode restoration alone would let Creative-sourced items leak into normal survival play. |
 
 ## Surprises & Discoveries
 
@@ -59,6 +60,10 @@ session.
   interactive game mode during the tour. Spectators now use Adventure mode until their
   snapshotted state is restored. The same pass exposed stale plan wording about contestant
   locations and assignment order; the Decision Log now matches the issue and implementation.
+- Final current-head review caught that restoring only game mode could preserve
+  Creative-sourced items and that a non-player starter would learn about arena failure only
+  through the server log. Contestant inventory state is now restored with game mode, and
+  console/RCON starters receive the same kid-appropriate failure message as players.
 
 ## Acceptance evidence
 
