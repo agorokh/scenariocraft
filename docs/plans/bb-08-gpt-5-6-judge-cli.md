@@ -2,7 +2,7 @@
 
 Issue: #10
 Owner: Codex session 019f819a-59d3-7673-bb87-779bfa73c915
-Status: In progress — live evidence pending
+Status: Complete
 
 ## Purpose
 
@@ -17,9 +17,9 @@ CI, and live acceptance evidence.
 
 - [x] Define the smallest end-to-end slice.
 - [x] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
+- [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -70,8 +70,20 @@ session.
   the API key is accepted only from `OPENAI_API_KEY` and never serialized or logged. Review
   also moved the request timeout behind `SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS` to preserve the
   repository's configuration-driven timing rule.
-- Pending: a live three-persona fixture run and its actual `results.json` output.
+- A live run used the exact three-persona and shared-rubric files from BB-10 draft PR #29 at
+  head `96e188898fc8e1c0494cbd6b7748368b30fc3e0c`. GPT-5.6 returned three valid verdicts for
+  each fixture contestant with no retries or failures. Alex/p1 scored `3.8333333333333335`,
+  Sam/p2 scored `1.0833333333333333`, and `results.json` named Alex/p1 the mean-based winner.
+  The corresponding human output rounded the means to `3.83` and `1.08`; all six comments
+  named a concrete strength and offered one kind next step.
 
 ## Retrospective
 
-To be completed after implementation, live verification, and review.
+BB-08 now closes the round loop from a frozen manifest and seven PNG views to strict,
+machine-readable GPT-5.6 verdicts and a kid-readable winner announcement. The renderer
+fallback keeps the directory contract usable before PNGs exist, while verbatim rubric
+injection, exact persona shapes, locally computed means, one retry, and per-contestant quorum
+make the judging boundary testable and fail-closed. Developing against fixture content while
+live-verifying the exact BB-10 draft files preserved parallel ownership without duplicating
+the design council's prose. The only environment-specific friction was locating Java 21 and
+loading the explicitly identified API-key env file; neither required a repository workaround.
