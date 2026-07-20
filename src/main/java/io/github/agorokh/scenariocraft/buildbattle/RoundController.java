@@ -8,9 +8,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
@@ -90,6 +92,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
+    private final Set<UUID> strandedArenaPlayers = new LinkedHashSet<>();
     private final NamespacedKey inventorySnapshotKey;
     private final BossBar buildBossBar;
     private final BukkitTask timerTask;
@@ -328,18 +331,22 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler
     public void onPlayerDropItem(PlayerDropItemEvent event) {
-        if (phase() != RoundPhase.IDLE
-                && contestants.containsKey(event.getPlayer().getUniqueId())) {
+        UUID playerId = event.getPlayer().getUniqueId();
+        if ((phase() != RoundPhase.IDLE && contestants.containsKey(playerId))
+                || strandedArenaPlayers.contains(playerId)) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onEntityPickupItem(EntityPickupItemEvent event) {
-        if (phase() != RoundPhase.IDLE
-                && event.getEntity() instanceof Player player
-                && contestants.containsKey(player.getUniqueId())) {
-            event.setCancelled(true);
+        if (event.getEntity() instanceof Player player) {
+            UUID playerId = player.getUniqueId();
+            if ((phase() != RoundPhase.IDLE
+                            && contestants.containsKey(playerId))
+                    || strandedArenaPlayers.contains(playerId)) {
+                event.setCancelled(true);
+            }
         }
     }
 
@@ -349,7 +356,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         Block clicked = event.getClickedBlock();
-        if (clicked == null || !isSecretChest(clicked)) {
+        if (clicked == null) {
+            return;
+        }
+        if (!isSecretChest(clicked)) {
+            if (!mayContestantEdit(event.getPlayer(), clicked)) {
+                event.setCancelled(true);
+            }
             return;
         }
         if (event.getHand() != EquipmentSlot.HAND) {
@@ -900,8 +913,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "Your saved items need a grown-up helper before the next battle.");
             player.setGameMode(GameMode.ADVENTURE);
         }
-        if (!teleport(player, hubLocation()) && !inventoryRestored) {
-            player.setGameMode(GameMode.ADVENTURE);
+        if (!teleport(player, hubLocation())) {
+            strandedArenaPlayers.add(player.getUniqueId());
+            if (!inventoryRestored) {
+                player.setGameMode(GameMode.ADVENTURE);
+            }
         }
     }
 
@@ -1000,6 +1016,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private boolean mayContestantEdit(Player player, Block block) {
+        if (strandedArenaPlayers.contains(player.getUniqueId())
+                && block.getWorld() == arena.world()) {
+            return false;
+        }
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant == null) {
             return !isActiveArenaBlock(block);
@@ -1075,6 +1095,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             + worldKey);
             player.sendMessage(
                     "The battle could not move you safely. Please ask a grown-up helper.");
+            notifyOperatorsOfTeleportFailure(player, destination);
             return false;
         }
         try {
@@ -1095,6 +1116,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             + commandNumber(destination.getPitch());
             if (server.dispatchCommand(server.getConsoleSender(), command)
                     && playerReached(player, destination)) {
+                strandedArenaPlayers.remove(player.getUniqueId());
                 return true;
             }
             logger.severe(
@@ -1113,7 +1135,26 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         player.sendMessage(
                 "The battle could not move you safely. Please ask a grown-up helper.");
+        notifyOperatorsOfTeleportFailure(player, destination);
         return false;
+    }
+
+    private void notifyOperatorsOfTeleportFailure(
+            Player affectedPlayer, Location destination) {
+        World destinationWorld =
+                Objects.requireNonNull(
+                        destination.getWorld(), "teleport destination world");
+        String alert =
+                "ScenarioCraft teleport alert: "
+                        + affectedPlayer.getName()
+                        + " could not move to "
+                        + destinationWorld.getKey()
+                        + ". Run /battle stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
+        for (Player onlinePlayer : server.getOnlinePlayers()) {
+            if (onlinePlayer.isOp()) {
+                onlinePlayer.sendMessage(alert);
+            }
+        }
     }
 
     private static boolean playerReached(Player player, Location destination) {

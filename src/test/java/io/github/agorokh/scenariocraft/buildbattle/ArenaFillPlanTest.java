@@ -17,7 +17,7 @@ class ArenaFillPlanTest {
                         plots, -61, 30, new SecretChestPosition(2, -60, 0));
 
         assertEquals(13, plan.fills().size());
-        assertEquals(86_289, plan.totalBlockMutations());
+        assertEquals(86_561, plan.totalBlockMutations());
         assertEquals(
                 new BlockFill(
                         new Cuboid(-17, 17, -60, -30, -81, -47), Material.AIR),
@@ -46,7 +46,7 @@ class ArenaFillPlanTest {
                 plan.fills().get(4));
         assertEquals(
                 new BlockFill(
-                        new Cuboid(-16, 16, -30, -30, -80, -48),
+                        new Cuboid(-17, 17, -30, -30, -81, -47),
                         Material.BARRIER),
                 plan.fills().get(5));
         assertEquals(Material.AIR, plan.fills().get(6).material());
@@ -93,7 +93,7 @@ class ArenaFillPlanTest {
         ArenaFillPlan plan = ArenaFillPlan.forWallRemoval(plots, -61, 30);
 
         assertEquals(10, plan.fills().size());
-        assertEquals(10_338, plan.totalBlockMutations());
+        assertEquals(10_610, plan.totalBlockMutations());
         assertEquals(
                 new BlockFill(
                         new Cuboid(-17, 17, -60, -31, -81, -81),
@@ -106,7 +106,7 @@ class ArenaFillPlanTest {
                 plan.fills().get(3));
         assertEquals(
                 new BlockFill(
-                        new Cuboid(-16, 16, -30, -30, -80, -48),
+                        new Cuboid(-17, 17, -30, -30, -81, -47),
                         Material.AIR),
                 plan.fills().get(4));
         assertEquals(

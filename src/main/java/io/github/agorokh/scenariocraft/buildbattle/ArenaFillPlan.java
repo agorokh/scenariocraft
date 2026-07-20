@@ -116,12 +116,12 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                             fills,
                             total,
                             new Cuboid(
-                                    plot.minX(),
-                                    plot.maxX(),
+                                    outerMinX,
+                                    outerMaxX,
                                     capY,
                                     capY,
-                                    plot.minZ(),
-                                    plot.maxZ()),
+                                    outerMinZ,
+                                    outerMaxZ),
                             CAP_MATERIAL);
         }
         total = add(fills, total, secretChest.asCuboid(), Material.CHEST);
@@ -201,12 +201,12 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                             fills,
                             total,
                             new Cuboid(
-                                    plot.minX(),
-                                    plot.maxX(),
+                                    outerMinX,
+                                    outerMaxX,
                                     capY,
                                     capY,
-                                    plot.minZ(),
-                                    plot.maxZ()),
+                                    outerMinZ,
+                                    outerMaxZ),
                             Material.AIR);
         }
         return new ArenaFillPlan(fills, total);

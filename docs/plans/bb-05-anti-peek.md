@@ -41,6 +41,9 @@ session.
 | 2026-07-20 | Attempt hub extraction after inventory restoration regardless of decode, write, or save failure. | Physical round cleanup is a separate invariant from item recovery and must not be skipped by an inventory exception. |
 | 2026-07-20 | Keep the personal border cleared after a failed round-exit hub teleport, while retaining it for a failed in-round REVEAL move. | Round teardown removes the privacy requirement and must not leave a player permanently constrained after contestant state is cleared. |
 | 2026-07-20 | Cancel active-arena entity block changes and null-player hanging/entity placements. | Automated or entity-driven mutations do not have a contestant identity to evaluate, so they must be denied throughout an active arena. |
+| 2026-07-20 | Extend each barrier roof across the outer wall footprint and remove that full footprint during REVEAL. | Covering the wall ring closes the last overhead line around the plot perimeter without changing the contestant's editable volume. |
+| 2026-07-20 | Track contestants whose round-exit teleport fails and continue denying their arena edits without restoring a personal border. | An IDLE phase must not turn a failed extraction into permission to edit the arena, while teardown must still release the client-side privacy constraint. |
+| 2026-07-20 | Apply plot permission to non-secret right-click block interactions and notify every online operator when a controller teleport fails. | Tool transformations can mutate blocks without a place event, and an operator-visible alert makes manual recovery actionable immediately. |
 
 ## Surprises & Discoveries
 
@@ -70,10 +73,17 @@ session.
 - A claimed fire-based teardown path does not exist in this repository. Arena cleanup and
   reset use the batched fill plan, so active-round fire cancellation does not interfere with
   `/battle stop`.
+- Bukkit's synchronous `dispatchCommand` completes the vanilla `tp` mutation before returning
+  on the server thread, so the immediate authoritative location check does not introduce a
+  one-tick race. A later task-based check would instead permit callers to act on an
+  unconfirmed result.
 - Teleport verification failures emit the greppable
   `SCENARIOCRAFT_TELEPORT_FAILURE` marker. Operators should run `/battle stop`, then use a
   manual explicit-world teleport for any player named by the marker if the console command
   subsystem remains unavailable.
+- Indirect-mutation cancellation is always on while a round is active; no operator toggle is
+  required. Once the controller returns to IDLE, normal arena-world behavior resumes except
+  for a contestant whose failed exit is still being contained.
 
 ## Acceptance evidence
 
@@ -89,8 +99,9 @@ session.
   the cap during REVEAL.
 - Both clients observed the world-default diameter 59,999,968 border after `/battle stop`
   and again after REVEAL. The server then stopped cleanly with no ScenarioCraft errors.
-- Arena setup and reveal remained budgeted: 2,015 setup mutations and 562 reveal mutations
-  at 1,000 blocks per tick in the smoke configuration.
+- The reviewed outer-roof geometry budgets 2,095 setup mutations and 642 reveal mutations
+  at 1,000 blocks per tick in the smoke configuration. The real-server smoke asserts the
+  queued setup count is completed exactly.
 
 ## Retrospective
 

@@ -385,6 +385,10 @@ class RoundControllerTest {
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertNull(rig.playerWorldBorder.get());
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        BlockBreakEvent strandedBreak =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(strandedBreak);
+        assertTrue(strandedBreak.isCancelled());
         rig.close();
     }
 
@@ -619,6 +623,9 @@ class RoundControllerTest {
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("could not move you safely")));
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
         rig.close();
     }
 
@@ -736,6 +743,17 @@ class RoundControllerTest {
                 new BlockBreakEvent(arenaBlock, rig.spectator);
         rig.controller.onContestantBlockBreak(activeBreak);
         assertTrue(activeBreak.isCancelled());
+
+        PlayerInteractEvent activeInteraction =
+                new PlayerInteractEvent(
+                        rig.spectator,
+                        Action.RIGHT_CLICK_BLOCK,
+                        null,
+                        arenaBlock,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(activeInteraction);
+        assertTrue(activeInteraction.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockBreakEvent idleBreak =
