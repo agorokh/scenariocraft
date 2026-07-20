@@ -64,6 +64,10 @@ an unconfirmed exit. Verify that the player is at the hub with the default world
 drop/pick up items before starting the next round. Operators who join while recovery is
 pending receive another alert.
 
+A rejected console dispatch is retried once before it is treated as a failure. If saving a
+recovery marker fails, online operators receive a separate persistence alert; keep the
+server running and retry the player's hub return so player data can be saved again.
+
 ## How this was built
 
 ScenarioCraft is being built in the open for **OpenAI Build Week (July 2026)**. Every change

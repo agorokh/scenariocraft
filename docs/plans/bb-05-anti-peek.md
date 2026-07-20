@@ -51,6 +51,8 @@ session.
 | 2026-07-20 | Apply the plot policy to fertilization and structure growth. | Bone meal and trees can change multiple blocks beyond the interacted block, so every resulting block must stay inside the assigned editable volume. |
 | 2026-07-20 | Persist an unconfirmed-exit recovery marker in player data until a hub arrival is authoritative, and guard physical block interactions. | Reload must not erase containment after inventory restoration, and spectator farmland trampling must follow the same active-arena policy as other mutations. |
 | 2026-07-20 | Run mutation guards at `HIGHEST` while ignoring already-cancelled events, require vanilla teleport commands at startup, and keep adjacent-item use separate from clicked-block use. | ScenarioCraft should be final among normal protection listeners without reviving their denials, fail before a live round if its transport commands are missing, and allow buckets/redstone/attachments into editable space without permitting tool transforms on the protected floor or wall. |
+| 2026-07-20 | Keep NOTE_PICK as the holding phase until every online contestant's plot arrival is confirmed; allow player ignition and gravity settlement only inside an editable plot. | Build time and Creative controls must not begin on dispatch alone, while valid fire, portal, sand, gravel, concrete-powder, and anvil builds should work without opening out-of-plot mutation paths. |
+| 2026-07-20 | Retry a rejected console dispatch once and retry saving an existing recovery marker on every recovery attempt. | A transient command-registry edge should not abort immediately, and a player-data save failure must remain operator-visible and get another durability attempt on rejoin/recovery. |
 
 ## Surprises & Discoveries
 
@@ -96,7 +98,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 82 tests.
+- `make ci-fast` passed on Java 21 with 83 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

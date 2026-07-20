@@ -373,6 +373,12 @@ class RoundControllerTest {
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("saved items need")));
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(
+                                message ->
+                                        message.contains(
+                                                "recovery persistence alert")));
         rig.failSaveData.set(false);
         rig.close();
     }
@@ -658,6 +664,7 @@ class RoundControllerTest {
         rig.failTeleportDispatch.set(true);
 
         rig.runTimerTick();
+        rig.runDelayedTasks();
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertNull(rig.playerWorldBorder.get());
@@ -729,6 +736,7 @@ class RoundControllerTest {
                         .count();
 
         rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
         rig.runNextDelayedTask();
         rig.applyTeleportCommand(rig.consoleCommands.getLast());
         rig.runNextDelayedTask();
@@ -741,6 +749,23 @@ class RoundControllerTest {
                 rig.spectatorMessages.stream()
                         .filter(message -> message.contains("ScenarioCraft teleport alert"))
                         .count());
+        rig.close();
+    }
+
+    @Test
+    void rejectedPlotDispatchRetriesOnceBeforeBuildingStarts() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        rig.failTeleportDispatch.set(false);
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
         rig.close();
     }
 
@@ -1083,7 +1108,7 @@ class RoundControllerTest {
                 proxy(
                         Entity.class,
                         (ignored, method, arguments) -> defaultValue(method.getReturnType()));
-        rig.controller.start(rig.player);
+        rig.advanceTo(RoundPhase.BUILDING);
 
         BlockExplodeEvent blockExplosion =
                 new BlockExplodeEvent(
@@ -1132,12 +1157,26 @@ class RoundControllerTest {
                         BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
                         rig.player);
         rig.controller.onArenaBlockIgnite(ignite);
-        assertTrue(ignite.isCancelled());
+        assertFalse(ignite.isCancelled());
+
+        BlockIgniteEvent spectatorIgnite =
+                new BlockIgniteEvent(
+                        arenaBlock,
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.spectator);
+        rig.controller.onArenaBlockIgnite(spectatorIgnite);
+        assertTrue(spectatorIgnite.isCancelled());
 
         EntityChangeBlockEvent entityChange =
                 new EntityChangeBlockEvent(entity, arenaBlock, null);
         rig.controller.onArenaEntityChangeBlock(entityChange);
-        assertTrue(entityChange.isCancelled());
+        assertFalse(entityChange.isCancelled());
+
+        EntityChangeBlockEvent outsideEntityChange =
+                new EntityChangeBlockEvent(
+                        entity, rig.blockAt(1, 1, -3), null);
+        rig.controller.onArenaEntityChangeBlock(outsideEntityChange);
+        assertTrue(outsideEntityChange.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =

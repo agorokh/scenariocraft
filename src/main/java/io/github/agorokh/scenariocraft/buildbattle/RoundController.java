@@ -99,6 +99,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
     private final Set<UUID> strandedArenaPlayers = new LinkedHashSet<>();
     private final Map<UUID, Long> teleportAttempts = new LinkedHashMap<>();
+    private final Set<UUID> pendingPlotEntries = new LinkedHashSet<>();
     private final NamespacedKey inventorySnapshotKey;
     private final NamespacedKey teleportRecoveryKey;
     private final BossBar buildBossBar;
@@ -113,6 +114,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private boolean closed;
     private boolean movingContestantsToPlots;
     private boolean plotEntryFailed;
+    private boolean awaitingPlotEntries;
     private long nextTeleportAttempt;
 
     public RoundController(
@@ -547,7 +549,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaBlockIgnite(BlockIgniteEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
+        Player player = event.getPlayer();
+        if (isActiveArenaBlock(event.getBlock())
+                && (player == null
+                        || !mayContestantEdit(player, event.getBlock()))) {
             event.setCancelled(true);
         }
     }
@@ -606,7 +611,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onArenaEntityChangeBlock(EntityChangeBlockEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
+        if (isActiveArenaBlock(event.getBlock())
+                && !isEditableByAnyContestant(event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -678,6 +684,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         revealSpectators.clear();
         strandedArenaPlayers.clear();
         teleportAttempts.clear();
+        pendingPlotEntries.clear();
+        awaitingPlotEntries = false;
         roundStarter = null;
         resetNotePickState();
         plots = List.of();
@@ -800,10 +808,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void beginBuilding() {
-        transitionTo(RoundPhase.BUILDING);
-        timer = RoundTimer.start(settings.timings().buildSeconds());
-        buildBossBar.setVisible(true);
+        if (awaitingPlotEntries) {
+            return;
+        }
         plotEntryFailed = false;
+        awaitingPlotEntries = true;
+        pendingPlotEntries.clear();
         movingContestantsToPlots = true;
         try {
             forEachOnlineContestant(this::moveToPlot);
@@ -814,6 +824,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             abortAfterPlotEntryFailure();
             return;
         }
+        finishBeginBuildingIfReady();
+    }
+
+    private void finishBeginBuildingIfReady() {
+        if (movingContestantsToPlots
+                || plotEntryFailed
+                || !awaitingPlotEntries
+                || !pendingPlotEntries.isEmpty()
+                || phase() != RoundPhase.NOTE_PICK) {
+            return;
+        }
+        awaitingPlotEntries = false;
+        transitionTo(RoundPhase.BUILDING);
+        timer = RoundTimer.start(settings.timings().buildSeconds());
+        buildBossBar.setVisible(true);
         updateBuildBossBar();
         broadcast("Build time! Have fun making something only you could imagine.");
     }
@@ -888,6 +913,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         restoreRoundPlayers();
         transitionTo(RoundPhase.IDLE);
         timer = null;
+        pendingPlotEntries.clear();
+        awaitingPlotEntries = false;
         contestants.clear();
         revealSpectators.clear();
         roundStarter = null;
@@ -900,6 +927,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void abortRound() {
         blockEditor.cancel();
         timer = null;
+        pendingPlotEntries.clear();
+        awaitingPlotEntries = false;
         buildBossBar.removeAll();
         buildBossBar.setVisible(false);
         restoreRoundPlayers();
@@ -976,6 +1005,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveToPlot(Player player, Contestant contestant) {
+        if (awaitingPlotEntries) {
+            pendingPlotEntries.add(player.getUniqueId());
+        }
         clearRoundInventory(player);
         resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
@@ -991,13 +1023,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     applyPersonalBorder(player, contestant);
                     player.setGameMode(GameMode.CREATIVE);
                     buildBossBar.addPlayer(player);
+                    if (pendingPlotEntries.remove(player.getUniqueId())) {
+                        finishBeginBuildingIfReady();
+                    }
                 },
                 () -> {
                     resetPersonalBorder(player);
                     player.setGameMode(GameMode.ADVENTURE);
                     strandedArenaPlayers.add(player.getUniqueId());
                     buildBossBar.removePlayer(player);
-                    if (phase() == RoundPhase.BUILDING) {
+                    pendingPlotEntries.remove(player.getUniqueId());
+                    if (phase() == RoundPhase.BUILDING
+                            || (phase() == RoundPhase.NOTE_PICK
+                                    && awaitingPlotEntries)) {
                         plotEntryFailed = true;
                         if (!movingContestantsToPlots) {
                             abortAfterPlotEntryFailure();
@@ -1007,9 +1045,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void abortAfterPlotEntryFailure() {
-        if (phase() != RoundPhase.BUILDING) {
+        if (phase() != RoundPhase.BUILDING
+                && !(phase() == RoundPhase.NOTE_PICK
+                        && awaitingPlotEntries)) {
             return;
         }
+        awaitingPlotEntries = false;
+        pendingPlotEntries.clear();
         logger.severe(
                 "A contestant could not enter their plot; aborting the round safely.");
         abortRound();
@@ -1215,6 +1257,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return false;
     }
 
+    private boolean isEditableByAnyContestant(Block block) {
+        if (phase() != RoundPhase.BUILDING
+                || block.getWorld() != arena.world()) {
+            return false;
+        }
+        return contestants.values().stream()
+                .map(Contestant::boundary)
+                .anyMatch(
+                        boundary ->
+                                boundary.containsEditableBlock(
+                                        block.getX(),
+                                        block.getY(),
+                                        block.getZ()));
+    }
+
     private void applyPersonalBorder(Player player, Contestant contestant) {
         PlotBoundary boundary = contestant.boundary();
         WorldBorder border = server.createWorldBorder();
@@ -1275,12 +1332,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             + " "
                             + commandNumber(destination.getPitch());
             if (!server.dispatchCommand(server.getConsoleSender(), command)) {
-                reportTeleportFailure(
+                scheduleTeleportDispatchRetry(
                         player,
                         destination,
-                        "console command was rejected",
-                        null,
+                        command,
                         attempt,
+                        onSuccess,
                         onFailure);
                 return;
             }
@@ -1300,6 +1357,82 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     player,
                     destination,
                     "console dispatch or verification scheduling failed",
+                    failure,
+                    attempt,
+                    onFailure);
+        }
+    }
+
+    private void scheduleTeleportDispatchRetry(
+            Player player,
+            Location destination,
+            String command,
+            long attempt,
+            Runnable onSuccess,
+            Runnable onFailure) {
+        try {
+            server.getScheduler()
+                    .runTaskLater(
+                            plugin,
+                            () -> {
+                                if (!isCurrentTeleportAttempt(player, attempt)) {
+                                    return;
+                                }
+                                if (closed || !player.isOnline()) {
+                                    reportTeleportFailure(
+                                            player,
+                                            destination,
+                                            "player unavailable before teleport dispatch retry",
+                                            null,
+                                            attempt,
+                                            onFailure);
+                                    return;
+                                }
+                                if (playerReached(player, destination)) {
+                                    finishTeleportSuccess(
+                                            player, attempt, onSuccess);
+                                    return;
+                                }
+                                try {
+                                    if (!server.dispatchCommand(
+                                            server.getConsoleSender(), command)) {
+                                        reportTeleportFailure(
+                                                player,
+                                                destination,
+                                                "console command was rejected twice",
+                                                null,
+                                                attempt,
+                                                onFailure);
+                                        return;
+                                    }
+                                    if (playerReached(player, destination)) {
+                                        finishTeleportSuccess(
+                                                player, attempt, onSuccess);
+                                        return;
+                                    }
+                                    scheduleTeleportConfirmation(
+                                            player,
+                                            destination,
+                                            attempt,
+                                            onSuccess,
+                                            onFailure,
+                                            0);
+                                } catch (RuntimeException failure) {
+                                    reportTeleportFailure(
+                                            player,
+                                            destination,
+                                            "console dispatch retry failed",
+                                            failure,
+                                            attempt,
+                                            onFailure);
+                                }
+                            },
+                            1L);
+        } catch (RuntimeException failure) {
+            reportTeleportFailure(
+                    player,
+                    destination,
+                    "teleport dispatch retry scheduling failed",
                     failure,
                     attempt,
                     onFailure);
@@ -1534,14 +1667,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void persistTeleportRecovery(Player player) {
-        if (hasPendingTeleportRecovery(player)) {
-            return;
+        if (!hasPendingTeleportRecovery(player)) {
+            player.getPersistentDataContainer()
+                    .set(
+                            teleportRecoveryKey,
+                            PersistentDataType.BYTE,
+                            (byte) 1);
         }
-        player.getPersistentDataContainer()
-                .set(
-                        teleportRecoveryKey,
-                        PersistentDataType.BYTE,
-                        (byte) 1);
         try {
             player.saveData();
         } catch (RuntimeException failure) {
@@ -1550,6 +1682,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "Could not persist teleport recovery marker for "
                             + player.getName(),
                     failure);
+            String alert =
+                    "ScenarioCraft recovery persistence alert: "
+                            + player.getName()
+                            + "'s recovery marker could not be saved. Keep the server running, retry their hub return, and check the server log.";
+            for (Player onlinePlayer : server.getOnlinePlayers()) {
+                if (onlinePlayer.isOp()) {
+                    onlinePlayer.sendMessage(alert);
+                }
+            }
         }
     }
 
