@@ -36,6 +36,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final Logger logger;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
+    private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
     private final BossBar buildBossBar;
     private final BukkitTask timerTask;
     private List<PlotBounds> plots = List.of();
@@ -163,15 +164,35 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
-        Contestant contestant = contestants.get(event.getPlayer().getUniqueId());
+        Player player = event.getPlayer();
+        Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null && phase() != RoundPhase.IDLE) {
-            applyCurrentPhase(event.getPlayer(), contestant);
+            applyCurrentPhase(player, contestant);
+        } else if (phase() == RoundPhase.REVEAL) {
+            Spectator spectator =
+                    revealSpectators.computeIfAbsent(
+                            player.getUniqueId(),
+                            ignored ->
+                                    new Spectator(
+                                            player.getUniqueId(),
+                                            player.getLocation().clone(),
+                                            player.getGameMode()));
+            moveSpectatorToTour(player, spectator);
         }
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event) {
-        buildBossBar.removePlayer(event.getPlayer());
+        Player player = event.getPlayer();
+        buildBossBar.removePlayer(player);
+        Contestant contestant = contestants.get(player.getUniqueId());
+        if (contestant != null) {
+            restoreContestantToHub(player, contestant);
+        }
+        Spectator spectator = revealSpectators.get(player.getUniqueId());
+        if (spectator != null) {
+            restoreSpectator(player, spectator);
+        }
     }
 
     @Override
@@ -185,8 +206,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         timer = null;
         buildBossBar.removeAll();
         buildBossBar.setVisible(false);
-        restoreContestantsToHub();
+        restoreRoundPlayers();
         contestants.clear();
+        revealSpectators.clear();
         plots = List.of();
     }
 
@@ -219,7 +241,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (phase() == RoundPhase.BUILDING) {
             updateBuildBossBar();
             timer.buildWarning().ifPresent(this::broadcast);
-        } else if (timer.shouldAnnounceShortCountdown()) {
+        } else if ((phase() == RoundPhase.GATHERING || phase() == RoundPhase.NOTE_PICK)
+                && timer.shouldAnnounceShortCountdown()) {
             broadcast(
                     friendlyPhase(phase())
                             + ": "
@@ -269,11 +292,22 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         timer = null;
         buildBossBar.removeAll();
         buildBossBar.setVisible(false);
+        revealSpectators.clear();
         for (Player player : server.getOnlinePlayers()) {
-            player.teleport(tourLocation());
+            Contestant contestant = contestants.get(player.getUniqueId());
+            if (contestant != null) {
+                player.setGameMode(GameMode.ADVENTURE);
+                player.teleport(tourLocation());
+                continue;
+            }
+            Spectator spectator =
+                    new Spectator(
+                            player.getUniqueId(),
+                            player.getLocation().clone(),
+                            player.getGameMode());
+            revealSpectators.put(player.getUniqueId(), spectator);
+            moveSpectatorToTour(player, spectator);
         }
-        forEachOnlineContestant(
-                (player, ignored) -> player.setGameMode(GameMode.ADVENTURE));
         broadcast("Time to reveal the builds! The walls are coming down safely.");
 
         ArenaSettings arenaSettings = settings.arena();
@@ -315,10 +349,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void completeRound() {
-        restoreContestantsToHub();
+        restoreRoundPlayers();
         transitionTo(RoundPhase.IDLE);
         timer = null;
         contestants.clear();
+        revealSpectators.clear();
         plots = List.of();
         broadcast("Build Battle complete — amazing creating, everyone!");
         logger.info("Round complete: returned to IDLE.");
@@ -329,9 +364,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         timer = null;
         buildBossBar.removeAll();
         buildBossBar.setVisible(false);
-        restoreContestantsToHub();
+        restoreRoundPlayers();
         transitionTo(RoundPhase.IDLE);
         contestants.clear();
+        revealSpectators.clear();
         plots = List.of();
     }
 
@@ -400,13 +436,29 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         buildBossBar.addPlayer(player);
     }
 
-    private void restoreContestantsToHub() {
-        forEachOnlineContestant(
-                (player, contestant) -> {
-                    buildBossBar.removePlayer(player);
-                    player.setGameMode(contestant.originalGameMode());
-                    player.teleport(hubLocation());
-                });
+    private void restoreRoundPlayers() {
+        forEachOnlineContestant(this::restoreContestantToHub);
+        for (Spectator spectator : revealSpectators.values()) {
+            Player player = server.getPlayer(spectator.playerId());
+            if (player != null && player.isOnline()) {
+                restoreSpectator(player, spectator);
+            }
+        }
+    }
+
+    private void restoreContestantToHub(Player player, Contestant contestant) {
+        buildBossBar.removePlayer(player);
+        player.setGameMode(contestant.originalGameMode());
+        player.teleport(hubLocation());
+    }
+
+    private void moveSpectatorToTour(Player player, Spectator ignored) {
+        player.teleport(tourLocation());
+    }
+
+    private void restoreSpectator(Player player, Spectator spectator) {
+        player.setGameMode(spectator.originalGameMode());
+        player.teleport(spectator.originalLocation());
     }
 
     private void forEachOnlineContestant(OnlineContestantAction action) {
@@ -446,6 +498,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private record Contestant(UUID playerId, PlotBounds plot, GameMode originalGameMode) {}
+
+    private record Spectator(
+            UUID playerId, Location originalLocation, GameMode originalGameMode) {}
 
     @FunctionalInterface
     private interface OnlineContestantAction {

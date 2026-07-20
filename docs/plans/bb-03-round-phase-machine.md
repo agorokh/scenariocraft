@@ -32,6 +32,9 @@ session.
 | 2026-07-19 | Snapshot each non-exempt online player's pre-round location and game mode, assign plots in stable join order, and retain assignments for reconnect handling. | Stop can restore participants cleanly, and reconnect behavior can be selected from the current phase without inventing a broader persistence system. |
 | 2026-07-19 | Reuse the arena editor for reveal by adding a pure, batched wall-removal plan rather than directly clearing walls. | The standing main-thread rule applies to wall dissolution just as it does to arena reset. |
 | 2026-07-19 | Use the first configured task as the temporary hardcoded round task. | BB-03 requires a hardcoded task string and explicitly excludes the task chest/deck interaction owned by BB-04. |
+| 2026-07-19 | Restore contestants during `PlayerQuitEvent`, while retaining their assignment until the round ends. | Paper can persist the safe hub/game-mode state before a disconnect or shutdown completes, and a player who rejoins during the same round can still receive the current phase state. |
+| 2026-07-19 | Snapshot non-contestant spectators when reveal moves them to the tour point, then restore their original location and game mode. | BB-03 requires all players to join the reveal tour, but unrelated exempt helpers and late joiners must not be stranded by the round lifecycle. |
+| 2026-07-19 | Limit periodic short-countdown chat to `GATHERING` and `NOTE_PICK`. | The configurable reveal linger can be much longer, so ten-second announcements there would create avoidable chat spam. |
 
 ## Surprises & Discoveries
 
@@ -47,6 +50,11 @@ session.
   player-facing message and that a reconnect during `NOTE_PICK` did not replay the current
   task title. Both paths now use kid-friendly feedback and have reconnect regression
   coverage.
+- External current-head review found that offline contestants could retain a round game
+  mode, non-contestant reveal spectators were not restored, and the long reveal linger
+  reused short-phase countdown announcements. Resolution adds lifecycle and countdown
+  regression coverage. A separate suggestion to let configured non-operators stop a round
+  was rejected because issue #5 explicitly requires `/battle stop` to be admin-only.
 
 ## Acceptance evidence
 

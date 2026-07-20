@@ -6,10 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
@@ -22,6 +24,8 @@ import org.bukkit.block.Block;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.scheduler.BukkitScheduler;
@@ -113,22 +117,99 @@ class RoundControllerTest {
         rig.close();
     }
 
+    @Test
+    void disconnectingContestantIsRestoredBeforeRoundStateIsCleared() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.playerOnline.set(false);
+
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+
+        rig.controller.stop(rig.player);
+        rig.playerOnline.set(true);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
+    void revealRestoresExemptSpectatorToTheirOriginalState() {
+        TestRig rig = new TestRig();
+        Location originalLocation = rig.spectatorLocation.get().clone();
+        GameMode originalGameMode = rig.spectatorGameMode.get();
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        assertEquals(0.5, rig.spectatorLocation.get().getX());
+        assertEquals(0.5, rig.spectatorLocation.get().getZ());
+
+        rig.runBlockTick();
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(originalGameMode, rig.spectatorGameMode.get());
+        assertEquals(originalLocation.getX(), rig.spectatorLocation.get().getX());
+        assertEquals(originalLocation.getY(), rig.spectatorLocation.get().getY());
+        assertEquals(originalLocation.getZ(), rig.spectatorLocation.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void revealLingerDoesNotBroadcastPeriodicCountdownSpam() {
+        TestRig rig = new TestRig(new PhaseTimings(1, 1, 1, 20));
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+
+        long revealCountdownsBefore =
+                rig.messages.stream().filter(message -> message.startsWith("reveal:")).count();
+        for (int tick = 0; tick < 10; tick++) {
+            rig.runTimerTick();
+        }
+
+        assertEquals(
+                revealCountdownsBefore,
+                rig.messages.stream().filter(message -> message.startsWith("reveal:")).count());
+        rig.close();
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
+        private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicReference<GameMode> gameMode =
+                new AtomicReference<>(GameMode.SURVIVAL);
+        private final AtomicReference<GameMode> spectatorGameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicInteger blockMutations = new AtomicInteger();
         private final AtomicInteger bossbarPlayers = new AtomicInteger();
         private final AtomicInteger titles = new AtomicInteger();
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
+        private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
+        private final List<String> messages = new ArrayList<>();
         private final World world;
         private final Player player;
+        private final Player spectator;
         private final Plugin plugin;
         private final BatchedBlockEditor editor;
         private final RoundController controller;
 
         private TestRig() {
+            this(new PhaseTimings(1, 1, 1, 1));
+        }
+
+        private TestRig(PhaseTimings timings) {
             BukkitTask task =
                     proxy(
                             BukkitTask.class,
@@ -184,13 +265,48 @@ class RoundControllerTest {
                                             gameMode.set((GameMode) arguments[0]);
                                             yield null;
                                         }
-                                        case "isOnline", "isOp" -> true;
+                                        case "isOnline" -> playerOnline.get();
+                                        case "isOp" -> true;
                                         case "teleport" -> {
                                             lastTeleport.set((Location) arguments[0]);
                                             yield true;
                                         }
+                                        case "sendMessage" -> {
+                                            if (arguments[0] instanceof String message) {
+                                                messages.add(message);
+                                            }
+                                            yield null;
+                                        }
                                         case "sendTitle" -> {
                                             titles.incrementAndGet();
+                                            yield null;
+                                        }
+                                        default -> defaultValue(method.getReturnType());
+                                    });
+            UUID spectatorId = UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
+            spectatorLocation.set(new Location(world, 40.5, 8.0, -12.5));
+            spectator =
+                    proxy(
+                            Player.class,
+                            (ignored, method, arguments) ->
+                                    switch (method.getName()) {
+                                        case "getUniqueId" -> spectatorId;
+                                        case "getName" -> "Parent";
+                                        case "getGameMode" -> spectatorGameMode.get();
+                                        case "setGameMode" -> {
+                                            spectatorGameMode.set((GameMode) arguments[0]);
+                                            yield null;
+                                        }
+                                        case "getLocation" -> spectatorLocation.get().clone();
+                                        case "isOnline", "isOp" -> true;
+                                        case "teleport" -> {
+                                            spectatorLocation.set(((Location) arguments[0]).clone());
+                                            yield true;
+                                        }
+                                        case "sendMessage" -> {
+                                            if (arguments[0] instanceof String message) {
+                                                messages.add(message);
+                                            }
                                             yield null;
                                         }
                                         default -> defaultValue(method.getReturnType());
@@ -228,8 +344,16 @@ class RoundControllerTest {
                                     switch (method.getName()) {
                                         case "getScheduler" -> scheduler;
                                         case "getPluginManager" -> pluginManager;
-                                        case "getOnlinePlayers" -> (Collection<Player>) List.of(player);
-                                        case "getPlayer" -> playerId.equals(arguments[0]) ? player : null;
+                                        case "getOnlinePlayers" ->
+                                                (Collection<Player>) List.of(player, spectator);
+                                        case "getPlayer" -> {
+                                            if (playerId.equals(arguments[0])) {
+                                                yield player;
+                                            }
+                                            yield spectatorId.equals(arguments[0])
+                                                    ? spectator
+                                                    : null;
+                                        }
                                         case "createBossBar" -> bossBar;
                                         default -> defaultValue(method.getReturnType());
                                     });
@@ -243,9 +367,9 @@ class RoundControllerTest {
             BattleSettings settings =
                     new BattleSettings(
                             new ArenaSettings(1, 1, 3, 2, 1_000),
-                            new PhaseTimings(1, 1, 1, 1),
+                            timings,
                             List.of("A dragon treehouse"),
-                            List.of(),
+                            List.of("Parent"),
                             true);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());
