@@ -39,13 +39,16 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -352,6 +355,24 @@ class RoundControllerTest {
     }
 
     @Test
+    void inventoryRestoreFailureStillExtractsContestantFromArena() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failSaveData.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("saved items need")));
+        rig.failSaveData.set(false);
+        rig.close();
+    }
+
+    @Test
     void revealRestoresExemptSpectatorToTheirOriginalState() {
         TestRig rig = new TestRig();
         Location originalLocation = rig.spectatorLocation.get().clone();
@@ -370,6 +391,29 @@ class RoundControllerTest {
         assertEquals(originalLocation.getX(), rig.spectatorLocation.get().getX());
         assertEquals(originalLocation.getY(), rig.spectatorLocation.get().getY());
         assertEquals(originalLocation.getZ(), rig.spectatorLocation.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void teleportCoordinatesUsePlainLocaleIndependentDecimals() {
+        TestRig rig = new TestRig();
+        rig.spectatorLocation.set(
+                new Location(rig.world, 10_000_000.0, 8.0, 0.0000001));
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        rig.runTimerTick();
+
+        String restoreCommand =
+                rig.consoleCommands.stream()
+                        .filter(
+                                command ->
+                                        command.contains(rig.spectatorId.toString())
+                                                && command.contains("10000000"))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(restoreCommand.contains("0.0000001"));
+        assertFalse(restoreCommand.contains("E"));
         rig.close();
     }
 
@@ -535,7 +579,7 @@ class RoundControllerTest {
                         .allMatch(
                                 command ->
                                         command.startsWith(
-                                                "execute in minecraft:battle_world run tp ")));
+                                                "minecraft:execute in minecraft:battle_world run minecraft:tp ")));
 
         rig.runTimerTick();
 
@@ -559,6 +603,23 @@ class RoundControllerTest {
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("could not move you safely")));
+        rig.close();
+    }
+
+    @Test
+    void silentRevealTeleportFailureKeepsContestantConstrained() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Location plotLocation = rig.lastTeleport.get().clone();
+        rig.ignoreTeleportCommand.set(true);
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(plotLocation.getX(), rig.lastTeleport.get().getX());
+        assertEquals(plotLocation.getZ(), rig.lastTeleport.get().getZ());
         rig.close();
     }
 
@@ -646,6 +707,25 @@ class RoundControllerTest {
         rig.controller.onContestantBlockPlace(crossingMultiPlace);
         assertTrue(crossingMultiPlace.isCancelled());
         assertFalse(crossingMultiPlace.canBuild());
+        rig.close();
+    }
+
+    @Test
+    void nonContestantsCannotEditTheActiveArena() {
+        TestRig rig = new TestRig();
+        Block arenaBlock = rig.blockAt(0, 1, -3);
+        rig.controller.start(rig.player);
+
+        BlockBreakEvent activeBreak =
+                new BlockBreakEvent(arenaBlock, rig.spectator);
+        rig.controller.onContestantBlockBreak(activeBreak);
+        assertTrue(activeBreak.isCancelled());
+
+        rig.controller.stop(rig.player);
+        BlockBreakEvent idleBreak =
+                new BlockBreakEvent(arenaBlock, rig.spectator);
+        rig.controller.onContestantBlockBreak(idleBreak);
+        assertFalse(idleBreak.isCancelled());
         rig.close();
     }
 
@@ -780,6 +860,23 @@ class RoundControllerTest {
         rig.controller.onArenaPistonRetract(retract);
         assertTrue(retract.isCancelled());
 
+        BlockSpreadEvent spread =
+                new BlockSpreadEvent(arenaBlock, arenaBlock, blockState);
+        rig.controller.onArenaBlockSpread(spread);
+        assertTrue(spread.isCancelled());
+
+        BlockBurnEvent burn = new BlockBurnEvent(arenaBlock, arenaBlock);
+        rig.controller.onArenaBlockBurn(burn);
+        assertTrue(burn.isCancelled());
+
+        BlockIgniteEvent ignite =
+                new BlockIgniteEvent(
+                        arenaBlock,
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.player);
+        rig.controller.onArenaBlockIgnite(ignite);
+        assertTrue(ignite.isCancelled());
+
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =
                 new BlockPistonExtendEvent(
@@ -798,6 +895,7 @@ class RoundControllerTest {
         private final AtomicBoolean failRunTask = new AtomicBoolean();
         private final AtomicBoolean failTaskBookPlacement = new AtomicBoolean();
         private final AtomicBoolean failTeleportDispatch = new AtomicBoolean();
+        private final AtomicBoolean ignoreTeleportCommand = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -935,6 +1033,7 @@ class RoundControllerTest {
                                         case "getUniqueId" -> playerId;
                                         case "getName" -> "BuilderKid";
                                         case "getGameMode" -> gameMode.get();
+                                        case "getLocation" -> lastTeleport.get().clone();
                                         case "getInventory" -> playerInventory;
                                         case "getEnderChest" -> enderChest;
                                         case "getPersistentDataContainer" ->
@@ -1093,6 +1192,9 @@ class RoundControllerTest {
                                             if (failTeleportDispatch.get()) {
                                                 yield false;
                                             }
+                                            if (ignoreTeleportCommand.get()) {
+                                                yield true;
+                                            }
                                             applyTeleportCommand(command);
                                             yield true;
                                         }
@@ -1158,13 +1260,13 @@ class RoundControllerTest {
         private void applyTeleportCommand(String command) {
             String[] parts = command.split(" ");
             assertEquals(11, parts.length);
-            assertEquals("execute", parts[0]);
+            assertEquals("minecraft:execute", parts[0]);
             assertEquals("in", parts[1]);
             assertEquals(
                     new NamespacedKey("minecraft", ArenaWorldService.WORLD_NAME).toString(),
                     parts[2]);
             assertEquals("run", parts[3]);
-            assertEquals("tp", parts[4]);
+            assertEquals("minecraft:tp", parts[4]);
             Location destination =
                     new Location(
                             world,

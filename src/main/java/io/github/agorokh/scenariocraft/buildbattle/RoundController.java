@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +17,7 @@ import java.util.function.Consumer;
 import java.util.function.IntUnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -34,13 +36,16 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -68,6 +73,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int INVENTORY_SNAPSHOT_VERSION = 1;
     private static final int MAX_SNAPSHOT_SECTION_BYTES = 4 * 1024 * 1024;
     private static final int MAX_SNAPSHOT_SLOTS = 128;
+    private static final double TELEPORT_CONFIRMATION_EPSILON = 1.0E-6;
+    private static final Pattern COMMAND_WORLD_KEY =
+            Pattern.compile("[a-z0-9._-]+:[a-z0-9/._-]+");
 
     private final Plugin plugin;
     private final Server server;
@@ -434,6 +442,27 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @EventHandler
+    public void onArenaBlockSpread(BlockSpreadEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaBlockBurn(BlockBurnEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaBlockIgnite(BlockIgniteEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
     public void onContestantHangingPlace(HangingPlaceEvent event) {
         Player player = event.getPlayer();
         if (player != null
@@ -783,21 +812,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 }
             }
             case BUILDING -> moveToPlot(player, contestant);
-            case REVEAL -> {
-                resetPersonalBorder(player);
-                player.setGameMode(GameMode.ADVENTURE);
-                teleport(player, tourLocation());
-            }
+            case REVEAL -> moveContestantToTour(player, contestant);
             case IDLE -> {
                 // The caller excludes IDLE; retaining this arm keeps the phase handling exhaustive.
             }
         }
     }
 
-    private void moveToHub(Player player, Contestant ignored) {
+    private void moveToHub(Player player, Contestant contestant) {
         resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
-        teleport(player, hubLocation());
+        if (!teleport(player, hubLocation()) && phase() == RoundPhase.BUILDING) {
+            constrainContestantAfterFailedExit(player, contestant);
+        }
         buildBossBar.removePlayer(player);
     }
 
@@ -826,11 +853,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         moveToHub(player, contestant);
     }
 
-    private void moveContestantToTour(Player player, Contestant ignored) {
+    private void moveContestantToTour(Player player, Contestant contestant) {
         clearRoundInventory(player);
         resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
-        teleport(player, tourLocation());
+        if (!teleport(player, tourLocation())) {
+            constrainContestantAfterFailedExit(player, contestant);
+        }
     }
 
     private void restoreRoundPlayers() {
@@ -848,7 +877,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         resetPersonalBorder(player);
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
-            teleport(player, hubLocation());
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -856,6 +884,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     failure);
             player.sendMessage(
                     "Your saved items need a grown-up helper before the next battle.");
+        }
+        if (!teleport(player, hubLocation())) {
+            constrainContestantAfterFailedExit(player, contestant);
         }
     }
 
@@ -869,12 +900,17 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void moveSpectatorToTour(Player player, Spectator ignored) {
         player.setGameMode(GameMode.ADVENTURE);
-        teleport(player, tourLocation());
+        if (!teleport(player, tourLocation())) {
+            player.setGameMode(GameMode.ADVENTURE);
+        }
     }
 
     private void restoreSpectator(Player player, Spectator spectator) {
-        player.setGameMode(spectator.originalGameMode());
-        teleport(player, spectator.originalLocation());
+        if (teleport(player, spectator.originalLocation())) {
+            player.setGameMode(spectator.originalGameMode());
+        } else {
+            player.setGameMode(GameMode.ADVENTURE);
+        }
     }
 
     private void forEachOnlineContestant(OnlineContestantAction action) {
@@ -951,7 +987,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private boolean mayContestantEdit(Player player, Block block) {
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant == null) {
-            return true;
+            return !isActiveArenaBlock(block);
         }
         if (block.getWorld() != arena.world()) {
             return false;
@@ -1006,34 +1042,51 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.setWorldBorder(null);
     }
 
+    private void constrainContestantAfterFailedExit(
+            Player player, Contestant contestant) {
+        player.setGameMode(GameMode.ADVENTURE);
+        applyPersonalBorder(player, contestant);
+        buildBossBar.removePlayer(player);
+    }
+
     private boolean teleport(Player player, Location destination) {
         World world =
                 Objects.requireNonNull(
                         destination.getWorld(), "teleport destination world");
-        String command =
-                "execute in "
-                        + world.getKey()
-                        + " run tp "
-                        + player.getUniqueId()
-                        + " "
-                        + Double.toString(destination.getX())
-                        + " "
-                        + Double.toString(destination.getY())
-                        + " "
-                        + Double.toString(destination.getZ())
-                        + " "
-                        + Float.toString(destination.getYaw())
-                        + " "
-                        + Float.toString(destination.getPitch());
+        String worldKey = world.getKey().toString();
+        if (!COMMAND_WORLD_KEY.matcher(worldKey).matches()) {
+            logger.severe(
+                    "Arena world key cannot be used in an explicit teleport command: "
+                            + worldKey);
+            player.sendMessage(
+                    "The battle could not move you safely. Please ask a grown-up helper.");
+            return false;
+        }
         try {
-            if (server.dispatchCommand(server.getConsoleSender(), command)) {
+            String command =
+                    "minecraft:execute in "
+                            + worldKey
+                            + " run minecraft:tp "
+                            + player.getUniqueId()
+                            + " "
+                            + commandNumber(destination.getX())
+                            + " "
+                            + commandNumber(destination.getY())
+                            + " "
+                            + commandNumber(destination.getZ())
+                            + " "
+                            + commandNumber(destination.getYaw())
+                            + " "
+                            + commandNumber(destination.getPitch());
+            if (server.dispatchCommand(server.getConsoleSender(), command)
+                    && playerReached(player, destination)) {
                 return true;
             }
             logger.severe(
-                    "Console teleport command was not accepted for "
+                    "Console teleport command did not move "
                             + player.getName()
                             + " in "
-                            + world.getKey());
+                            + worldKey);
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -1046,6 +1099,35 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.sendMessage(
                 "The battle could not move you safely. Please ask a grown-up helper.");
         return false;
+    }
+
+    private static boolean playerReached(Player player, Location destination) {
+        Location actual = player.getLocation();
+        return actual.getWorld() == destination.getWorld()
+                && Math.abs(actual.getX() - destination.getX())
+                        <= TELEPORT_CONFIRMATION_EPSILON
+                && Math.abs(actual.getY() - destination.getY())
+                        <= TELEPORT_CONFIRMATION_EPSILON
+                && Math.abs(actual.getZ() - destination.getZ())
+                        <= TELEPORT_CONFIRMATION_EPSILON;
+    }
+
+    private static String commandNumber(double value) {
+        if (!Double.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    "teleport coordinates must be finite");
+        }
+        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+    }
+
+    private static String commandNumber(float value) {
+        if (!Float.isFinite(value)) {
+            throw new IllegalArgumentException(
+                    "teleport rotation must be finite");
+        }
+        return new BigDecimal(Float.toString(value))
+                .stripTrailingZeros()
+                .toPlainString();
     }
 
     private Location tourLocation() {
@@ -1078,10 +1160,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         resetPersonalBorder(player);
+        boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));
-            teleport(player, hubLocation());
-            logger.info("Restored pending round inventory for " + player.getName() + ".");
+            inventoryRestored = true;
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -1089,6 +1171,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     failure);
             player.sendMessage(
                     "Your saved items need a grown-up helper before the next battle.");
+            player.setGameMode(GameMode.ADVENTURE);
+        }
+        boolean movedToHub = teleport(player, hubLocation());
+        if (!movedToHub) {
+            player.setGameMode(GameMode.ADVENTURE);
+        } else if (inventoryRestored) {
+            logger.info(
+                    "Restored pending round inventory for "
+                            + player.getName()
+                            + ".");
         }
     }
 

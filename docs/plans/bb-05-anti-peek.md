@@ -36,6 +36,9 @@ session.
 | 2026-07-20 | Cancel active-arena explosions and pistons, validate every replaced block in multi-place events, and contain bucket/fluid changes within one editable plot. | `/review` exposed indirect mutations as a P1 bypass; covering the related event surfaces keeps the plot policy server-authoritative instead of relying on only ordinary place/break events. |
 | 2026-07-20 | Target console teleports by player UUID and roll back the personal border when dispatch fails. | UUIDs are safe Brigadier entity arguments, and a failed plot move must not strand a player outside a plot-sized client border. |
 | 2026-07-20 | Cancel dispensers throughout an active arena and apply the plot/phase policy to hanging and entity placements. | Dispenser effects and entity-backed decorations otherwise bypass ordinary block place events and can cross the assigned volume. |
+| 2026-07-20 | Deny non-contestant edits and cancel fire spread, burn, and ignition throughout an active arena. | Bystanders and indirect fire events do not pass through ordinary contestant place/break policy, but they can still damage walls, caps, and builds. |
+| 2026-07-20 | Namespace vanilla `execute`/`tp`, emit plain decimal arguments, and verify the player's resulting location after every dispatch. | Command acceptance alone does not prove that an entity matched or moved; every caller now receives a real success/failure result without falling back to the forbidden direct teleport API. |
+| 2026-07-20 | Attempt hub extraction after inventory restoration regardless of decode, write, or save failure. | Physical round cleanup is a separate invariant from item recovery and must not be skipped by an inventory exception. |
 
 ## Surprises & Discoveries
 
@@ -57,13 +60,18 @@ session.
 - The reported vertical look-over gap was a coordinate misunderstanding: a wall block at
   `maxBuildY` occupies space through `maxBuildY + 1`, exactly where the barrier roof begins.
   The existing local-server evidence therefore remains valid without changing build height.
+- A later current-head review found that a true `dispatchCommand` result only proves command
+  handling, not that the UUID matched and moved. Teleports now verify world and coordinates,
+  while failed reveal/restore moves retain Adventure mode and a contestant's personal border.
+- The reported missing cap-height budget was already covered by startup validation:
+  `capY` must be below the arena world's exclusive maximum block height.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 71 tests.
+- `make ci-fast` passed on Java 21 with 75 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
-  code; controller teleports are explicit `execute in minecraft:battle_world run tp ...`
-  console commands.
+  code; controller teleports are explicit
+  `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.
 - A real Paper 1.21.11 build 132 server booted the final jar with two protocol clients.
   BuilderOne and BuilderTwo each received a diameter-9 personal border centered on their
   separate plots during BUILDING. Both clients observed the border packets.
