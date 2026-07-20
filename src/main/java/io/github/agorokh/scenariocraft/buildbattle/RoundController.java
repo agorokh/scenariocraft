@@ -28,6 +28,7 @@ import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.Chest;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -90,6 +91,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int TELEPORT_FADE_TICKS = 10;
     private static final int TITLE_STAY_TICKS = 50;
     private static final int INVENTORY_SNAPSHOT_VERSION = 1;
+    private static final String ALERT_PERMISSION = "scenariocraft.alerts";
     private static final int MAX_SNAPSHOT_SECTION_BYTES = 4 * 1024 * 1024;
     private static final int MAX_SNAPSHOT_SLOTS = 128;
     private static final double TELEPORT_CONFIRMATION_EPSILON = 1.0E-6;
@@ -654,8 +656,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantEntityPlace(EntityPlaceEvent event) {
         Player player = event.getPlayer();
+        BlockFace face = event.getBlockFace();
         Block placedBlock =
-                event.getBlock().getRelative(event.getBlockFace());
+                face == null ? event.getBlock() : event.getBlock().getRelative(face);
         if (player == null
                 ? isActiveArenaBlock(placedBlock)
                 : !mayContestantEdit(player, placedBlock)) {
@@ -956,6 +959,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         awaitingPlotEntries = false;
         transitionTo(RoundPhase.BUILDING);
+        forEachOnlineContestant(
+                (player, ignored) -> enableBuildingControls(player));
         timer = RoundTimer.start(settings.timings().buildSeconds());
         buildBossBar.setVisible(true);
         updateBuildBossBar();
@@ -1144,14 +1149,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         plot.centerZ() + 0.5),
                 () -> {
                     applyPersonalBorder(player, contestant);
-                    player.setGameMode(GameMode.CREATIVE);
-                    buildBossBar.addPlayer(player);
+                    if (phase() == RoundPhase.BUILDING) {
+                        enableBuildingControls(player);
+                    }
                     if (pendingPlotEntries.remove(player.getUniqueId())) {
                         finishBeginBuildingIfReady();
                     }
                 },
                 () -> {
-                    strandedArenaPlayers.add(player.getUniqueId());
                     buildBossBar.removePlayer(player);
                     pendingPlotEntries.remove(player.getUniqueId());
                     if (phase() == RoundPhase.BUILDING
@@ -1159,6 +1164,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                     == contestant) {
                         constrainContestantAfterFailedExit(player, contestant);
                     } else {
+                        markStrandedForRecovery(player);
                         resetPersonalBorder(player);
                         player.setGameMode(GameMode.ADVENTURE);
                     }
@@ -1220,8 +1226,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
         resetPersonalBorder(player);
-        strandedArenaPlayers.add(player.getUniqueId());
-        persistTeleportRecovery(player);
+        markStrandedForRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
@@ -1241,7 +1246,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 hubLocation(),
                 () -> {},
                 () -> {
-                    strandedArenaPlayers.add(player.getUniqueId());
+                    markStrandedForRecovery(player);
                     if (!restored) {
                         player.setGameMode(GameMode.ADVENTURE);
                     }
@@ -1476,9 +1481,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void constrainContestantAfterFailedExit(
             Player player, Contestant contestant) {
+        markStrandedForRecovery(player);
         player.setGameMode(GameMode.ADVENTURE);
         applyPersonalBorder(player, contestant);
         buildBossBar.removePlayer(player);
+    }
+
+    private void enableBuildingControls(Player player) {
+        player.setGameMode(GameMode.CREATIVE);
+        buildBossBar.addPlayer(player);
     }
 
     private void teleport(
@@ -1764,20 +1775,30 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         + " could not move to "
                         + destinationWorld.getKey()
                         + ". Run /battle stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
+        server.getConsoleSender().sendMessage(alert);
         for (Player onlinePlayer : server.getOnlinePlayers()) {
-            if (onlinePlayer.isOp()) {
+            if (receivesOperatorAlerts(onlinePlayer)) {
                 onlinePlayer.sendMessage(alert);
             }
         }
     }
 
     private void notifyJoiningOperatorOfPendingTeleportFailures(Player player) {
-        if (player.isOp() && !strandedArenaPlayers.isEmpty()) {
+        boolean markerOnlyFailure =
+                hasPendingTeleportRecovery(player)
+                        && !strandedArenaPlayers.contains(player.getUniqueId());
+        int pendingCount =
+                strandedArenaPlayers.size() + (markerOnlyFailure ? 1 : 0);
+        if (receivesOperatorAlerts(player) && pendingCount > 0) {
             player.sendMessage(
                     "ScenarioCraft recovery alert: "
-                            + strandedArenaPlayers.size()
+                            + pendingCount
                             + " player move(s) still need a confirmed hub return. Check SCENARIOCRAFT_TELEPORT_FAILURE.");
         }
+    }
+
+    private static boolean receivesOperatorAlerts(Player player) {
+        return player.isOp() || player.hasPermission(ALERT_PERMISSION);
     }
 
     private void retryStrandedExit(Player player) {
@@ -1810,7 +1831,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 },
                 () -> {
                     player.setGameMode(GameMode.ADVENTURE);
-                    strandedArenaPlayers.add(player.getUniqueId());
+                    markStrandedForRecovery(player);
                 });
     }
 
@@ -1890,12 +1911,18 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "ScenarioCraft recovery persistence alert: "
                             + player.getName()
                             + "'s recovery marker could not be saved. Keep the server running, retry their hub return, and check the server log.";
+            server.getConsoleSender().sendMessage(alert);
             for (Player onlinePlayer : server.getOnlinePlayers()) {
-                if (onlinePlayer.isOp()) {
+                if (receivesOperatorAlerts(onlinePlayer)) {
                     onlinePlayer.sendMessage(alert);
                 }
             }
         }
+    }
+
+    private void markStrandedForRecovery(Player player) {
+        strandedArenaPlayers.add(player.getUniqueId());
+        persistTeleportRecovery(player);
     }
 
     private void clearTeleportRecovery(Player player) {
@@ -1922,8 +1949,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         resetPersonalBorder(player);
-        strandedArenaPlayers.add(player.getUniqueId());
-        persistTeleportRecovery(player);
+        markStrandedForRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));
@@ -1950,7 +1976,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     }
                 },
                 () -> {
-                    strandedArenaPlayers.add(player.getUniqueId());
+                    markStrandedForRecovery(player);
                     player.setGameMode(GameMode.ADVENTURE);
                 });
     }

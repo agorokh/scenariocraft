@@ -69,11 +69,15 @@ until the exit is confirmed. Verify that the player is at the hub with the defau
 drop/pick up items before starting the next round. Operators who join while recovery is
 pending receive another alert.
 
+Alerts are also sent to the server console and to online players with the
+`scenariocraft.alerts` permission, which defaults to operators.
+
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 recovery marker fails, online operators receive a separate persistence alert; keep the
 server running and have the named player reconnect so the hub return and player-data save
-are retried. Until that save succeeds, the in-memory containment does not survive a restart;
-manually contain the named player before any unavoidable restart.
+are retried. Each failed recovery move retries the marker save. Until a save succeeds, the
+in-memory containment does not survive a restart; manually contain the named player before
+any unavoidable restart.
 
 ## How this was built
 

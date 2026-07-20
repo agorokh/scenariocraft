@@ -734,6 +734,9 @@ class RoundControllerTest {
         assertTrue(
                 rig.spectatorMessages.stream()
                         .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
+        assertTrue(
+                rig.starterMessages.stream()
+                        .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
         rig.close();
     }
 
@@ -771,6 +774,7 @@ class RoundControllerTest {
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         assertNotNull(rig.playerWorldBorder.get());
+        assertFalse(rig.persistentData.isEmpty());
         rig.failTeleportDispatch.set(false);
         rig.controller.stop(rig.player);
         rig.close();
@@ -816,6 +820,7 @@ class RoundControllerTest {
 
         rig.runTimerTick();
         assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         Location expectedPlotEntry =
                 new Location(rig.world, 0.5, 1.0, -2.5);
         PlayerTeleportEvent controllerPlotEntry =
@@ -1292,6 +1297,15 @@ class RoundControllerTest {
                         EquipmentSlot.HAND);
         rig.controller.onContestantEntityPlace(automatedEntityPlace);
         assertTrue(automatedEntityPlace.isCancelled());
+        EntityPlaceEvent nullFaceEntityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        rig.spectator,
+                        insidePlot,
+                        null,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(nullFaceEntityPlace);
+        assertTrue(nullFaceEntityPlace.isCancelled());
         rig.close();
     }
 
@@ -1644,7 +1658,11 @@ class RoundControllerTest {
                                         }
                                         case "getLocation" -> spectatorLocation.get().clone();
                                         case "getWorld" -> spectatorLocation.get().getWorld();
-                                        case "isOnline", "isOp" -> true;
+                                        case "isOnline" -> true;
+                                        case "isOp" -> false;
+                                        case "hasPermission" ->
+                                            "scenariocraft.alerts"
+                                                    .equals(arguments[0]);
                                         case "teleport" -> {
                                             throw new AssertionError(
                                                     "round teleports must use console commands");

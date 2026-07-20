@@ -12,3 +12,7 @@ commands:
     aliases:
       - buildbattle
       - bb
+permissions:
+  scenariocraft.alerts:
+    description: Receives ScenarioCraft teleport and recovery alerts.
+    default: op
