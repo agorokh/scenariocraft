@@ -9,18 +9,18 @@ import org.junit.jupiter.api.Test;
 
 class ArenaFillPlanTest {
     @Test
-    void defaultTwoPlotPlanClearsBeforeBuildingFourWallsPerPlot() {
+    void defaultTwoPlotPlanClearsBeforeBuildingFourWallsAndACapPerPlot() {
         List<PlotBounds> plots = PlotGeometry.aroundHub(0, 0, 2, 33, 64);
 
         ArenaFillPlan plan =
                 ArenaFillPlan.forPlots(
                         plots, -61, 30, new SecretChestPosition(2, -60, 0));
 
-        assertEquals(11, plan.fills().size());
-        assertEquals(81_661, plan.totalBlockMutations());
+        assertEquals(13, plan.fills().size());
+        assertEquals(86_289, plan.totalBlockMutations());
         assertEquals(
                 new BlockFill(
-                        new Cuboid(-17, 17, -60, -31, -81, -47), Material.AIR),
+                        new Cuboid(-17, 17, -60, -30, -81, -47), Material.AIR),
                 plan.fills().get(0));
         assertEquals(
                 new BlockFill(
@@ -44,7 +44,12 @@ class ArenaFillPlanTest {
                                 -48),
                         Material.WHITE_CONCRETE),
                 plan.fills().get(4));
-        assertEquals(Material.AIR, plan.fills().get(5).material());
+        assertEquals(
+                new BlockFill(
+                        new Cuboid(-16, 16, -30, -30, -80, -48),
+                        Material.BARRIER),
+                plan.fills().get(5));
+        assertEquals(Material.AIR, plan.fills().get(6).material());
         assertEquals(
                 new BlockFill(new Cuboid(2, 2, -60, -60, 0, 0), Material.CHEST),
                 plan.fills().getLast());
@@ -82,13 +87,13 @@ class ArenaFillPlanTest {
     }
 
     @Test
-    void revealPlanRemovesOnlyTheFourBudgetedWallsPerPlot() {
+    void revealPlanRemovesTheFourWallsAndYCapThroughTheBudget() {
         List<PlotBounds> plots = PlotGeometry.aroundHub(0, 0, 2, 33, 64);
 
         ArenaFillPlan plan = ArenaFillPlan.forWallRemoval(plots, -61, 30);
 
-        assertEquals(8, plan.fills().size());
-        assertEquals(8_160, plan.totalBlockMutations());
+        assertEquals(10, plan.fills().size());
+        assertEquals(10_338, plan.totalBlockMutations());
         assertEquals(
                 new BlockFill(
                         new Cuboid(-17, 17, -60, -31, -81, -81),
@@ -101,8 +106,13 @@ class ArenaFillPlanTest {
                 plan.fills().get(3));
         assertEquals(
                 new BlockFill(
-                        new Cuboid(-17, 17, -60, -31, 47, 47),
+                        new Cuboid(-16, 16, -30, -30, -80, -48),
                         Material.AIR),
                 plan.fills().get(4));
+        assertEquals(
+                new BlockFill(
+                        new Cuboid(-17, 17, -60, -31, 47, 47),
+                        Material.AIR),
+                plan.fills().get(5));
     }
 }

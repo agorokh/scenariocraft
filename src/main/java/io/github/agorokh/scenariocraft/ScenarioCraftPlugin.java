@@ -23,9 +23,10 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
         ArenaWorld arena = new ArenaWorldService(getServer(), getLogger()).loadOrCreate();
         int topWallY = Math.addExact(arena.floorY(), settings.arena().wallHeight());
-        if (topWallY >= arena.world().getMaxHeight()) {
+        int capY = Math.addExact(topWallY, 1);
+        if (capY >= arena.world().getMaxHeight()) {
             throw new IllegalArgumentException(
-                    "wall-height reaches beyond battle_world's maximum build height");
+                    "wall-height leaves no room for battle_world's anti-peek cap");
         }
 
         ProtectionPluginWarner.warnIfPresent(

@@ -48,7 +48,7 @@ final class BatchedBlockEditorTest {
                         completedMutations::set,
                         failure::set);
 
-        assertEquals(18, scheduled);
+        assertEquals(28, scheduled);
         assertEquals(4, rig.chunkLoads.get());
         assertEquals(4, rig.ticketsAdded.get());
         assertTrue(editor.isBusy());
@@ -62,8 +62,8 @@ final class BatchedBlockEditorTest {
             assertTrue(++ticks < 10);
         }
 
-        assertEquals(18, completedMutations.get());
-        assertEquals(18, rig.blockMutations.get());
+        assertEquals(28, completedMutations.get());
+        assertEquals(28, rig.blockMutations.get());
         assertEquals(4, rig.ticketsRemoved.get());
         assertNull(failure.get());
         editor.close();
@@ -168,7 +168,7 @@ final class BatchedBlockEditorTest {
             rig.tick.get().run();
         }
 
-        assertEquals(18, completedMutations.get());
+        assertEquals(28, completedMutations.get());
         assertNull(failure.get());
         editor.close();
     }
@@ -233,7 +233,7 @@ final class BatchedBlockEditorTest {
             rig.tick.get().run();
         }
 
-        assertEquals(8, revealMutations);
+        assertEquals(9, revealMutations);
         assertEquals(revealMutations, completedMutations.get());
         editor.close();
     }

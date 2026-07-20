@@ -21,6 +21,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
+import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.boss.BarColor;
@@ -32,7 +34,16 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockMultiPlaceEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -388,6 +399,81 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         "That secret chest is part of the game, so it stays right here!");
     }
 
+    @EventHandler
+    public void onContestantBlockBreak(BlockBreakEvent event) {
+        if (isSecretChest(event.getBlock())) {
+            return;
+        }
+        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onContestantBlockPlace(BlockPlaceEvent event) {
+        boolean mayPlace =
+                event instanceof BlockMultiPlaceEvent multiPlace
+                        ? multiPlace.getReplacedBlockStates().stream()
+                                .map(org.bukkit.block.BlockState::getBlock)
+                                .allMatch(block -> mayContestantEdit(event.getPlayer(), block))
+                        : mayContestantEdit(event.getPlayer(), event.getBlockPlaced());
+        if (!mayPlace) {
+            event.setCancelled(true);
+            event.setBuild(false);
+        }
+    }
+
+    @EventHandler
+    public void onContestantBucketEmpty(PlayerBucketEmptyEvent event) {
+        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onContestantBucketFill(PlayerBucketFillEvent event) {
+        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaFluidFlow(BlockFromToEvent event) {
+        if (isActiveArenaBlock(event.getBlock())
+                && !mayFluidFlow(event.getBlock(), event.getToBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaBlockExplode(BlockExplodeEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaEntityExplode(EntityExplodeEvent event) {
+        if (phase() != RoundPhase.IDLE
+                && event.getLocation().getWorld() == arena.world()) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaPistonExtend(BlockPistonExtendEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaPistonRetract(BlockPistonRetractEvent event) {
+        if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
     @Override
     public void close() {
         if (closed) {
@@ -668,8 +754,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             }
             case BUILDING -> moveToPlot(player, contestant);
             case REVEAL -> {
+                resetPersonalBorder(player);
                 player.setGameMode(GameMode.ADVENTURE);
-                player.teleport(tourLocation());
+                teleport(player, tourLocation());
             }
             case IDLE -> {
                 // The caller excludes IDLE; retaining this arm keeps the phase handling exhaustive.
@@ -678,8 +765,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveToHub(Player player, Contestant ignored) {
+        resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
-        player.teleport(hubLocation());
+        teleport(player, hubLocation());
         buildBossBar.removePlayer(player);
     }
 
@@ -687,7 +775,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         clearRoundInventory(player);
         player.setGameMode(GameMode.CREATIVE);
         PlotBounds plot = contestant.plot();
-        player.teleport(
+        applyPersonalBorder(player, contestant);
+        teleport(
+                player,
                 new Location(
                         arena.world(),
                         plot.centerX() + 0.5,
@@ -703,8 +793,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void moveContestantToTour(Player player, Contestant ignored) {
         clearRoundInventory(player);
+        resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
-        player.teleport(tourLocation());
+        teleport(player, tourLocation());
     }
 
     private void restoreRoundPlayers() {
@@ -719,9 +810,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
+        resetPersonalBorder(player);
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
-            player.teleport(hubLocation());
+            teleport(player, hubLocation());
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -742,12 +834,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void moveSpectatorToTour(Player player, Spectator ignored) {
         player.setGameMode(GameMode.ADVENTURE);
-        player.teleport(tourLocation());
+        teleport(player, tourLocation());
     }
 
     private void restoreSpectator(Player player, Spectator spectator) {
         player.setGameMode(spectator.originalGameMode());
-        player.teleport(spectator.originalLocation());
+        teleport(player, spectator.originalLocation());
     }
 
     private void forEachOnlineContestant(OnlineContestantAction action) {
@@ -817,6 +909,109 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return block.getWorld() == arena.world() && secretChest().matches(block);
     }
 
+    private boolean isActiveArenaBlock(Block block) {
+        return phase() != RoundPhase.IDLE && block.getWorld() == arena.world();
+    }
+
+    private boolean mayContestantEdit(Player player, Block block) {
+        Contestant contestant = contestants.get(player.getUniqueId());
+        if (contestant == null) {
+            return true;
+        }
+        if (block.getWorld() != arena.world()) {
+            return false;
+        }
+        PlotBoundary boundary =
+                PlotBoundary.forPlot(
+                        contestant.plot(),
+                        arena.floorY(),
+                        settings.arena().wallHeight());
+        return PlotEditPolicy.mayEdit(
+                phase(), boundary, block.getX(), block.getY(), block.getZ());
+    }
+
+    private boolean mayFluidFlow(Block source, Block destination) {
+        if (phase() != RoundPhase.BUILDING
+                || source.getWorld() != arena.world()
+                || destination.getWorld() != arena.world()) {
+            return false;
+        }
+        for (Contestant contestant : contestants.values()) {
+            PlotBoundary boundary =
+                    PlotBoundary.forPlot(
+                            contestant.plot(),
+                            arena.floorY(),
+                            settings.arena().wallHeight());
+            if (boundary.containsEditableBlock(
+                            source.getX(), source.getY(), source.getZ())
+                    && boundary.containsEditableBlock(
+                            destination.getX(), destination.getY(), destination.getZ())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void applyPersonalBorder(Player player, Contestant contestant) {
+        PlotBoundary boundary =
+                PlotBoundary.forPlot(
+                        contestant.plot(),
+                        arena.floorY(),
+                        settings.arena().wallHeight());
+        WorldBorder border = server.createWorldBorder();
+        border.setCenter(boundary.borderCenterX(), boundary.borderCenterZ());
+        border.setSize(boundary.borderSize());
+        border.setDamageAmount(0.0);
+        border.setDamageBuffer(0.0);
+        border.setWarningDistance(0);
+        player.setWorldBorder(border);
+    }
+
+    private void resetPersonalBorder(Player player) {
+        player.setWorldBorder(null);
+    }
+
+    private void teleport(Player player, Location destination) {
+        World world =
+                Objects.requireNonNull(
+                        destination.getWorld(), "teleport destination world");
+        String command =
+                "execute in "
+                        + world.getKey()
+                        + " run tp "
+                        + player.getName()
+                        + " "
+                        + Double.toString(destination.getX())
+                        + " "
+                        + Double.toString(destination.getY())
+                        + " "
+                        + Double.toString(destination.getZ())
+                        + " "
+                        + Float.toString(destination.getYaw())
+                        + " "
+                        + Float.toString(destination.getPitch());
+        try {
+            if (server.dispatchCommand(server.getConsoleSender(), command)) {
+                return;
+            }
+            logger.severe(
+                    "Console teleport command was not accepted for "
+                            + player.getName()
+                            + " in "
+                            + world.getKey());
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.SEVERE,
+                    "Console teleport failed for "
+                            + player.getName()
+                            + " in "
+                            + world.getKey(),
+                    failure);
+        }
+        player.sendMessage(
+                "The battle could not move you safely. Please ask a grown-up helper.");
+    }
+
     private Location tourLocation() {
         return hubLocation();
     }
@@ -846,9 +1041,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (encoded == null) {
             return;
         }
+        resetPersonalBorder(player);
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));
-            player.teleport(hubLocation());
+            teleport(player, hubLocation());
             logger.info("Restored pending round inventory for " + player.getName() + ".");
         } catch (RuntimeException failure) {
             logger.log(
