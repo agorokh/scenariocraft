@@ -42,6 +42,49 @@ class VoxelPlotTest {
         assertThrows(IllegalArgumentException.class, () -> VoxelPlot.read(input));
     }
 
+    @Test
+    void rejectsNonIntegerJsonTokensInIntegerFields() throws Exception {
+        assertInvalid("string-schema.voxels.json", """
+                {"schema":"1","plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air"],"blocks":[]}
+                """);
+        assertInvalid("string-size.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":["0",0,0],
+                 "palette":["minecraft:air"],"blocks":[]}
+                """);
+        assertInvalid("decimal-block.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[1,1,1],
+                 "palette":["minecraft:air"],"blocks":[0.0]}
+                """);
+    }
+
+    @Test
+    void rejectsSizeVolumeThatOverflowsLong() throws Exception {
+        assertInvalid("overflow.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],
+                 "size":[4194304,4194304,4194304],
+                 "palette":["minecraft:air"],"blocks":[]}
+                """);
+    }
+
+    @Test
+    void rejectsNullOrBlankPaletteEntries() throws Exception {
+        assertInvalid("null-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air",null],"blocks":[]}
+                """);
+        assertInvalid("blank-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air","  "],"blocks":[]}
+                """);
+    }
+
+    private void assertInvalid(String name, String json) throws Exception {
+        Path input = temporaryDirectory.resolve(name);
+        Files.writeString(input, json);
+        assertThrows(IllegalArgumentException.class, () -> VoxelPlot.read(input));
+    }
+
     private Path fixture(String name) {
         return Path.of(System.getProperty("scenariocraft.repoRoot"),
                 "src/test/resources/fixtures", name);

@@ -18,6 +18,7 @@ constraint.
 - [x] Implement with tests.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
+- [x] Resolve the full post-commit review inventory and add regression coverage.
 - [x] Record the retrospective.
 
 ## Decision Log
@@ -28,6 +29,7 @@ constraint.
 | 2026-07-20 | Treat issue #8's newest amendment as the complete schema-v1 blocks contract. | It normatively freezes integer arrays, x-fastest flattening, and zero-height empty plots. |
 | 2026-07-20 | Commit the amendment's exact 2x2x2 example and a hand-authored small house fixture. | BB-06 is not landed, and the operator explicitly requires independent fixtures. |
 | 2026-07-20 | Generate all views through fixed integer-coordinate drawing and deterministic PNG writing. | Same input must produce byte-identical output across repeated renders. |
+| 2026-07-20 | Parse integer fields from the JSON token tree before model construction. | Gson's typed adapters coerce strings and decimal tokens, which violates the frozen schema-v1 integer contract. |
 
 ## Surprises & Discoveries
 
@@ -43,10 +45,13 @@ constraint.
 - The post-fix review found that the camera directions were assigned to filenames without
   accounting for Minecraft's positive-Z-is-south convention. The output mapping and NE golden
   were corrected to name all four compass views accurately.
+- The external review found three validation edges: Gson token coercion, long overflow in the
+  size product, and null palette entries. Strict token parsing, checked multiplication, and
+  explicit palette validation now reject all three with regression tests.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with the root plugin tests and 10 renderer tests.
+- `make ci-fast` passed on Java 21 with the root plugin tests and 13 renderer tests.
 - The installed standalone CLI rendered the exact 2x2x2 amendment fixture and emitted only
   `iso-ne.png`, `iso-se.png`, `iso-sw.png`, `iso-nw.png`, `plan.png`, `cut-x.png`, and
   `cut-z.png`, all at 1024×1024.

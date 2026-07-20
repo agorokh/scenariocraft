@@ -1,16 +1,19 @@
 package io.github.agorokh.scenariocraft.renderer;
 
-import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class VoxelPlot {
-    private static final Gson GSON = new Gson();
-
     private final String plotId;
     private final int sizeX;
     private final int sizeY;
@@ -30,14 +33,94 @@ public final class VoxelPlot {
 
     public static VoxelPlot read(Path path) throws IOException {
         try (Reader reader = Files.newBufferedReader(path)) {
-            Document document = GSON.fromJson(reader, Document.class);
-            if (document == null) {
+            JsonElement root = JsonParser.parseReader(reader);
+            if (!root.isJsonObject()) {
                 throw new IllegalArgumentException("Voxel JSON must contain an object");
             }
-            return validate(document);
+            return validate(readDocument(root.getAsJsonObject()));
         } catch (JsonParseException exception) {
             throw new IllegalArgumentException("Invalid voxel JSON: " + exception.getMessage(), exception);
         }
+    }
+
+    private static Document readDocument(JsonObject root) {
+        Document document = new Document();
+        document.schema = requireInteger(root, "schema");
+        document.plot_id = requireString(root, "plot_id");
+        document.origin = requireIntegerArray(root, "origin");
+        document.size = requireIntegerArray(root, "size");
+        document.palette = requireStringArray(root, "palette");
+        document.blocks = requireIntegerArray(root, "blocks");
+        return document;
+    }
+
+    private static int requireInteger(JsonObject root, String name) {
+        JsonElement element = root.get(name);
+        if (element == null || !element.isJsonPrimitive()) {
+            throw new IllegalArgumentException(name + " must be a JSON integer");
+        }
+        JsonPrimitive primitive = element.getAsJsonPrimitive();
+        String token = primitive.getAsString();
+        if (!primitive.isNumber() || !token.matches("-?(0|[1-9][0-9]*)")) {
+            throw new IllegalArgumentException(name + " must be a JSON integer");
+        }
+        try {
+            return Integer.parseInt(token);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(name + " must fit in a 32-bit integer", exception);
+        }
+    }
+
+    private static String requireString(JsonObject root, String name) {
+        JsonElement element = root.get(name);
+        if (element == null || !element.isJsonPrimitive()
+                || !element.getAsJsonPrimitive().isString()) {
+            throw new IllegalArgumentException(name + " must be a JSON string");
+        }
+        return element.getAsString();
+    }
+
+    private static int[] requireIntegerArray(JsonObject root, String name) {
+        JsonArray array = requireArray(root, name);
+        int[] values = new int[array.size()];
+        for (int index = 0; index < array.size(); index++) {
+            JsonElement element = array.get(index);
+            if (!element.isJsonPrimitive()) {
+                throw new IllegalArgumentException(name + " must be a JSON array of integers");
+            }
+            JsonPrimitive primitive = element.getAsJsonPrimitive();
+            String token = primitive.getAsString();
+            if (!primitive.isNumber() || !token.matches("-?(0|[1-9][0-9]*)")) {
+                throw new IllegalArgumentException(name + " must be a JSON array of integers");
+            }
+            try {
+                values[index] = Integer.parseInt(token);
+            } catch (NumberFormatException exception) {
+                throw new IllegalArgumentException(
+                        name + " values must fit in a 32-bit integer", exception);
+            }
+        }
+        return values;
+    }
+
+    private static List<String> requireStringArray(JsonObject root, String name) {
+        JsonArray array = requireArray(root, name);
+        List<String> values = new ArrayList<>(array.size());
+        for (JsonElement element : array) {
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+                throw new IllegalArgumentException(name + " must be a JSON array of strings");
+            }
+            values.add(element.getAsString());
+        }
+        return values;
+    }
+
+    private static JsonArray requireArray(JsonObject root, String name) {
+        JsonElement element = root.get(name);
+        if (element == null || !element.isJsonArray()) {
+            throw new IllegalArgumentException(name + " must be a JSON array");
+        }
+        return element.getAsJsonArray();
     }
 
     private static VoxelPlot validate(Document document) {
@@ -63,10 +146,18 @@ public final class VoxelPlot {
                 || !"minecraft:air".equals(document.palette.getFirst())) {
             throw new IllegalArgumentException("palette[0] must be minecraft:air");
         }
+        if (document.palette.stream().anyMatch(value -> value == null || value.isBlank())) {
+            throw new IllegalArgumentException("palette entries must be non-blank strings");
+        }
         if (document.blocks == null) {
             throw new IllegalArgumentException("blocks must be a JSON array of integers");
         }
-        long expected = (long) sizeX * sizeY * sizeZ;
+        long expected;
+        try {
+            expected = Math.multiplyExact(Math.multiplyExact((long) sizeX, sizeY), sizeZ);
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException("size volume is too large", exception);
+        }
         if (expected > Integer.MAX_VALUE || document.blocks.length != expected) {
             throw new IllegalArgumentException(
                     "blocks length must equal size[0] * size[1] * size[2]");
