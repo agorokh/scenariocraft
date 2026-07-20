@@ -372,6 +372,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
+        boolean abandonedPlotEntry =
+                pendingPlotEntries.remove(player.getUniqueId());
         buildBossBar.removePlayer(player);
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null) {
@@ -380,6 +382,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         Spectator spectator = revealSpectators.get(player.getUniqueId());
         if (spectator != null) {
             restoreSpectator(player, spectator);
+        }
+        if (abandonedPlotEntry) {
+            finishBeginBuildingIfReady();
         }
     }
 
@@ -974,10 +979,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         switch (phase()) {
             case PREPARING, GATHERING -> moveToHub(player, contestant);
             case NOTE_PICK -> {
-                moveToHub(player, contestant);
-                if (taskRevealed) {
-                    sendTaskTitle(player);
+                if (taskRevealed && awaitingPlotEntries) {
+                    moveToPlot(player, contestant);
                 } else {
+                    moveToHub(player, contestant);
+                }
+                if (taskRevealed && !awaitingPlotEntries) {
+                    sendTaskTitle(player);
+                } else if (!taskRevealed) {
                     sendPickerTitle(player);
                 }
             }

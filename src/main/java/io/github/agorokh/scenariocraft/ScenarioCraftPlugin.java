@@ -35,14 +35,16 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                             + "; lower wall-height by at least "
                             + (capY - arena.world().getMaxHeight() + 1));
         }
-        if (getServer()
-                        .getCommandMap()
-                        .getCommand("minecraft:execute")
-                == null
-                || getServer()
-                                .getCommandMap()
-                                .getCommand("minecraft:tp")
-                        == null) {
+        boolean executeAvailable =
+                getServer().getCommandMap().getCommand("minecraft:execute")
+                                != null
+                        || getServer().getCommandMap().getCommand("execute")
+                                != null;
+        boolean teleportAvailable =
+                getServer().getCommandMap().getCommand("minecraft:tp")
+                                != null
+                        || getServer().getCommandMap().getCommand("tp") != null;
+        if (!executeAvailable || !teleportAvailable) {
             throw new IllegalStateException(
                     "ScenarioCraft requires the vanilla minecraft:execute and minecraft:tp console commands; restore them in the server command configuration before enabling the plugin");
         }

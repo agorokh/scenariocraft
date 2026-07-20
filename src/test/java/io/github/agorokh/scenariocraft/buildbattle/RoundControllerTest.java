@@ -770,6 +770,32 @@ class RoundControllerTest {
     }
 
     @Test
+    void reconnectDuringPlotEntryWaitCannotSoftlockBuilding() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+
+        rig.ignoreTeleportCommand.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
     void deferredRoundExitIsContainedBeforeReturningToIdle() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);

@@ -55,7 +55,8 @@ reduction.
 Controller-owned moves use explicit-world console teleports and verify the result on the
 server, including bounded confirmation after 1, 5, and 20 total ticks for chunk-loading or
 lifecycle delays. Startup fails fast if the vanilla `minecraft:execute` or `minecraft:tp`
-console command is missing; keep both available in server command configuration. A failed
+console command is missing; both plain and namespaced Bukkit registrations are accepted.
+Keep both commands available in server command configuration. A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
 `/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
