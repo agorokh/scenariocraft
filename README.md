@@ -38,6 +38,47 @@ can build the scaffold now with Java 21:
 
 The plugin jar is written to `build/libs/`.
 
+## Build Battle operator notes
+
+During an active Build Battle, ScenarioCraft protects the entire configured
+`battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, block fading
+and leaf decay, decorative-entity interactions, and entity-driven/block-form changes until
+the controller returns to `IDLE`.
+During plot entry and BUILDING, contestant teleports are accepted only inside their assigned
+boundary, and non-contestant teleports into private plots are rejected
+(controller-owned phase moves are tracked explicitly). The plugin logs one
+activation message when each round starts. Keep unrelated builds and minigames in a
+different world.
+
+`wall-height` must leave one additional block above the concrete wall for the
+anti-peek roof: `floor Y + wall-height + 1` must be below the battle world's
+exclusive maximum height. If an older configuration is now too tall, startup
+reports the configured value, calculated roof Y, world maximum, and minimum
+reduction.
+
+Controller-owned moves use explicit-world console teleports and verify the result on the
+server, including bounded confirmation after 1, 5, and 20 total ticks for chunk-loading or
+lifecycle delays. Startup fails fast if the vanilla `minecraft:execute` or `minecraft:tp`
+console command is missing; the exact namespaced registrations used for dispatch are
+required. Keep both commands available in server command configuration. A failed
+move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
+`/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
+retries a confirmed hub return; a successful recovery is logged and clears temporary
+containment. Once its player-data save succeeds, the recovery marker survives disable/reload
+until the exit is confirmed. Verify that the player is at the hub with the default world border and can
+drop/pick up items before starting the next round. Operators who join while recovery is
+pending receive another alert.
+
+Alerts are also sent to the server console and to online players with the
+`scenariocraft.alerts` permission, which defaults to operators.
+
+A rejected console dispatch is retried once before it is treated as a failure. If saving a
+recovery marker fails, online operators receive a separate persistence alert; keep the
+server running and have the named player reconnect so the hub return and player-data save
+are retried. Each failed recovery move retries the marker save. Until a save succeeds, the
+in-memory containment does not survive a restart; manually contain the named player before
+any unavoidable restart.
+
 ## How this was built
 
 ScenarioCraft is being built in the open for **OpenAI Build Week (July 2026)**. Every change

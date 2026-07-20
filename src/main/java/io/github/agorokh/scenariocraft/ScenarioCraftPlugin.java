@@ -9,6 +9,7 @@ import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import java.util.Objects;
+import org.bukkit.command.CommandMap;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /** ScenarioCraft's Paper entry point. */
@@ -23,9 +24,21 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
         ArenaWorld arena = new ArenaWorldService(getServer(), getLogger()).loadOrCreate();
         int topWallY = Math.addExact(arena.floorY(), settings.arena().wallHeight());
-        if (topWallY >= arena.world().getMaxHeight()) {
+        int capY = Math.addExact(topWallY, 1);
+        if (capY >= arena.world().getMaxHeight()) {
             throw new IllegalArgumentException(
-                    "wall-height reaches beyond battle_world's maximum build height");
+                    "wall-height "
+                            + settings.arena().wallHeight()
+                            + " places battle_world's anti-peek cap at Y="
+                            + capY
+                            + ", but the world's exclusive max height is "
+                            + arena.world().getMaxHeight()
+                            + "; lower wall-height by at least "
+                            + (capY - arena.world().getMaxHeight() + 1));
+        }
+        if (!requiredTeleportCommandsAvailable(getServer().getCommandMap())) {
+            throw new IllegalStateException(
+                    "ScenarioCraft requires the vanilla minecraft:execute and minecraft:tp console commands; restore them in the server command configuration before enabling the plugin");
         }
 
         ProtectionPluginWarner.warnIfPresent(
@@ -64,5 +77,10 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         if (blockEditor != null) {
             blockEditor.close();
         }
+    }
+
+    static boolean requiredTeleportCommandsAvailable(CommandMap commandMap) {
+        return commandMap.getCommand("minecraft:execute") != null
+                && commandMap.getCommand("minecraft:tp") != null;
     }
 }

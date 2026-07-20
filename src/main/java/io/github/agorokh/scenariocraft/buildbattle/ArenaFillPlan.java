@@ -9,6 +9,7 @@ import org.bukkit.Material;
 /** Pure arena mutation plan that is later consumed by the per-tick block queue. */
 public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
     private static final Material WALL_MATERIAL = Material.WHITE_CONCRETE;
+    private static final Material CAP_MATERIAL = Material.BARRIER;
 
     public ArenaFillPlan {
         fills = List.copyOf(fills);
@@ -39,8 +40,9 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
         java.util.Objects.requireNonNull(secretChest, "secretChest");
         int minY = Math.addExact(floorY, 1);
         int maxY = Math.addExact(floorY, wallHeight);
+        int capY = Math.addExact(maxY, 1);
         List<BlockFill> fills =
-                new ArrayList<>(Math.addExact(Math.multiplyExact(plots.size(), 5), 1));
+                new ArrayList<>(Math.addExact(Math.multiplyExact(plots.size(), 6), 1));
         long total = 0L;
 
         for (PlotBounds plot : plots) {
@@ -57,7 +59,7 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                                     outerMinX,
                                     outerMaxX,
                                     minY,
-                                    maxY,
+                                    capY,
                                     outerMinZ,
                                     outerMaxZ),
                             Material.AIR);
@@ -109,6 +111,18 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                                     plot.minZ(),
                                     plot.maxZ()),
                             WALL_MATERIAL);
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMinX,
+                                    outerMaxX,
+                                    capY,
+                                    capY,
+                                    outerMinZ,
+                                    outerMaxZ),
+                            CAP_MATERIAL);
         }
         total = add(fills, total, secretChest.asCuboid(), Material.CHEST);
         return new ArenaFillPlan(fills, total);
@@ -124,7 +138,8 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
         }
         int minY = Math.addExact(floorY, 1);
         int maxY = Math.addExact(floorY, wallHeight);
-        List<BlockFill> fills = new ArrayList<>(Math.multiplyExact(plots.size(), 4));
+        int capY = Math.addExact(maxY, 1);
+        List<BlockFill> fills = new ArrayList<>(Math.multiplyExact(plots.size(), 5));
         long total = 0L;
 
         for (PlotBounds plot : plots) {
@@ -180,6 +195,18 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                                     maxY,
                                     plot.minZ(),
                                     plot.maxZ()),
+                            Material.AIR);
+            total =
+                    add(
+                            fills,
+                            total,
+                            new Cuboid(
+                                    outerMinX,
+                                    outerMaxX,
+                                    capY,
+                                    capY,
+                                    outerMinZ,
+                                    outerMaxZ),
                             Material.AIR);
         }
         return new ArenaFillPlan(fills, total);

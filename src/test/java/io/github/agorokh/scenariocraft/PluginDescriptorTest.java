@@ -27,6 +27,7 @@ class PluginDescriptorTest {
             assertTrue(yaml.contains("  battle:"));
             assertTrue(yaml.contains("      - buildbattle"));
             assertTrue(yaml.contains("      - bb"));
+            assertTrue(yaml.contains("  scenariocraft.alerts:"));
         }
     }
 

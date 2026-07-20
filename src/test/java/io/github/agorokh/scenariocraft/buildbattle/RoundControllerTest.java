@@ -3,6 +3,7 @@ package io.github.agorokh.scenariocraft.buildbattle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
@@ -18,24 +19,62 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import org.bukkit.Chunk;
+import org.bukkit.ExplosionResult;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
+import org.bukkit.TreeType;
 import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.BlockState;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.FallingBlock;
+import org.bukkit.entity.Hanging;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
+import org.bukkit.event.block.BlockDispenseEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFadeEvent;
+import org.bukkit.event.block.BlockFertilizeEvent;
+import org.bukkit.event.block.BlockFormEvent;
+import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
+import org.bukkit.event.block.BlockMultiPlaceEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.EntityBlockFormEvent;
+import org.bukkit.event.block.LeavesDecayEvent;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
+import org.bukkit.event.hanging.HangingPlaceEvent;
+import org.bukkit.event.player.PlayerBucketEmptyEvent;
+import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -45,6 +84,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
 import org.junit.jupiter.api.Test;
 
 class RoundControllerTest {
@@ -331,6 +371,92 @@ class RoundControllerTest {
     }
 
     @Test
+    void inventoryRestoreFailureStillExtractsContestantFromArena() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failSaveData.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("saved items need")));
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(
+                                message ->
+                                        message.contains(
+                                                "recovery persistence alert")));
+        rig.failSaveData.set(false);
+        rig.close();
+    }
+
+    @Test
+    void failedRoundExitTeleportDoesNotReapplyPersonalBorder() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        BlockBreakEvent strandedBreak =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(strandedBreak);
+        assertTrue(strandedBreak.isCancelled());
+        PlayerInteractEvent strandedPhysical =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.PHYSICAL,
+                        null,
+                        rig.blockAt(0, 1, -3),
+                        BlockFace.SELF,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(strandedPhysical);
+        assertTrue(strandedPhysical.isCancelled());
+        BlockIgniteEvent strandedIgnite =
+                new BlockIgniteEvent(
+                        rig.blockAt(0, 1, -3),
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.player);
+        rig.controller.onArenaBlockIgnite(strandedIgnite);
+        assertTrue(strandedIgnite.isCancelled());
+        BlockState strandedState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        EntityBlockFormEvent strandedForm =
+                new EntityBlockFormEvent(
+                        rig.player,
+                        rig.blockAt(0, 1, -3),
+                        strandedState);
+        rig.controller.onArenaEntityBlockForm(strandedForm);
+        assertTrue(strandedForm.isCancelled());
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.failTeleportDispatch.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        BlockBreakEvent afterDisconnect =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterDisconnect);
+        assertFalse(afterDisconnect.isCancelled());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
     void revealRestoresExemptSpectatorToTheirOriginalState() {
         TestRig rig = new TestRig();
         Location originalLocation = rig.spectatorLocation.get().clone();
@@ -349,6 +475,47 @@ class RoundControllerTest {
         assertEquals(originalLocation.getX(), rig.spectatorLocation.get().getX());
         assertEquals(originalLocation.getY(), rig.spectatorLocation.get().getY());
         assertEquals(originalLocation.getZ(), rig.spectatorLocation.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void failedSpectatorRestoreKeepsTheOriginalGameMode() {
+        TestRig rig = new TestRig();
+        GameMode originalGameMode = rig.spectatorGameMode.get();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runBlockTick();
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(originalGameMode, rig.spectatorGameMode.get());
+        rig.runDelayedTasks();
+        assertEquals(originalGameMode, rig.spectatorGameMode.get());
+        rig.failTeleportDispatch.set(false);
+        rig.close();
+    }
+
+    @Test
+    void teleportCoordinatesUsePlainLocaleIndependentDecimals() {
+        TestRig rig = new TestRig();
+        rig.spectatorLocation.set(
+                new Location(rig.world, 10_000_000.0, 8.0, 0.0000001));
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        rig.runTimerTick();
+
+        String restoreCommand =
+                rig.consoleCommands.stream()
+                        .filter(
+                                command ->
+                                        command.contains(rig.spectatorId.toString())
+                                                && command.contains("10000000"))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(restoreCommand.contains("0.0000001"));
+        assertFalse(restoreCommand.contains("E"));
         rig.close();
     }
 
@@ -428,6 +595,49 @@ class RoundControllerTest {
     }
 
     @Test
+    void pendingInventoryJoinDuringRevealDoesNotStartASpectatorMove() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.spectatorPersistentData.putAll(rig.persistentData);
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.spectator,
+                        net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        rig.controller.stop(rig.player);
+        rig.close();
+    }
+
+    @Test
+    void failedExitRecoverySurvivesControllerReinitialization() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+
+        assertFalse(rig.persistentData.isEmpty());
+        rig.controller.close();
+        rig.failTeleportDispatch.set(false);
+        RoundController replacement =
+                new RoundController(
+                        rig.plugin,
+                        rig.settings,
+                        rig.arena,
+                        rig.editor,
+                        Logger.getAnonymousLogger());
+
+        assertTrue(rig.persistentData.isEmpty());
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        replacement.close();
+        rig.close();
+    }
+
+    @Test
     void paperEmptyItemStacksAreSavedAsVacantSlots() {
         TestRig rig = new TestRig();
         ItemStack empty = new EmptyItemStack();
@@ -499,14 +709,767 @@ class RoundControllerTest {
         rig.close();
     }
 
+    @Test
+    void buildingAppliesPlotBorderAndRevealRestoresWorldDefault() {
+        TestRig rig = new TestRig();
+
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(0.5, rig.borderCenterX.get());
+        assertEquals(-2.5, rig.borderCenterZ.get());
+        assertEquals(1.0, rig.borderSize.get());
+        assertTrue(
+                rig.consoleCommands.stream()
+                        .allMatch(
+                                command ->
+                                        command.startsWith(
+                                                "minecraft:execute in minecraft:battle_world run minecraft:tp ")));
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void failedPlotTeleportAbortsWithoutLeavingADistantBorder() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runTimerTick();
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertEquals(0, rig.bossbarPlayers.get());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
+        assertTrue(
+                rig.starterMessages.stream()
+                        .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
+        rig.close();
+    }
+
+    @Test
+    void silentRevealTeleportFailureKeepsContestantConstrained() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Location plotLocation = rig.lastTeleport.get().clone();
+        rig.ignoreTeleportCommand.set(true);
+
+        rig.runTimerTick();
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(plotLocation.getX(), rig.lastTeleport.get().getX());
+        assertEquals(plotLocation.getZ(), rig.lastTeleport.get().getZ());
+        rig.close();
+    }
+
+    @Test
+    void failedBuildingRejoinStaysContainedWithoutAbortingRound() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertFalse(rig.persistentData.isEmpty());
+        rig.failTeleportDispatch.set(false);
+        rig.controller.stop(rig.player);
+        rig.close();
+    }
+
+    @Test
+    void handledTeleportMaySettleBeforeTheOneTickConfirmation() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.ignoreTeleportCommand.set(true);
+        long alertsBefore =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+
+        rig.runTimerTick();
+        List<String> pendingCommands =
+                rig.consoleCommands.subList(
+                        rig.consoleCommands.size() - 2,
+                        rig.consoleCommands.size());
+        pendingCommands.forEach(rig::applyTeleportCommand);
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(
+                alertsBefore,
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count());
+        rig.close();
+    }
+
+    @Test
+    void plotTeleportMaySettleAtTheFiveTickConfirmation() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        long alertsBefore =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+
+        rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        Location expectedPlotEntry =
+                new Location(rig.world, 0.5, 1.0, -2.5);
+        PlayerTeleportEvent controllerPlotEntry =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        expectedPlotEntry,
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(controllerPlotEntry);
+        assertFalse(controllerPlotEntry.isCancelled());
+        PlayerTeleportEvent outsideDuringPlotEntry =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(outsideDuringPlotEntry);
+        assertTrue(outsideDuringPlotEntry.isCancelled());
+        rig.runNextDelayedTask();
+        rig.applyTeleportCommand(rig.consoleCommands.getLast());
+        rig.runNextDelayedTask();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(
+                alertsBefore,
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count());
+        rig.close();
+    }
+
+    @Test
+    void rejectedPlotDispatchRetriesOnceBeforeBuildingStarts() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.failTeleportDispatch.set(true);
+
+        rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        rig.failTeleportDispatch.set(false);
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void reconnectDuringPlotEntryWaitCannotSoftlockBuilding() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+
+        rig.ignoreTeleportCommand.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void deferredRoundExitIsContainedBeforeReturningToIdle() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.ignoreTeleportCommand.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        BlockBreakEvent beforeConfirmation =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(beforeConfirmation);
+        assertTrue(beforeConfirmation.isCancelled());
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.playerOnline.set(false);
+        rig.runDelayedTasks();
+        rig.playerOnline.set(true);
+        rig.ignoreTeleportCommand.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(
+                                message ->
+                                        message.contains(
+                                                "ScenarioCraft recovery alert")));
+        BlockBreakEvent afterConfirmedRecovery =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterConfirmedRecovery);
+        assertFalse(afterConfirmedRecovery.isCancelled());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
+    void adminStopRestoresWorldDefaultBorderDuringBuilding() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        assertNotNull(rig.playerWorldBorder.get());
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void contestantBlockEventsEnforcePhasePlotAndVerticalLimits() {
+        TestRig rig = new TestRig();
+        Block insidePlot = rig.blockAt(0, 1, -3);
+
+        rig.controller.start(rig.player);
+        BlockBreakEvent preparingBreak = new BlockBreakEvent(insidePlot, rig.player);
+        rig.controller.onContestantBlockBreak(preparingBreak);
+        assertTrue(preparingBreak.isCancelled());
+
+        rig.runBlockTick();
+        rig.runTimerTick();
+        rig.runTimerTick();
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+
+        BlockBreakEvent insideBreak = new BlockBreakEvent(insidePlot, rig.player);
+        rig.controller.onContestantBlockBreak(insideBreak);
+        assertFalse(insideBreak.isCancelled());
+
+        Location plotLocation = rig.lastTeleport.get().clone();
+        PlayerTeleportEvent insideTeleport =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        plotLocation,
+                        plotLocation.clone().add(0.1, 0.0, 0.1),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(insideTeleport);
+        assertFalse(insideTeleport.isCancelled());
+
+        PlayerTeleportEvent outsideTeleport =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        plotLocation,
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(outsideTeleport);
+        assertTrue(outsideTeleport.isCancelled());
+
+        PlayerTeleportEvent spectatorIntoPlot =
+                new PlayerTeleportEvent(
+                        rig.spectator,
+                        rig.spectatorLocation.get().clone(),
+                        plotLocation,
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(spectatorIntoPlot);
+        assertTrue(spectatorIntoPlot.isCancelled());
+
+        PlayerTeleportEvent spectatorOutsidePlots =
+                new PlayerTeleportEvent(
+                        rig.spectator,
+                        rig.spectatorLocation.get().clone(),
+                        new Location(rig.world, 40.5, 1.0, 40.5),
+                        PlayerTeleportEvent.TeleportCause.ENDER_PEARL);
+        rig.controller.onContestantTeleport(spectatorOutsidePlots);
+        assertFalse(spectatorOutsidePlots.isCancelled());
+
+        Block outsidePlot = rig.blockAt(1, 1, -3);
+        BlockBreakEvent outsideBreak = new BlockBreakEvent(outsidePlot, rig.player);
+        rig.controller.onContestantBlockBreak(outsideBreak);
+        assertTrue(outsideBreak.isCancelled());
+
+        Block cap = rig.blockAt(0, 2, -3);
+        BlockBreakEvent capBreak = new BlockBreakEvent(cap, rig.player);
+        rig.controller.onContestantBlockBreak(capBreak);
+        assertTrue(capBreak.isCancelled());
+
+        BlockState replacedState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) -> defaultValue(method.getReturnType()));
+        BlockPlaceEvent outsidePlace =
+                new BlockPlaceEvent(
+                        outsidePlot,
+                        replacedState,
+                        insidePlot,
+                        null,
+                        rig.player,
+                        true,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantBlockPlace(outsidePlace);
+        assertTrue(outsidePlace.isCancelled());
+        assertFalse(outsidePlace.canBuild());
+
+        BlockState insideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? insidePlot
+                                        : defaultValue(method.getReturnType()));
+        BlockState outsideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? outsidePlot
+                                        : defaultValue(method.getReturnType()));
+        BlockMultiPlaceEvent crossingMultiPlace =
+                new BlockMultiPlaceEvent(
+                        List.of(insideState, outsideState),
+                        insidePlot,
+                        null,
+                        rig.player,
+                        true,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantBlockPlace(crossingMultiPlace);
+        assertTrue(crossingMultiPlace.isCancelled());
+        assertFalse(crossingMultiPlace.canBuild());
+        rig.close();
+    }
+
+    @Test
+    void nonContestantsCannotEditTheActiveArena() {
+        TestRig rig = new TestRig();
+        Block arenaBlock = rig.blockAt(0, 1, -3);
+        rig.controller.start(rig.player);
+
+        BlockBreakEvent activeBreak =
+                new BlockBreakEvent(arenaBlock, rig.spectator);
+        rig.controller.onContestantBlockBreak(activeBreak);
+        assertTrue(activeBreak.isCancelled());
+
+        PlayerInteractEvent activeInteraction =
+                new PlayerInteractEvent(
+                        rig.spectator,
+                        Action.RIGHT_CLICK_BLOCK,
+                        null,
+                        arenaBlock,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(activeInteraction);
+        assertTrue(activeInteraction.isCancelled());
+
+        PlayerInteractEvent trampling =
+                new PlayerInteractEvent(
+                        rig.spectator,
+                        Action.PHYSICAL,
+                        null,
+                        arenaBlock,
+                        BlockFace.SELF,
+                        EquipmentSlot.HAND);
+        rig.controller.onPlayerInteract(trampling);
+        assertTrue(trampling.isCancelled());
+
+        rig.controller.stop(rig.player);
+        BlockBreakEvent idleBreak =
+                new BlockBreakEvent(arenaBlock, rig.spectator);
+        rig.controller.onContestantBlockBreak(idleBreak);
+        assertFalse(idleBreak.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void blockPlacementInteractionMayTargetEditableSpaceAboveTheFloor() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Block floor = rig.blockAt(0, 0, -3);
+        PlayerInteractEvent placementInteraction =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.RIGHT_CLICK_BLOCK,
+                        null,
+                        floor,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+
+        rig.controller.onPlayerInteract(placementInteraction);
+
+        assertEquals(
+                org.bukkit.event.Event.Result.DENY,
+                placementInteraction.useInteractedBlock());
+        assertEquals(
+                org.bukkit.event.Event.Result.ALLOW,
+                placementInteraction.useItemInHand());
+        rig.close();
+    }
+
+    @Test
+    void contestantBucketsAndFluidFlowCannotCrossPlotBoundary() {
+        TestRig rig = new TestRig();
+        Block insidePlot = rig.blockAt(0, 1, -3);
+        Block outsidePlot = rig.blockAt(1, 1, -3);
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        PlayerBucketEmptyEvent outsideEmpty =
+                new PlayerBucketEmptyEvent(
+                        rig.player,
+                        outsidePlot,
+                        insidePlot,
+                        BlockFace.EAST,
+                        Material.WATER_BUCKET,
+                        null,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantBucketEmpty(outsideEmpty);
+        assertTrue(outsideEmpty.isCancelled());
+
+        PlayerBucketFillEvent insideFill =
+                new PlayerBucketFillEvent(
+                        rig.player,
+                        insidePlot,
+                        insidePlot,
+                        BlockFace.SELF,
+                        Material.WATER_BUCKET,
+                        null,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantBucketFill(insideFill);
+        assertFalse(insideFill.isCancelled());
+
+        BlockFromToEvent crossingFlow = new BlockFromToEvent(insidePlot, outsidePlot);
+        rig.controller.onArenaFluidFlow(crossingFlow);
+        assertTrue(crossingFlow.isCancelled());
+
+        BlockFromToEvent insideFlow = new BlockFromToEvent(insidePlot, insidePlot);
+        rig.controller.onArenaFluidFlow(insideFlow);
+        assertFalse(insideFlow.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void fertilizeAndTreeGrowthCannotCrossThePlotBoundary() {
+        TestRig rig = new TestRig();
+        Block insidePlot = rig.blockAt(0, 1, -3);
+        Block outsidePlot = rig.blockAt(1, 1, -3);
+        BlockState outsideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? outsidePlot
+                                        : defaultValue(method.getReturnType()));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockFertilizeEvent fertilize =
+                new BlockFertilizeEvent(
+                        insidePlot, rig.player, List.of(outsideState));
+        rig.controller.onArenaBlockFertilize(fertilize);
+        assertTrue(fertilize.isCancelled());
+
+        StructureGrowEvent grow =
+                new StructureGrowEvent(
+                        new Location(rig.world, 0, 1, -3),
+                        TreeType.TREE,
+                        true,
+                        rig.player,
+                        List.of(outsideState));
+        rig.controller.onArenaStructureGrow(grow);
+        assertTrue(grow.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void dispensersAndPlacedEntitiesCannotBypassPlotProtection() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        Block insidePlot = rig.blockAt(0, 1, -3);
+
+        BlockDispenseEvent dispense =
+                new BlockDispenseEvent(
+                        insidePlot, new EmptyItemStack(), new Vector());
+        rig.controller.onArenaBlockDispense(dispense);
+        assertTrue(dispense.isCancelled());
+
+        Hanging hanging =
+                proxy(
+                        Hanging.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        HangingPlaceEvent hangingPlace =
+                new HangingPlaceEvent(
+                        hanging,
+                        rig.player,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantHangingPlace(hangingPlace);
+        assertTrue(hangingPlace.isCancelled());
+        HangingPlaceEvent automatedHangingPlace =
+                new HangingPlaceEvent(
+                        hanging,
+                        null,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantHangingPlace(automatedHangingPlace);
+        assertTrue(automatedHangingPlace.isCancelled());
+
+        Hanging protectedHanging =
+                proxy(
+                        Hanging.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        HangingBreakByEntityEvent hangingBreak =
+                new HangingBreakByEntityEvent(
+                        protectedHanging, rig.spectator);
+        rig.controller.onArenaHangingBreak(hangingBreak);
+        assertTrue(hangingBreak.isCancelled());
+
+        PlayerInteractEntityEvent entityInteraction =
+                new PlayerInteractEntityEvent(
+                        rig.spectator, protectedHanging);
+        rig.controller.onProtectedEntityInteract(entityInteraction);
+        assertTrue(entityInteraction.isCancelled());
+
+        ArmorStand protectedArmorStand =
+                proxy(
+                        ArmorStand.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityDamageByEntityEvent armorStandAttack =
+                new EntityDamageByEntityEvent(
+                        rig.spectator,
+                        protectedArmorStand,
+                        EntityDamageEvent.DamageCause.ENTITY_ATTACK,
+                        proxy(
+                                DamageSource.class,
+                                (ignored, method, arguments) ->
+                                        defaultValue(method.getReturnType())),
+                        1.0);
+        rig.controller.onProtectedArmorStandDamage(armorStandAttack);
+        assertTrue(armorStandAttack.isCancelled());
+
+        Entity entity =
+                proxy(
+                        Entity.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+        EntityPlaceEvent entityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        rig.player,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(entityPlace);
+        assertTrue(entityPlace.isCancelled());
+        EntityPlaceEvent automatedEntityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        null,
+                        insidePlot,
+                        BlockFace.EAST,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(automatedEntityPlace);
+        assertTrue(automatedEntityPlace.isCancelled());
+        EntityPlaceEvent nullFaceEntityPlace =
+                new EntityPlaceEvent(
+                        entity,
+                        rig.spectator,
+                        insidePlot,
+                        null,
+                        EquipmentSlot.HAND);
+        rig.controller.onContestantEntityPlace(nullFaceEntityPlace);
+        assertTrue(nullFaceEntityPlace.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void activeArenaCancelsIndirectExplosionAndPistonMutations() {
+        TestRig rig = new TestRig();
+        Block arenaBlock = rig.blockAt(0, 1, -3);
+        BlockState blockState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) -> defaultValue(method.getReturnType()));
+        Entity entity =
+                proxy(
+                        Entity.class,
+                        (ignored, method, arguments) -> defaultValue(method.getReturnType()));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockExplodeEvent blockExplosion =
+                new BlockExplodeEvent(
+                        arenaBlock,
+                        blockState,
+                        List.of(arenaBlock),
+                        1.0F,
+                        ExplosionResult.DESTROY);
+        rig.controller.onArenaBlockExplode(blockExplosion);
+        assertTrue(blockExplosion.isCancelled());
+
+        EntityExplodeEvent entityExplosion =
+                new EntityExplodeEvent(
+                        entity,
+                        new Location(rig.world, 0, 1, -3),
+                        List.of(arenaBlock),
+                        1.0F,
+                        ExplosionResult.DESTROY);
+        rig.controller.onArenaEntityExplode(entityExplosion);
+        assertTrue(entityExplosion.isCancelled());
+
+        BlockPistonExtendEvent extend =
+                new BlockPistonExtendEvent(
+                        arenaBlock, List.of(arenaBlock), BlockFace.EAST);
+        rig.controller.onArenaPistonExtend(extend);
+        assertTrue(extend.isCancelled());
+
+        BlockPistonRetractEvent retract =
+                new BlockPistonRetractEvent(
+                        arenaBlock, List.of(arenaBlock), BlockFace.WEST);
+        rig.controller.onArenaPistonRetract(retract);
+        assertTrue(retract.isCancelled());
+
+        BlockSpreadEvent spread =
+                new BlockSpreadEvent(arenaBlock, arenaBlock, blockState);
+        rig.controller.onArenaBlockSpread(spread);
+        assertTrue(spread.isCancelled());
+
+        BlockBurnEvent burn = new BlockBurnEvent(arenaBlock, arenaBlock);
+        rig.controller.onArenaBlockBurn(burn);
+        assertTrue(burn.isCancelled());
+
+        BlockIgniteEvent ignite =
+                new BlockIgniteEvent(
+                        arenaBlock,
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.player);
+        rig.controller.onArenaBlockIgnite(ignite);
+        assertFalse(ignite.isCancelled());
+
+        BlockIgniteEvent spectatorIgnite =
+                new BlockIgniteEvent(
+                        arenaBlock,
+                        BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
+                        rig.spectator);
+        rig.controller.onArenaBlockIgnite(spectatorIgnite);
+        assertTrue(spectatorIgnite.isCancelled());
+
+        EntityChangeBlockEvent entityChange =
+                new EntityChangeBlockEvent(entity, arenaBlock, null);
+        rig.controller.onArenaEntityChangeBlock(entityChange);
+        assertTrue(entityChange.isCancelled());
+
+        FallingBlock fallingBlock =
+                proxy(
+                        FallingBlock.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getSourceLoc")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityChangeBlockEvent inPlotFallingChange =
+                new EntityChangeBlockEvent(
+                        fallingBlock, arenaBlock, null);
+        rig.controller.onArenaEntityChangeBlock(inPlotFallingChange);
+        assertFalse(inPlotFallingChange.isCancelled());
+
+        EntityChangeBlockEvent outsideEntityChange =
+                new EntityChangeBlockEvent(
+                        entity, rig.blockAt(1, 1, -3), null);
+        rig.controller.onArenaEntityChangeBlock(outsideEntityChange);
+        assertTrue(outsideEntityChange.isCancelled());
+
+        BlockFormEvent blockForm = new BlockFormEvent(arenaBlock, blockState);
+        rig.controller.onArenaBlockForm(blockForm);
+        assertFalse(blockForm.isCancelled());
+
+        EntityBlockFormEvent entityBlockForm =
+                new EntityBlockFormEvent(entity, arenaBlock, blockState);
+        rig.controller.onArenaEntityBlockForm(entityBlockForm);
+        assertTrue(entityBlockForm.isCancelled());
+
+        EntityBlockFormEvent contestantBlockForm =
+                new EntityBlockFormEvent(rig.player, arenaBlock, blockState);
+        rig.controller.onArenaEntityBlockForm(contestantBlockForm);
+        assertFalse(contestantBlockForm.isCancelled());
+
+        BlockFormEvent outsideBlockForm =
+                new BlockFormEvent(rig.blockAt(1, 1, -3), blockState);
+        rig.controller.onArenaBlockForm(outsideBlockForm);
+        assertTrue(outsideBlockForm.isCancelled());
+
+        LeavesDecayEvent leavesDecay = new LeavesDecayEvent(arenaBlock);
+        rig.controller.onArenaLeavesDecay(leavesDecay);
+        assertTrue(leavesDecay.isCancelled());
+
+        BlockFadeEvent blockFade = new BlockFadeEvent(arenaBlock, blockState);
+        rig.controller.onArenaBlockFade(blockFade);
+        assertTrue(blockFade.isCancelled());
+
+        rig.controller.stop(rig.player);
+        BlockPistonExtendEvent idleExtend =
+                new BlockPistonExtendEvent(
+                        arenaBlock, List.of(arenaBlock), BlockFace.EAST);
+        rig.controller.onArenaPistonExtend(idleExtend);
+        assertFalse(idleExtend.isCancelled());
+        rig.close();
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
+        private final List<Runnable> delayedTasks = new ArrayList<>();
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicBoolean failSaveData = new AtomicBoolean();
         private final AtomicBoolean failRunTask = new AtomicBoolean();
         private final AtomicBoolean failTaskBookPlacement = new AtomicBoolean();
+        private final AtomicBoolean failTeleportDispatch = new AtomicBoolean();
+        private final AtomicBoolean ignoreTeleportCommand = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -521,6 +1484,11 @@ class RoundControllerTest {
         private final AtomicInteger saveDataCalls = new AtomicInteger();
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
+        private final AtomicReference<WorldBorder> playerWorldBorder =
+                new AtomicReference<>();
+        private final AtomicReference<Double> borderCenterX = new AtomicReference<>();
+        private final AtomicReference<Double> borderCenterZ = new AtomicReference<>();
+        private final AtomicReference<Double> borderSize = new AtomicReference<>();
         private final AtomicReference<ItemStack> cursorItem = new AtomicReference<>();
         private final AtomicReference<String> placedTask = new AtomicReference<>();
         private final AtomicReference<ItemStack[]> inventoryContents =
@@ -533,8 +1501,13 @@ class RoundControllerTest {
         private final List<String> playerTitles = new ArrayList<>();
         private final List<String> spectatorTitles = new ArrayList<>();
         private final List<String> starterMessages = new ArrayList<>();
+        private final List<String> consoleCommands = new ArrayList<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
+        private final UUID playerId =
+                UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
+        private final UUID spectatorId =
+                UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
         private final World world;
         private final PlayerInventory playerInventory;
         private final Inventory enderChest;
@@ -601,6 +1574,10 @@ class RoundControllerTest {
                                     switch (method.getName()) {
                                         case "getSpawnLocation" -> new Location(worldRef(), 0, 1, 0);
                                         case "getName" -> ArenaWorldService.WORLD_NAME;
+                                        case "getKey" ->
+                                                new NamespacedKey(
+                                                        "minecraft",
+                                                        ArenaWorldService.WORLD_NAME);
                                         case "getChunkAtAsync" -> {
                                             if (failChunkLoads.get()) {
                                                 yield CompletableFuture.failedFuture(
@@ -622,7 +1599,6 @@ class RoundControllerTest {
             persistentDataContainer = trackedPersistentData(persistentData);
             spectatorPersistentDataContainer =
                     trackedPersistentData(spectatorPersistentData);
-            UUID playerId = UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
             player =
                     proxy(
                             Player.class,
@@ -631,6 +1607,8 @@ class RoundControllerTest {
                                         case "getUniqueId" -> playerId;
                                         case "getName" -> "BuilderKid";
                                         case "getGameMode" -> gameMode.get();
+                                        case "getLocation" -> lastTeleport.get().clone();
+                                        case "getWorld" -> lastTeleport.get().getWorld();
                                         case "getInventory" -> playerInventory;
                                         case "getEnderChest" -> enderChest;
                                         case "getPersistentDataContainer" ->
@@ -638,6 +1616,10 @@ class RoundControllerTest {
                                         case "getItemOnCursor" -> cursorItem.get();
                                         case "setGameMode" -> {
                                             gameMode.set((GameMode) arguments[0]);
+                                            yield null;
+                                        }
+                                        case "setWorldBorder" -> {
+                                            playerWorldBorder.set((WorldBorder) arguments[0]);
                                             yield null;
                                         }
                                         case "isOnline" -> playerOnline.get();
@@ -660,8 +1642,8 @@ class RoundControllerTest {
                                             yield null;
                                         }
                                         case "teleport" -> {
-                                            lastTeleport.set((Location) arguments[0]);
-                                            yield true;
+                                            throw new AssertionError(
+                                                    "round teleports must use console commands");
                                         }
                                         case "sendMessage" -> {
                                             if (arguments[0] instanceof String message) {
@@ -678,7 +1660,6 @@ class RoundControllerTest {
                                         }
                                         default -> defaultValue(method.getReturnType());
                                     });
-            UUID spectatorId = UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
             spectatorLocation.set(new Location(world, 40.5, 8.0, -12.5));
             spectator =
                     proxy(
@@ -695,10 +1676,15 @@ class RoundControllerTest {
                                             yield null;
                                         }
                                         case "getLocation" -> spectatorLocation.get().clone();
-                                        case "isOnline", "isOp" -> true;
+                                        case "getWorld" -> spectatorLocation.get().getWorld();
+                                        case "isOnline" -> true;
+                                        case "isOp" -> false;
+                                        case "hasPermission" ->
+                                            "scenariocraft.alerts"
+                                                    .equals(arguments[0]);
                                         case "teleport" -> {
-                                            spectatorLocation.set(((Location) arguments[0]).clone());
-                                            yield true;
+                                            throw new AssertionError(
+                                                    "round teleports must use console commands");
                                         }
                                         case "sendMessage" -> {
                                             if (arguments[0] instanceof String message) {
@@ -717,7 +1703,7 @@ class RoundControllerTest {
                                     });
             consoleStarter =
                     proxy(
-                            CommandSender.class,
+                            ConsoleCommandSender.class,
                             (ignored, method, arguments) ->
                                     switch (method.getName()) {
                                         case "getName" -> "CONSOLE";
@@ -757,7 +1743,10 @@ class RoundControllerTest {
                                             ((Runnable) arguments[1]).run();
                                             yield task;
                                         }
-                                        case "runTaskLater" -> task;
+                                        case "runTaskLater" -> {
+                                            delayedTasks.add((Runnable) arguments[1]);
+                                            yield task;
+                                        }
                                         default -> defaultValue(method.getReturnType());
                                     });
             Server server =
@@ -778,6 +1767,20 @@ class RoundControllerTest {
                                                     : null;
                                         }
                                         case "createBossBar" -> bossBar;
+                                        case "createWorldBorder" -> newWorldBorder();
+                                        case "getConsoleSender" -> consoleStarter;
+                                        case "dispatchCommand" -> {
+                                            String command = (String) arguments[1];
+                                            consoleCommands.add(command);
+                                            if (failTeleportDispatch.get()) {
+                                                yield false;
+                                            }
+                                            if (ignoreTeleportCommand.get()) {
+                                                yield true;
+                                            }
+                                            applyTeleportCommand(command);
+                                            yield true;
+                                        }
                                         default -> defaultValue(method.getReturnType());
                                     });
             plugin =
@@ -819,6 +1822,70 @@ class RoundControllerTest {
             assertNotNull(timerTick.get());
         }
 
+        private WorldBorder newWorldBorder() {
+            return proxy(
+                    WorldBorder.class,
+                    (ignored, method, arguments) -> {
+                        switch (method.getName()) {
+                            case "setCenter" -> {
+                                borderCenterX.set((double) arguments[0]);
+                                borderCenterZ.set((double) arguments[1]);
+                            }
+                            case "setSize" -> borderSize.set((double) arguments[0]);
+                            default -> {
+                                // Damage and warning settings do not change test geometry.
+                            }
+                        }
+                        return defaultValue(method.getReturnType());
+                    });
+        }
+
+        private void applyTeleportCommand(String command) {
+            String[] parts = command.split(" ");
+            assertEquals(11, parts.length);
+            assertEquals("minecraft:execute", parts[0]);
+            assertEquals("in", parts[1]);
+            assertEquals(
+                    new NamespacedKey("minecraft", ArenaWorldService.WORLD_NAME).toString(),
+                    parts[2]);
+            assertEquals("run", parts[3]);
+            assertEquals("minecraft:tp", parts[4]);
+            Location destination =
+                    new Location(
+                            world,
+                            Double.parseDouble(parts[6]),
+                            Double.parseDouble(parts[7]),
+                            Double.parseDouble(parts[8]),
+                            Float.parseFloat(parts[9]),
+                            Float.parseFloat(parts[10]));
+            if (parts[5].equals(playerId.toString())) {
+                lastTeleport.set(destination);
+                return;
+            }
+            assertEquals(spectatorId.toString(), parts[5]);
+            spectatorLocation.set(destination);
+        }
+
+        private Block blockAt(int x, int y, int z) {
+            return proxy(
+                    Block.class,
+                    (ignored, method, arguments) ->
+                            switch (method.getName()) {
+                                case "getWorld" -> world;
+                                case "getX" -> x;
+                                case "getY" -> y;
+                                case "getZ" -> z;
+                                case "getRelative" -> {
+                                    BlockFace face = (BlockFace) arguments[0];
+                                    yield blockAt(
+                                            x + face.getModX(),
+                                            y + face.getModY(),
+                                            z + face.getModZ());
+                                }
+                                default -> defaultValue(method.getReturnType());
+                            });
+        }
+
         private World worldRef() {
             return world;
         }
@@ -850,6 +1917,16 @@ class RoundControllerTest {
 
         private void runTimerTick() {
             timerTick.get().run();
+        }
+
+        private void runDelayedTasks() {
+            while (!delayedTasks.isEmpty()) {
+                delayedTasks.removeFirst().run();
+            }
+        }
+
+        private void runNextDelayedTask() {
+            delayedTasks.removeFirst().run();
         }
 
         private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
