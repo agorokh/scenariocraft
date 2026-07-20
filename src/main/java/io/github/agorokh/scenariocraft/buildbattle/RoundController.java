@@ -42,6 +42,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFertilizeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
@@ -60,6 +61,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -107,6 +109,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private String currentTask;
     private boolean taskRevealed;
     private boolean closed;
+    private boolean movingContestantsToPlots;
+    private boolean plotEntryFailed;
     private long nextTeleportAttempt;
 
     public RoundController(
@@ -317,6 +321,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        notifyJoiningOperatorOfPendingTeleportFailures(player);
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null && phase() != RoundPhase.IDLE) {
             try {
@@ -332,7 +337,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             applyCurrentPhase(player, contestant);
             return;
         }
+        boolean hadPendingInventory =
+                player.getPersistentDataContainer()
+                        .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         restorePendingInventory(player);
+        if (!hadPendingInventory
+                && strandedArenaPlayers.contains(player.getUniqueId())) {
+            retryStrandedExit(player);
+            return;
+        }
         if (phase() == RoundPhase.REVEAL) {
             Spectator spectator =
                     revealSpectators.computeIfAbsent(
@@ -358,8 +371,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (spectator != null) {
             restoreSpectator(player, spectator);
         }
-        teleportAttempts.remove(player.getUniqueId());
-        strandedArenaPlayers.remove(player.getUniqueId());
     }
 
     @EventHandler
@@ -515,6 +526,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @EventHandler
     public void onArenaBlockIgnite(BlockIgniteEvent event) {
         if (isActiveArenaBlock(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaBlockFertilize(BlockFertilizeEvent event) {
+        Player player = event.getPlayer();
+        if (event.getBlocks().stream()
+                .map(org.bukkit.block.BlockState::getBlock)
+                .anyMatch(
+                        block ->
+                                player == null
+                                        ? isActiveArenaBlock(block)
+                                        : !mayContestantEdit(player, block))) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onArenaStructureGrow(StructureGrowEvent event) {
+        Player player = event.getPlayer();
+        if (event.getBlocks().stream()
+                .map(org.bukkit.block.BlockState::getBlock)
+                .anyMatch(
+                        block ->
+                                player == null
+                                        ? isActiveArenaBlock(block)
+                                        : !mayContestantEdit(player, block))) {
             event.setCancelled(true);
         }
     }
@@ -742,7 +781,17 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         transitionTo(RoundPhase.BUILDING);
         timer = RoundTimer.start(settings.timings().buildSeconds());
         buildBossBar.setVisible(true);
-        forEachOnlineContestant(this::moveToPlot);
+        plotEntryFailed = false;
+        movingContestantsToPlots = true;
+        try {
+            forEachOnlineContestant(this::moveToPlot);
+        } finally {
+            movingContestantsToPlots = false;
+        }
+        if (plotEntryFailed) {
+            abortAfterPlotEntryFailure();
+            return;
+        }
         updateBuildBossBar();
         broadcast("Build time! Have fun making something only you could imagine.");
     }
@@ -906,9 +955,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void moveToPlot(Player player, Contestant contestant) {
         clearRoundInventory(player);
-        player.setGameMode(GameMode.CREATIVE);
+        resetPersonalBorder(player);
+        player.setGameMode(GameMode.ADVENTURE);
         PlotBounds plot = contestant.plot();
-        applyPersonalBorder(player, contestant);
         teleport(
                 player,
                 new Location(
@@ -916,17 +965,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         plot.centerX() + 0.5,
                         arena.floorY() + 1.0,
                         plot.centerZ() + 0.5),
-                () -> buildBossBar.addPlayer(player),
                 () -> {
-                    if (phase() == RoundPhase.BUILDING
-                            && contestants.get(player.getUniqueId()) == contestant) {
-                        player.setGameMode(GameMode.ADVENTURE);
-                        applyPersonalBorder(player, contestant);
-                    } else {
-                        resetPersonalBorder(player);
-                    }
+                    applyPersonalBorder(player, contestant);
+                    player.setGameMode(GameMode.CREATIVE);
+                    buildBossBar.addPlayer(player);
+                },
+                () -> {
+                    resetPersonalBorder(player);
+                    player.setGameMode(GameMode.ADVENTURE);
+                    strandedArenaPlayers.add(player.getUniqueId());
                     buildBossBar.removePlayer(player);
+                    if (phase() == RoundPhase.BUILDING) {
+                        plotEntryFailed = true;
+                        if (!movingContestantsToPlots) {
+                            abortAfterPlotEntryFailure();
+                        }
+                    }
                 });
+    }
+
+    private void abortAfterPlotEntryFailure() {
+        if (phase() != RoundPhase.BUILDING) {
+            return;
+        }
+        logger.severe(
+                "A contestant could not enter their plot; aborting the round safely.");
+        abortRound();
+        broadcast(
+                "The plots could not open safely this time. Please ask a grown-up helper to check the server.");
     }
 
     private void prepareContestant(Player player, Contestant contestant) {
@@ -965,6 +1031,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
         resetPersonalBorder(player);
+        strandedArenaPlayers.add(player.getUniqueId());
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
@@ -1205,10 +1272,20 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 if (!isCurrentTeleportAttempt(player, attempt)) {
                                     return;
                                 }
-                                if (closed || !player.isOnline()) {
+                                if (closed) {
                                     teleportAttempts.remove(
                                             player.getUniqueId(), attempt);
                                     strandedArenaPlayers.remove(player.getUniqueId());
+                                    return;
+                                }
+                                if (!player.isOnline()) {
+                                    reportTeleportFailure(
+                                            player,
+                                            destination,
+                                            "player disconnected before teleport confirmation",
+                                            null,
+                                            attempt,
+                                            onFailure);
                                     return;
                                 }
                                 if (playerReached(player, destination)) {
@@ -1306,6 +1383,36 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
     }
 
+    private void notifyJoiningOperatorOfPendingTeleportFailures(Player player) {
+        if (player.isOp() && !strandedArenaPlayers.isEmpty()) {
+            player.sendMessage(
+                    "ScenarioCraft recovery alert: "
+                            + strandedArenaPlayers.size()
+                            + " player move(s) still need a confirmed hub return. Check SCENARIOCRAFT_TELEPORT_FAILURE.");
+        }
+    }
+
+    private void retryStrandedExit(Player player) {
+        GameMode recoveredGameMode = player.getGameMode();
+        resetPersonalBorder(player);
+        player.setGameMode(GameMode.ADVENTURE);
+        teleport(
+                player,
+                hubLocation(),
+                () -> {
+                    player.setGameMode(recoveredGameMode);
+                    strandedArenaPlayers.remove(player.getUniqueId());
+                    logger.info(
+                            "Confirmed recovered hub return for "
+                                    + player.getName()
+                                    + ".");
+                },
+                () -> {
+                    player.setGameMode(GameMode.ADVENTURE);
+                    strandedArenaPlayers.add(player.getUniqueId());
+                });
+    }
+
     private static boolean playerReached(Player player, Location destination) {
         Location actual = player.getLocation();
         return actual.getWorld() == destination.getWorld()
@@ -1365,6 +1472,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         resetPersonalBorder(player);
+        strandedArenaPlayers.add(player.getUniqueId());
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));

@@ -26,7 +26,14 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         int capY = Math.addExact(topWallY, 1);
         if (capY >= arena.world().getMaxHeight()) {
             throw new IllegalArgumentException(
-                    "wall-height leaves no room for battle_world's anti-peek cap");
+                    "wall-height "
+                            + settings.arena().wallHeight()
+                            + " places battle_world's anti-peek cap at Y="
+                            + capY
+                            + ", but the world's exclusive max height is "
+                            + arena.world().getMaxHeight()
+                            + "; lower wall-height by at least "
+                            + (capY - arena.world().getMaxHeight() + 1));
         }
 
         ProtectionPluginWarner.warnIfPresent(

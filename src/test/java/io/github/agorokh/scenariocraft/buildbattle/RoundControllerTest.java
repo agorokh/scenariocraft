@@ -25,6 +25,7 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
+import org.bukkit.TreeType;
 import org.bukkit.World;
 import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
@@ -42,6 +43,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockFertilizeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
@@ -60,6 +62,7 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -394,10 +397,15 @@ class RoundControllerTest {
                         rig.player,
                         net.kyori.adventure.text.Component.empty(),
                         PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.failTeleportDispatch.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
         BlockBreakEvent afterDisconnect =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
         rig.controller.onContestantBlockBreak(afterDisconnect);
         assertFalse(afterDisconnect.isCancelled());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         rig.close();
     }
 
@@ -618,16 +626,16 @@ class RoundControllerTest {
     }
 
     @Test
-    void failedPlotTeleportKeepsAntiPeekBorderAndAdventureMode() {
+    void failedPlotTeleportAbortsWithoutLeavingADistantBorder() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
         rig.failTeleportDispatch.set(true);
 
         rig.runTimerTick();
 
-        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
-        assertNotNull(rig.playerWorldBorder.get());
-        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         assertEquals(0, rig.bossbarPlayers.get());
         assertTrue(
                 rig.playerMessages.stream()
@@ -681,6 +689,45 @@ class RoundControllerTest {
                 rig.spectatorMessages.stream()
                         .filter(message -> message.contains("ScenarioCraft teleport alert"))
                         .count());
+        rig.close();
+    }
+
+    @Test
+    void deferredRoundExitIsContainedBeforeReturningToIdle() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.ignoreTeleportCommand.set(true);
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        BlockBreakEvent beforeConfirmation =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(beforeConfirmation);
+        assertTrue(beforeConfirmation.isCancelled());
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.playerOnline.set(false);
+        rig.runDelayedTasks();
+        rig.playerOnline.set(true);
+        rig.ignoreTeleportCommand.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(
+                                message ->
+                                        message.contains(
+                                                "ScenarioCraft recovery alert")));
+        BlockBreakEvent afterConfirmedRecovery =
+                new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
+        rig.controller.onContestantBlockBreak(afterConfirmedRecovery);
+        assertFalse(afterConfirmedRecovery.isCancelled());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         rig.close();
     }
 
@@ -859,6 +906,38 @@ class RoundControllerTest {
         BlockFromToEvent insideFlow = new BlockFromToEvent(insidePlot, insidePlot);
         rig.controller.onArenaFluidFlow(insideFlow);
         assertFalse(insideFlow.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void fertilizeAndTreeGrowthCannotCrossThePlotBoundary() {
+        TestRig rig = new TestRig();
+        Block insidePlot = rig.blockAt(0, 1, -3);
+        Block outsidePlot = rig.blockAt(1, 1, -3);
+        BlockState outsideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? outsidePlot
+                                        : defaultValue(method.getReturnType()));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockFertilizeEvent fertilize =
+                new BlockFertilizeEvent(
+                        insidePlot, rig.player, List.of(outsideState));
+        rig.controller.onArenaBlockFertilize(fertilize);
+        assertTrue(fertilize.isCancelled());
+
+        StructureGrowEvent grow =
+                new StructureGrowEvent(
+                        new Location(rig.world, 0, 1, -3),
+                        TreeType.TREE,
+                        true,
+                        rig.player,
+                        List.of(outsideState));
+        rig.controller.onArenaStructureGrow(grow);
+        assertTrue(grow.isCancelled());
         rig.close();
     }
 

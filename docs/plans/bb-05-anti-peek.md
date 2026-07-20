@@ -46,7 +46,9 @@ session.
 | 2026-07-20 | Apply plot permission to non-secret right-click block interactions and notify every online operator when a controller teleport fails. | Tool transformations can mutate blocks without a place event, and an operator-visible alert makes manual recovery actionable immediately. |
 | 2026-07-20 | Permit block-item interactions when the clicked face's placement target is editable, while keeping tool transformations subject to the clicked-block policy. | First-block placement commonly clicks the protected plot floor or wall, so the interaction guard must distinguish the eventual placement target from the transformed block. |
 | 2026-07-20 | Confirm handled-but-not-yet-observed console teleports one tick later before applying failure containment. | Cross-chunk and player lifecycle edges can defer the authoritative location update; callers now receive success or failure only after a server-state confirmation. |
-| 2026-07-20 | Freeze each contestant's `PlotBoundary` at round preparation and clear failed-exit containment on successful controller moves, quit, close, and new participation. | Logical edit and border geometry must stay aligned with the already-built walls, and recovery state must not leak into another world or round. |
+| 2026-07-20 | Freeze each contestant's `PlotBoundary` at round preparation and clear failed-exit containment on confirmed controller moves, close, and new participation. | Logical edit and border geometry must stay aligned with the already-built walls, and recovery state must not leak into another world or round. An unconfirmed disconnect retains containment until rejoin retries the hub return. |
+| 2026-07-20 | Mark round exits contained before dispatch, and keep plot entrants in Adventure without a personal border until the destination is confirmed. | Deferred verification must not create an IDLE edit window or apply a distant plot-centered border to a player who remains at the hub. Failed plot entry aborts the round safely. |
+| 2026-07-20 | Apply the plot policy to fertilization and structure growth. | Bone meal and trees can change multiple blocks beyond the interacted block, so every resulting block must stay inside the assigned editable volume. |
 
 ## Surprises & Discoveries
 
@@ -92,7 +94,7 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 78 tests.
+- `make ci-fast` passed on Java 21 with 80 tests.
 - Source scans found no `PlayerMoveEvent` and no direct `Player.teleport` call in production
   code; controller teleports are explicit
   `minecraft:execute in minecraft:battle_world run minecraft:tp ...` console commands.

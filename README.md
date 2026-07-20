@@ -46,11 +46,20 @@ entity-driven block changes until the controller returns to `IDLE`. The plugin l
 activation message when each round starts. Keep unrelated builds and minigames in a
 different world.
 
+`wall-height` must leave one additional block above the concrete wall for the
+anti-peek roof: `floor Y + wall-height + 1` must be below the battle world's
+exclusive maximum height. If an older configuration is now too tall, startup
+reports the configured value, calculated roof Y, world maximum, and minimum
+reduction.
+
 Controller-owned moves use explicit-world console teleports and verify the result on the
 server, including a one-tick confirmation for chunk-loading or lifecycle delays. A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
-`/battle stop`, move the named player safely if needed, and have them reconnect; disconnect
-cleanup clears the temporary failed-exit containment state.
+`/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
+retries a confirmed hub return; a successful recovery is logged and clears temporary
+containment. Verify that the player is at the hub with the default world border and can
+drop/pick up items before starting the next round. Operators who join while recovery is
+pending receive another alert.
 
 ## How this was built
 

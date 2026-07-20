@@ -1,5 +1,8 @@
 # Arena geometry and block-edit budget
 plot-size: 33
+# The roof occupies floor-y + wall-height + 1; that Y must stay below the
+# battle world's exclusive maximum height. The startup error gives the exact
+# reduction if an existing value is too tall.
 wall-height: 30
 plot-spacing: 64
 max-plots: 8
