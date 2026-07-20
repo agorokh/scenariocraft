@@ -451,11 +451,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         switch (phase()) {
             case GATHERING -> beginNotePick();
             case NOTE_PICK -> {
-                String pickerName =
-                        currentPickerName == null ? "Our note picker" : currentPickerName;
-                broadcast(
-                        pickerName
-                                + " must be away for a moment, so the secret note opened itself!");
+                broadcast("Time is up — the secret note opened itself for everyone!");
                 revealCurrentTask();
                 beginBuilding();
             }

@@ -183,8 +183,8 @@ class RoundControllerTest {
                 rig.spectatorMessages.contains(
                         "Your build idea is: A dragon treehouse!"));
         assertTrue(
-                rig.messages.stream()
-                        .anyMatch(message -> message.contains("secret note opened itself")));
+                rig.messages.contains(
+                        "Time is up — the secret note opened itself for everyone!"));
         assertEquals(GameMode.CREATIVE, rig.gameMode.get());
         rig.close();
     }

@@ -36,6 +36,7 @@ session.
 | 2026-07-19 | Normalize Paper's empty `ItemStack` values to `null` before cloning or serializing inventory snapshots. | A real client exposed that Paper may return a non-null empty stack which cannot be serialized; snapshot persistence must treat it exactly like an empty slot. |
 | 2026-07-19 | Cancel off-hand secret-chest events without processing them, and continue the round when cosmetic book placement fails. | Paper can emit an interaction for each hand, while the issue makes title and chat authoritative; neither an off-hand duplicate nor a prop failure should alter the reveal flow. |
 | 2026-07-19 | Keep the configured task out of book NBT entirely; the written book contains only generic cosmetic text. | A neighboring double chest or item transport could expose the book inventory without interacting with the gated block. Controller state plus title/chat remains the only authoritative task channel. |
+| 2026-07-19 | Use neutral timeout copy instead of assuming the picker is away. | The timer only proves that time expired; “Time is up” stays accurate and kind whether the picker disconnected, hesitated, or was still walking to the chest. |
 
 ## Surprises & Discoveries
 
@@ -58,6 +59,9 @@ session.
 - A later review found that storing the real task in the cosmetic book made the prompt
   readable through alternate inventory access such as a neighboring double chest. The
   finalized book page is generic; the configured task never enters book NBT.
+- Current-head review also caught that the AFK fallback copy inferred the picker was away
+  when the timer only establishes that time expired. The message is now neutral and covered
+  exactly by the timeout regression.
 
 ## Acceptance evidence
 
