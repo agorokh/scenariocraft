@@ -238,6 +238,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "The arena is already getting ready — just a few more blocks to go!");
             return;
         }
+        if (roundExporter.isBusy()) {
+            sender.sendMessage(
+                    "The last build is still being packed up safely — just a moment!");
+            return;
+        }
 
         List<Player> players =
                 server.getOnlinePlayers().stream()
@@ -1112,6 +1117,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void abortRound() {
+        roundExporter.cancel();
         blockEditor.cancel();
         timer = null;
         pendingPlotEntries.clear();

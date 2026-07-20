@@ -18,6 +18,8 @@ contract that cannot change after merge without a schema bump.
 - [x] Implement with tests.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
+- [x] Resolve external lifecycle review by canceling mutable snapshots before abort reset and
+      blocking new rounds during immutable writes (2026-07-20).
 - [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -33,6 +35,7 @@ session.
 | 2026-07-20 | Implement the normative amendment literally: `blocks` is an integer array, x varies fastest under `x + sizeX * (z + sizeZ * y)`, block-state data is omitted, and an empty build publishes height zero plus an empty array. | Issue #8 now freezes these choices for both BB-07 and BB-08; later representation changes require a new schema version. |
 | 2026-07-20 | Load every source chunk asynchronously and hold plugin chunk tickets while the per-tick snapshot is read. Start export after reveal-wall removal completes so the editor and exporter never compete for the same plugin-owned ticket. | A bounded `getBlockAt` loop is not watchdog-safe if its first access synchronously loads an unloaded chunk, and Bukkit plugin tickets are not reference-counted between two services using the same plugin. |
 | 2026-07-20 | Export contestant plots, not the controller's extra debug/practice plots. | The manifest's `player` field identifies builds that the renderer and judge should process; an unowned debug plot is arena capacity, not a contestant submission. |
+| 2026-07-20 | Cancel mutable snapshot work when a round aborts and keep a new round IDLE while an immutable export write is still finishing. | Arena reset must never race snapshot reads, while an already-captured immutable snapshot can finish safely without dropping the next round's export. |
 
 ## Surprises & Discoveries
 
@@ -52,10 +55,13 @@ session.
 - `Material.isAir()` in Paper's API requires live registry access and cannot run in a plain
   unit test. Matching the three air materials explicitly preserves the runtime semantics and
   makes the async-boundary integration test independent of a booted server.
+- Review found that `/battle stop` could return the controller to IDLE while the exporter was
+  still reading mutable plot blocks. The exporter now supports reusable cancellation, and
+  round start also waits for any already-immutable write to finish.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 94 tests, zero failures, and the plugin jar built at
+- `make ci-fast` passed on Java 21 with 96 tests, zero failures, and the plugin jar built at
   `build/libs/ScenarioCraft-0.1.0-SNAPSHOT.jar`.
 - `RoundExportWriterTest.normativeWorkedExampleRoundTripsExactly` loads the committed
   `fixtures/schema-v1/p1.voxels.json`, programmatically constructs the amendment's single
@@ -70,11 +76,14 @@ session.
   complete 33×40×33 volume in 11 batches of at most 4,000 reads, under a one-second unit-test
   timeout, then verifies all 43,560 indices.
 - `RoundExportServiceTest.snapshotReadsFinishBeforeEncodingAndFilesAreWrittenOffThread` proves
-  chunk preparation and bounded snapshotting finish before asynchronous encoding and that no
-  round directory is visible until the off-thread writer publishes it.
+  cancellation invalidates a mutable snapshot without scheduling a write, then proves a
+  subsequent export's chunk preparation and bounded snapshotting finish before asynchronous
+  encoding and no round directory is visible until the off-thread writer publishes it.
 - `RoundControllerTest.fullRoundQueuesOnlyContestantPlotsForExportAtReveal` proves the phase
   controller supplies the frozen task, world, player, origin, and configured volume after the
   reveal walls finish their bounded removal.
+- `RoundControllerTest.stoppingRevealCancelsTheMutableSnapshotBeforeAnotherArenaReset` and
+  `newRoundWaitsForAnImmutableExportWriteToFinish` pin both sides of the export lifecycle gate.
 - Review against `code_review.md` found no P1: export logic has focused tests, adds no block
   mutation, adds no player-facing output or inventory UI, and contains no credential material.
 

@@ -90,8 +90,19 @@ final class RoundExportService implements RoundExporter {
         prepareChunks(request, ++preparationGeneration);
     }
 
-    synchronized boolean isBusy() {
+    @Override
+    public synchronized boolean isBusy() {
         return activeSnapshot != null || writing;
+    }
+
+    @Override
+    public synchronized void cancel() {
+        preparationGeneration++;
+        activeSnapshot = null;
+        preparingChunks = false;
+        cancelPreparationTimeout();
+        cancelChunkLoads();
+        releaseChunkTickets();
     }
 
     @Override
@@ -100,12 +111,7 @@ final class RoundExportService implements RoundExporter {
             return;
         }
         closed = true;
-        preparationGeneration++;
-        activeSnapshot = null;
-        preparingChunks = false;
-        cancelPreparationTimeout();
-        cancelChunkLoads();
-        releaseChunkTickets();
+        cancel();
         snapshotTask.cancel();
     }
 

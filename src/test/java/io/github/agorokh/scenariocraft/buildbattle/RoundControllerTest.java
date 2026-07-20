@@ -309,6 +309,36 @@ class RoundControllerTest {
     }
 
     @Test
+    void stoppingRevealCancelsTheMutableSnapshotBeforeAnotherArenaReset() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+        assertTrue(rig.exportBusy.get());
+
+        rig.controller.stop(rig.player);
+
+        assertEquals(1, rig.exportCancels.get());
+        assertFalse(rig.exportBusy.get());
+        rig.controller.start(rig.player);
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        rig.close();
+    }
+
+    @Test
+    void newRoundWaitsForAnImmutableExportWriteToFinish() {
+        TestRig rig = new TestRig();
+        rig.exportBusy.set(true);
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("packed up safely")));
+        rig.close();
+    }
+
+    @Test
     void reconnectingContestantReceivesTheCurrentPhaseState() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -1533,6 +1563,8 @@ class RoundControllerTest {
         private final List<String> starterMessages = new ArrayList<>();
         private final List<String> consoleCommands = new ArrayList<>();
         private final List<RoundExportRequest> exportRequests = new ArrayList<>();
+        private final AtomicBoolean exportBusy = new AtomicBoolean();
+        private final AtomicInteger exportCancels = new AtomicInteger();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
@@ -1849,7 +1881,24 @@ class RoundControllerTest {
                                 }
                                 placedTask.set(prompt);
                             },
-                            exportRequests::add);
+                            new RoundExporter() {
+                                @Override
+                                public void export(RoundExportRequest request) {
+                                    exportRequests.add(request);
+                                    exportBusy.set(true);
+                                }
+
+                                @Override
+                                public void cancel() {
+                                    exportCancels.incrementAndGet();
+                                    exportBusy.set(false);
+                                }
+
+                                @Override
+                                public boolean isBusy() {
+                                    return exportBusy.get();
+                                }
+                            });
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }

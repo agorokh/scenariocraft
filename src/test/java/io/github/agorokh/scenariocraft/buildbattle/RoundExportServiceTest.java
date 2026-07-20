@@ -2,6 +2,7 @@ package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
@@ -127,6 +128,13 @@ class RoundExportServiceTest {
                         List.of(
                                 new RoundExportRequest.Plot(
                                         "p1", "KidAva", 100, 64, 200, 2, 2, 2)));
+
+        exporter.export(request);
+        assertTrue(exporter.isBusy());
+        exporter.cancel();
+        assertFalse(exporter.isBusy());
+        snapshotTick.get().run();
+        assertNull(asyncWrite.get());
 
         exporter.export(request);
         snapshotTick.get().run();
