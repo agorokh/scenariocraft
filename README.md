@@ -42,7 +42,8 @@ The plugin jar is written to `build/libs/`.
 
 During an active Build Battle, ScenarioCraft protects the entire configured
 `battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, block fading
-and leaf decay, and entity-driven/block-form changes until the controller returns to `IDLE`.
+and leaf decay, decorative-entity interactions, and entity-driven/block-form changes until
+the controller returns to `IDLE`.
 During plot entry and BUILDING, contestant teleports are accepted only inside their assigned
 boundary
 (controller-owned phase moves are tracked explicitly). The plugin logs one

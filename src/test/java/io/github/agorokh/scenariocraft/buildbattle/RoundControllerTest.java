@@ -61,10 +61,12 @@ import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -567,6 +569,23 @@ class RoundControllerTest {
         assertEquals(3, rig.enderChestContents.get().length);
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         replacement.close();
+        rig.close();
+    }
+
+    @Test
+    void pendingInventoryJoinDuringRevealDoesNotStartASpectatorMove() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.spectatorPersistentData.putAll(rig.persistentData);
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.spectator,
+                        net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        rig.controller.stop(rig.player);
         rig.close();
     }
 
@@ -1188,6 +1207,25 @@ class RoundControllerTest {
                         EquipmentSlot.HAND);
         rig.controller.onContestantHangingPlace(automatedHangingPlace);
         assertTrue(automatedHangingPlace.isCancelled());
+
+        Hanging protectedHanging =
+                proxy(
+                        Hanging.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        HangingBreakByEntityEvent hangingBreak =
+                new HangingBreakByEntityEvent(
+                        protectedHanging, rig.spectator);
+        rig.controller.onArenaHangingBreak(hangingBreak);
+        assertTrue(hangingBreak.isCancelled());
+
+        PlayerInteractEntityEvent entityInteraction =
+                new PlayerInteractEntityEvent(
+                        rig.spectator, protectedHanging);
+        rig.controller.onProtectedEntityInteract(entityInteraction);
+        assertTrue(entityInteraction.isCancelled());
 
         Entity entity =
                 proxy(

@@ -61,10 +61,13 @@ import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
+import org.bukkit.event.hanging.HangingBreakByEntityEvent;
+import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -358,9 +361,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 player.getPersistentDataContainer()
                         .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         restorePendingInventory(player);
-        if (!hadPendingInventory
-                && (strandedArenaPlayers.contains(player.getUniqueId())
-                        || hasPendingTeleportRecovery(player))) {
+        if (hadPendingInventory) {
+            return;
+        }
+        if (strandedArenaPlayers.contains(player.getUniqueId())
+                || hasPendingTeleportRecovery(player)) {
             retryStrandedExit(player);
             return;
         }
@@ -605,6 +610,26 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (player == null
                 ? isActiveArenaBlock(placedBlock)
                 : !mayContestantEdit(player, placedBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onArenaHangingBreak(HangingBreakEvent event) {
+        Block occupiedBlock = event.getEntity().getLocation().getBlock();
+        if (event instanceof HangingBreakByEntityEvent byEntity
+                && byEntity.getRemover() instanceof Player player
+                ? !mayContestantEdit(player, occupiedBlock)
+                : isActiveArenaBlock(occupiedBlock)) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onProtectedEntityInteract(PlayerInteractEntityEvent event) {
+        if (!mayContestantEdit(
+                event.getPlayer(),
+                event.getRightClicked().getLocation().getBlock())) {
             event.setCancelled(true);
         }
     }
