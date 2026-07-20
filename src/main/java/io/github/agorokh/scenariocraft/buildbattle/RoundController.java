@@ -1,5 +1,10 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -18,10 +24,13 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -30,6 +39,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int MINIMUM_DEBUG_PLOTS = 2;
     private static final int TELEPORT_FADE_TICKS = 10;
     private static final int TITLE_STAY_TICKS = 50;
+    private static final int INVENTORY_SNAPSHOT_VERSION = 1;
+    private static final int MAX_SNAPSHOT_SECTION_BYTES = 4 * 1024 * 1024;
+    private static final int MAX_SNAPSHOT_SLOTS = 128;
 
     private final Server server;
     private final BattleSettings settings;
@@ -39,6 +51,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
+    private final NamespacedKey inventorySnapshotKey;
     private final BossBar buildBossBar;
     private final BukkitTask timerTask;
     private List<PlotBounds> plots = List.of();
@@ -58,6 +71,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.arena = Objects.requireNonNull(arena, "arena");
         this.blockEditor = Objects.requireNonNull(blockEditor, "blockEditor");
         this.logger = Objects.requireNonNull(logger, "logger");
+        this.inventorySnapshotKey =
+                new NamespacedKey(plugin, "round-inventory-snapshot");
         this.buildBossBar =
                 server.createBossBar(
                         "Build time", BarColor.BLUE, BarStyle.SOLID);
@@ -65,6 +80,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         server.getPluginManager().registerEvents(this, plugin);
         this.timerTask =
                 server.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+        for (Player player : server.getOnlinePlayers()) {
+            restorePendingInventory(player);
+        }
     }
 
     @Override
@@ -111,17 +129,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         arenaSettings.plotSize(),
                         arenaSettings.plotSpacing());
         contestants.clear();
-        for (int index = 0; index < players.size(); index++) {
-            Player player = players.get(index);
-            player.closeInventory();
-            contestants.put(
-                    player.getUniqueId(),
-                    new Contestant(
-                            player.getUniqueId(),
-                            plots.get(index),
-                            player.getGameMode(),
-                            snapshotContents(player.getInventory()),
-                            snapshotContents(player.getEnderChest())));
+        try {
+            for (int index = 0; index < players.size(); index++) {
+                Player player = players.get(index);
+                player.closeInventory();
+                InventorySnapshot inventorySnapshot = snapshotPlayerInventory(player);
+                persistInventorySnapshot(player, inventorySnapshot);
+                contestants.put(
+                        player.getUniqueId(),
+                        new Contestant(
+                                player.getUniqueId(),
+                                plots.get(index),
+                                inventorySnapshot));
+            }
+        } catch (RuntimeException failure) {
+            for (Player player : players) {
+                player.getPersistentDataContainer().remove(inventorySnapshotKey);
+                try {
+                    player.saveData();
+                } catch (RuntimeException cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            contestants.clear();
+            plots = List.of();
+            logger.log(Level.SEVERE, "Could not save round inventory snapshots", failure);
+            sender.sendMessage(
+                    "The battle could not save everyone's items safely. Please ask a grown-up helper to check the server.");
+            return;
         }
 
         transitionTo(RoundPhase.PREPARING);
@@ -136,13 +171,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         broadcast("Build Battle is getting the arena ready in safe little batches!");
 
-        long mutations =
-                blockEditor.enqueueArena(
-                        plots,
-                        arena.floorY(),
-                        arenaSettings.wallHeight(),
-                        completedMutations -> arenaResetComplete(completedMutations),
-                        this::arenaWorkFailed);
+        long mutations;
+        try {
+            mutations =
+                    blockEditor.enqueueArena(
+                            plots,
+                            arena.floorY(),
+                            arenaSettings.wallHeight(),
+                            completedMutations -> arenaResetComplete(completedMutations),
+                            this::arenaWorkFailed);
+        } catch (RuntimeException failure) {
+            arenaWorkFailed(failure);
+            return;
+        }
         if (phase() != RoundPhase.PREPARING || !blockEditor.isBusy()) {
             return;
         }
@@ -178,8 +219,22 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         Player player = event.getPlayer();
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null && phase() != RoundPhase.IDLE) {
+            try {
+                persistInventorySnapshot(player, contestant.inventorySnapshot());
+            } catch (RuntimeException failure) {
+                logger.log(
+                        Level.SEVERE,
+                        "Could not re-save round inventory for " + player.getName(),
+                        failure);
+                player.sendMessage(
+                        "Your items could not be saved safely. Please ask a grown-up helper.");
+                return;
+            }
             applyCurrentPhase(player, contestant);
-        } else if (phase() == RoundPhase.REVEAL) {
+            return;
+        }
+        restorePendingInventory(player);
+        if (phase() == RoundPhase.REVEAL) {
             Spectator spectator =
                     revealSpectators.computeIfAbsent(
                             player.getUniqueId(),
@@ -203,6 +258,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         Spectator spectator = revealSpectators.get(player.getUniqueId());
         if (spectator != null) {
             restoreSpectator(player, spectator);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerDropItem(PlayerDropItemEvent event) {
+        if (phase() != RoundPhase.IDLE
+                && contestants.containsKey(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
         }
     }
 
@@ -322,13 +385,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         broadcast("Time to reveal the builds! The walls are coming down safely.");
 
         ArenaSettings arenaSettings = settings.arena();
-        long mutations =
-                blockEditor.enqueueWallRemoval(
-                        plots,
-                        arena.floorY(),
-                        arenaSettings.wallHeight(),
-                        this::wallRemovalComplete,
-                        this::arenaWorkFailed);
+        long mutations;
+        try {
+            mutations =
+                    blockEditor.enqueueWallRemoval(
+                            plots,
+                            arena.floorY(),
+                            arenaSettings.wallHeight(),
+                            this::wallRemovalComplete,
+                            this::arenaWorkFailed);
+        } catch (RuntimeException failure) {
+            arenaWorkFailed(failure);
+            return;
+        }
         if (phase() != RoundPhase.REVEAL || !blockEditor.isBusy()) {
             return;
         }
@@ -444,6 +513,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveToPlot(Player player, Contestant contestant) {
+        clearRoundInventory(player);
         player.setGameMode(GameMode.CREATIVE);
         PlotBounds plot = contestant.plot();
         player.teleport(
@@ -478,12 +548,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
-        clearRoundInventory(player);
-        player.getInventory().setContents(cloneContents(contestant.inventoryContents()));
-        player.getEnderChest().setContents(cloneContents(contestant.enderChestContents()));
-        player.setGameMode(contestant.originalGameMode());
+        restoreInventorySnapshot(player, contestant.inventorySnapshot());
         player.teleport(hubLocation());
-        player.updateInventory();
     }
 
     private void clearRoundInventory(Player player) {
@@ -532,6 +598,143 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return hubLocation();
     }
 
+    private InventorySnapshot snapshotPlayerInventory(Player player) {
+        ItemStack cursor = player.getItemOnCursor();
+        return new InventorySnapshot(
+                player.getGameMode(),
+                snapshotContents(player.getInventory()),
+                snapshotContents(player.getEnderChest()),
+                cursor == null ? null : cursor.clone());
+    }
+
+    private void persistInventorySnapshot(Player player, InventorySnapshot snapshot) {
+        player.getPersistentDataContainer()
+                .set(
+                        inventorySnapshotKey,
+                        PersistentDataType.BYTE_ARRAY,
+                        encodeInventorySnapshot(snapshot));
+        player.saveData();
+    }
+
+    private void restorePendingInventory(Player player) {
+        PersistentDataContainer data = player.getPersistentDataContainer();
+        byte[] encoded =
+                data.get(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
+        if (encoded == null) {
+            return;
+        }
+        try {
+            restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));
+            player.teleport(hubLocation());
+            logger.info("Restored pending round inventory for " + player.getName() + ".");
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.SEVERE,
+                    "Could not restore pending round inventory for " + player.getName(),
+                    failure);
+            player.sendMessage(
+                    "Your saved items need a grown-up helper before the next battle.");
+        }
+    }
+
+    private void restoreInventorySnapshot(Player player, InventorySnapshot snapshot) {
+        clearRoundInventory(player);
+        player.getInventory().setContents(cloneContents(snapshot.inventoryContents()));
+        player.getEnderChest().setContents(cloneContents(snapshot.enderChestContents()));
+        player.setItemOnCursor(
+                snapshot.cursorItem() == null ? null : snapshot.cursorItem().clone());
+        player.setGameMode(snapshot.originalGameMode());
+        player.getPersistentDataContainer().remove(inventorySnapshotKey);
+        player.updateInventory();
+        player.saveData();
+    }
+
+    private byte[] encodeInventorySnapshot(InventorySnapshot snapshot) {
+        try {
+            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            try (DataOutputStream output = new DataOutputStream(bytes)) {
+                output.writeInt(INVENTORY_SNAPSHOT_VERSION);
+                output.writeUTF(snapshot.originalGameMode().name());
+                writeItemArray(output, snapshot.inventoryContents());
+                writeItemArray(output, snapshot.enderChestContents());
+                writeItem(output, snapshot.cursorItem());
+            }
+            return bytes.toByteArray();
+        } catch (IOException failure) {
+            throw new IllegalStateException("Could not encode round inventory snapshot", failure);
+        }
+    }
+
+    private InventorySnapshot decodeInventorySnapshot(byte[] encoded) {
+        try (DataInputStream input =
+                new DataInputStream(new ByteArrayInputStream(encoded))) {
+            int version = input.readInt();
+            if (version != INVENTORY_SNAPSHOT_VERSION) {
+                throw new IllegalArgumentException(
+                        "Unsupported round inventory snapshot version " + version);
+            }
+            GameMode gameMode = GameMode.valueOf(input.readUTF());
+            ItemStack[] inventory = readItemArray(input);
+            ItemStack[] enderChest = readItemArray(input);
+            ItemStack cursor = readItem(input);
+            if (input.available() != 0) {
+                throw new IllegalArgumentException("Invalid round inventory snapshot");
+            }
+            return new InventorySnapshot(gameMode, inventory, enderChest, cursor);
+        } catch (IOException | IllegalArgumentException failure) {
+            throw new IllegalStateException("Could not decode round inventory snapshot", failure);
+        }
+    }
+
+    private static void writeItemArray(DataOutputStream output, ItemStack[] items)
+            throws IOException {
+        output.writeInt(items.length);
+        for (ItemStack item : items) {
+            writeItem(output, item);
+        }
+    }
+
+    private static ItemStack[] readItemArray(DataInputStream input) throws IOException {
+        int slots = input.readInt();
+        if (slots < 0 || slots > MAX_SNAPSHOT_SLOTS) {
+            throw new IllegalArgumentException("Invalid round inventory snapshot slot count");
+        }
+        ItemStack[] items = new ItemStack[slots];
+        for (int slot = 0; slot < slots; slot++) {
+            items[slot] = readItem(input);
+        }
+        return items;
+    }
+
+    private static void writeItem(DataOutputStream output, ItemStack item)
+            throws IOException {
+        output.writeBoolean(item != null);
+        if (item == null) {
+            return;
+        }
+        byte[] encoded = item.serializeAsBytes();
+        if (encoded.length > MAX_SNAPSHOT_SECTION_BYTES) {
+            throw new IllegalArgumentException("Round inventory item is too large to save");
+        }
+        output.writeInt(encoded.length);
+        output.write(encoded);
+    }
+
+    private static ItemStack readItem(DataInputStream input) throws IOException {
+        if (!input.readBoolean()) {
+            return null;
+        }
+        int length = input.readInt();
+        if (length < 0 || length > MAX_SNAPSHOT_SECTION_BYTES) {
+            throw new IllegalArgumentException("Invalid round inventory snapshot item");
+        }
+        byte[] item = input.readNBytes(length);
+        if (item.length != length) {
+            throw new IllegalArgumentException("Truncated round inventory snapshot item");
+        }
+        return ItemStack.deserializeBytes(item);
+    }
+
     private static ItemStack[] snapshotContents(Inventory inventory) {
         return cloneContents(inventory.getContents());
     }
@@ -554,11 +757,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private record Contestant(
-            UUID playerId,
-            PlotBounds plot,
+            UUID playerId, PlotBounds plot, InventorySnapshot inventorySnapshot) {}
+
+    private record InventorySnapshot(
             GameMode originalGameMode,
             ItemStack[] inventoryContents,
-            ItemStack[] enderChestContents) {}
+            ItemStack[] enderChestContents,
+            ItemStack cursorItem) {}
 
     private record Spectator(
             UUID playerId, Location originalLocation, GameMode originalGameMode) {}

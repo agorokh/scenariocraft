@@ -36,6 +36,7 @@ session.
 | 2026-07-19 | Snapshot non-contestant spectators when reveal moves them to the tour point, then restore their original location and game mode. | BB-03 requires all players to join the reveal tour, but unrelated exempt helpers and late joiners must not be stranded by the round lifecycle. |
 | 2026-07-19 | Limit periodic short-countdown chat to `GATHERING` and `NOTE_PICK`. | The configurable reveal linger can be much longer, so ten-second announcements there would create avoidable chat spam. |
 | 2026-07-19 | Close open views, snapshot contestant inventory and ender-chest contents, vacate those items for the round, clear Creative-sourced items before reveal, and restore the snapshot only when the contestant leaves the round. | Keeping the snapshot separate for the entire round prevents both Creative-item leakage and drop-then-restore duplication. |
+| 2026-07-19 | Persist the protected inventory snapshot in the player's Paper persistent-data container before vacating items, and replay pending state during controller initialization or join. | An in-memory-only snapshot would be lost on JVM/server failure after an empty round inventory had already been saved to player data. |
 
 ## Surprises & Discoveries
 
@@ -69,10 +70,14 @@ session.
   into reveal. Contestants are now moved to the hub and vacated immediately after the
   snapshot; cursor, open-view, inventory, and ender-chest state are cleared at every
   round-controlled boundary and the snapshot is restored only on round exit.
+- Crash-recovery review found that vacating a live inventory requires the protected copy to
+  survive the controller and JVM. The snapshot now persists before any clear, replays on
+  enable/join, includes cursor state, blocks contestant drops during the active round, and
+  is removed only after a successful restore and player-data save.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 37 tests. The focused coverage includes every
+- `make ci-fast` completed successfully with 43 tests. The focused coverage includes every
   legal and illegal phase pair, countdown arithmetic and warning boundaries, command
   authorization, one-contestant debug-fill cycling, reconnect state restoration, clean
   stop from every active phase, batched wall removal, and editor cancellation.

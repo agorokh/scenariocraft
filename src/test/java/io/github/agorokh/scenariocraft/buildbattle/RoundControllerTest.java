@@ -8,7 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -18,17 +20,21 @@ import java.util.logging.Logger;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Server;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.scheduler.BukkitScheduler;
@@ -47,6 +53,8 @@ class RoundControllerTest {
         assertTrue(rig.enderChestClears.get() > 0);
         assertTrue(rig.closedInventories.get() > 0);
         assertTrue(rig.cursorClears.get() > 0);
+        assertTrue(rig.saveDataCalls.get() > 0);
+        assertFalse(rig.persistentData.isEmpty());
 
         rig.runBlockTick();
         assertEquals(RoundPhase.GATHERING, rig.controller.phase());
@@ -71,6 +79,7 @@ class RoundControllerTest {
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertTrue(rig.persistentData.isEmpty());
         assertFalse(rig.editor.isBusy());
         assertTrue(rig.blockMutations.get() > 0);
         rig.close();
@@ -214,6 +223,53 @@ class RoundControllerTest {
         rig.close();
     }
 
+    @Test
+    void pendingInventorySnapshotRestoresWhenControllerReinitializes() {
+        TestRig rig = new TestRig();
+        rig.controller.start(rig.player);
+        rig.inventoryContents.set(new ItemStack[1]);
+        rig.enderChestContents.set(new ItemStack[1]);
+        assertFalse(rig.persistentData.isEmpty());
+
+        RoundController replacement =
+                new RoundController(
+                        rig.plugin,
+                        rig.settings,
+                        rig.arena,
+                        rig.editor,
+                        Logger.getAnonymousLogger());
+
+        assertTrue(rig.persistentData.isEmpty());
+        assertEquals(2, rig.inventoryContents.get().length);
+        assertEquals(3, rig.enderChestContents.get().length);
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        replacement.close();
+        rig.close();
+    }
+
+    @Test
+    void contestantDropsAreBlockedOnlyDuringAnActiveRound() {
+        TestRig rig = new TestRig();
+        Item droppedItem =
+                proxy(
+                        Item.class,
+                        (ignored, method, arguments) ->
+                                defaultValue(method.getReturnType()));
+
+        rig.controller.start(rig.player);
+        PlayerDropItemEvent activeDrop =
+                new PlayerDropItemEvent(rig.player, droppedItem);
+        rig.controller.onPlayerDropItem(activeDrop);
+        assertTrue(activeDrop.isCancelled());
+
+        rig.controller.stop(rig.player);
+        PlayerDropItemEvent idleDrop =
+                new PlayerDropItemEvent(rig.player, droppedItem);
+        rig.controller.onPlayerDropItem(idleDrop);
+        assertFalse(idleDrop.isCancelled());
+        rig.close();
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
@@ -230,21 +286,29 @@ class RoundControllerTest {
         private final AtomicInteger enderChestClears = new AtomicInteger();
         private final AtomicInteger closedInventories = new AtomicInteger();
         private final AtomicInteger cursorClears = new AtomicInteger();
+        private final AtomicInteger saveDataCalls = new AtomicInteger();
         private final AtomicReference<Location> lastTeleport = new AtomicReference<>();
         private final AtomicReference<Location> spectatorLocation = new AtomicReference<>();
+        private final AtomicReference<ItemStack> cursorItem = new AtomicReference<>();
         private final AtomicReference<ItemStack[]> inventoryContents =
                 new AtomicReference<>(new ItemStack[2]);
         private final AtomicReference<ItemStack[]> enderChestContents =
                 new AtomicReference<>(new ItemStack[3]);
         private final List<String> messages = new ArrayList<>();
         private final List<String> starterMessages = new ArrayList<>();
+        private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
+        private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final World world;
         private final PlayerInventory playerInventory;
         private final Inventory enderChest;
+        private final PersistentDataContainer persistentDataContainer;
+        private final PersistentDataContainer spectatorPersistentDataContainer;
         private final Player player;
         private final Player spectator;
         private final CommandSender consoleStarter;
         private final Plugin plugin;
+        private final BattleSettings settings;
+        private final ArenaWorld arena;
         private final BatchedBlockEditor editor;
         private final RoundController controller;
 
@@ -306,6 +370,9 @@ class RoundControllerTest {
                             PlayerInventory.class, inventoryContents, inventoryClears);
             enderChest =
                     trackedInventory(Inventory.class, enderChestContents, enderChestClears);
+            persistentDataContainer = trackedPersistentData(persistentData);
+            spectatorPersistentDataContainer =
+                    trackedPersistentData(spectatorPersistentData);
             UUID playerId = UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
             player =
                     proxy(
@@ -317,6 +384,9 @@ class RoundControllerTest {
                                         case "getGameMode" -> gameMode.get();
                                         case "getInventory" -> playerInventory;
                                         case "getEnderChest" -> enderChest;
+                                        case "getPersistentDataContainer" ->
+                                            persistentDataContainer;
+                                        case "getItemOnCursor" -> cursorItem.get();
                                         case "setGameMode" -> {
                                             gameMode.set((GameMode) arguments[0]);
                                             yield null;
@@ -328,7 +398,12 @@ class RoundControllerTest {
                                             yield null;
                                         }
                                         case "setItemOnCursor" -> {
+                                            cursorItem.set((ItemStack) arguments[0]);
                                             cursorClears.incrementAndGet();
+                                            yield null;
+                                        }
+                                        case "saveData" -> {
+                                            saveDataCalls.incrementAndGet();
                                             yield null;
                                         }
                                         case "teleport" -> {
@@ -357,6 +432,8 @@ class RoundControllerTest {
                                         case "getUniqueId" -> spectatorId;
                                         case "getName" -> "Parent";
                                         case "getGameMode" -> spectatorGameMode.get();
+                                        case "getPersistentDataContainer" ->
+                                            spectatorPersistentDataContainer;
                                         case "setGameMode" -> {
                                             spectatorGameMode.set((GameMode) arguments[0]);
                                             yield null;
@@ -440,23 +517,27 @@ class RoundControllerTest {
                     proxy(
                             Plugin.class,
                             (ignored, method, arguments) ->
-                                    method.getName().equals("getServer")
-                                            ? server
-                                            : defaultValue(method.getReturnType()));
-            BattleSettings settings =
+                                    switch (method.getName()) {
+                                        case "getServer" -> server;
+                                        case "getName" -> "ScenarioCraft";
+                                        case "namespace" -> "scenariocraft";
+                                        default -> defaultValue(method.getReturnType());
+                                    });
+            settings =
                     new BattleSettings(
                             new ArenaSettings(1, 1, 3, 2, 1_000),
                             timings,
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
                             true);
+            arena = new ArenaWorld(world, 0);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());
             controller =
                     new RoundController(
                             plugin,
                             settings,
-                            new ArenaWorld(world, 0),
+                            arena,
                             editor,
                             Logger.getAnonymousLogger());
             assertNotNull(blockTick.get());
@@ -530,6 +611,27 @@ class RoundControllerTest {
                                     contents.set(new ItemStack[contents.get().length]);
                                     yield null;
                                 }
+                                default -> defaultValue(method.getReturnType());
+                            });
+        }
+
+        private static PersistentDataContainer trackedPersistentData(
+                Map<NamespacedKey, Object> data) {
+            return proxy(
+                    PersistentDataContainer.class,
+                    (ignored, method, arguments) ->
+                            switch (method.getName()) {
+                                case "set" -> {
+                                    data.put((NamespacedKey) arguments[0], arguments[2]);
+                                    yield null;
+                                }
+                                case "get" -> data.get(arguments[0]);
+                                case "has" -> data.containsKey(arguments[0]);
+                                case "remove" -> {
+                                    data.remove(arguments[0]);
+                                    yield null;
+                                }
+                                case "isEmpty" -> data.isEmpty();
                                 default -> defaultValue(method.getReturnType());
                             });
         }
