@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "empty",
+  "origin": [0, 64, 0],
+  "size": [33, 0, 33],
+  "palette": ["minecraft:air"],
+  "blocks": []
+}

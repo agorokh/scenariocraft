@@ -2,7 +2,7 @@
 
 Issue: #9
 Owner: Codex session 019f814e-00c3-7061-b809-dfa183f9ca0e
-Status: In progress
+Status: Complete
 
 ## Purpose
 
@@ -15,10 +15,10 @@ constraint.
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Implement with tests.
+- [x] Capture the issue's acceptance evidence.
+- [x] Complete `/review` and resolve P1 findings.
+- [x] Record the retrospective.
 
 ## Decision Log
 
@@ -34,11 +34,35 @@ constraint.
 - A prerequisite shell check initially used `path` as a zsh loop variable. Because zsh ties
   that special array to `PATH`, the command temporarily hid `make`; rerunning with a neutral
   variable confirmed `/usr/bin/make` and the repository gate are available.
+- The first golden regeneration succeeded in writing the image but Gradle rejected its
+  `doLast` closure as configuration-cache incompatible. Splitting rendering and copying into
+  typed tasks made regeneration cache-safe.
+- `/review` found no P1. It identified a P2 where an unexpected stale destination file could
+  break the exactly-seven-output guarantee; rendering now rejects such a directory without
+  deleting user data, and a regression test covers the case.
+- The post-fix review found that the camera directions were assigned to filenames without
+  accounting for Minecraft's positive-Z-is-south convention. The output mapping and NE golden
+  were corrected to name all four compass views accurately.
 
 ## Acceptance evidence
 
-Pending implementation and verification.
+- `make ci-fast` passed on Java 21 with the root plugin tests and 10 renderer tests.
+- The installed standalone CLI rendered the exact 2x2x2 amendment fixture and emitted only
+  `iso-ne.png`, `iso-se.png`, `iso-sw.png`, `iso-nw.png`, `plan.png`, `cut-x.png`, and
+  `cut-z.png`, all at 1024×1024.
+- Repeated small-house renders were byte-identical for all seven PNGs; the committed NE golden
+  is tracked with the fixture and verified byte-for-byte by the test suite.
+- The 33×40×33 solid-plot performance test rendered all seven views in 0.294 seconds locally,
+  below the 5-second acceptance bound.
+- The renderer runtime dependency report contained no Paper or Bukkit artifact, and an
+  isolated-classpath regression confirms `org.bukkit.Bukkit` is absent.
+- Visual inspection of the golden `iso-ne.png` shows a wooden house with a stepped dark roof,
+  windows, and a brick chimney on a transparent background.
 
 ## Retrospective
 
-Pending completion.
+BB-07 ships as an isolated Java 21 application that validates the frozen voxel schema and
+renders the seven judge views deterministically. Integer-coordinate rasterization plus a
+fixed palette/fallback keeps output stable, while the independent worked example, empty plot,
+small house, golden image, and full-size generated plot cover the contract without waiting
+for BB-06.
