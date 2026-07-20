@@ -24,6 +24,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -228,7 +229,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         failure);
                 player.sendMessage(
                         "Your items could not be saved safely. Please ask a grown-up helper.");
-                return;
             }
             applyCurrentPhase(player, contestant);
             return;
@@ -265,6 +265,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     public void onPlayerDropItem(PlayerDropItemEvent event) {
         if (phase() != RoundPhase.IDLE
                 && contestants.containsKey(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onEntityPickupItem(EntityPickupItemEvent event) {
+        if (phase() != RoundPhase.IDLE
+                && event.getEntity() instanceof Player player
+                && contestants.containsKey(player.getUniqueId())) {
             event.setCancelled(true);
         }
     }
@@ -548,8 +557,17 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
-        restoreInventorySnapshot(player, contestant.inventorySnapshot());
-        player.teleport(hubLocation());
+        try {
+            restoreInventorySnapshot(player, contestant.inventorySnapshot());
+            player.teleport(hubLocation());
+        } catch (RuntimeException failure) {
+            logger.log(
+                    Level.SEVERE,
+                    "Could not restore round inventory for " + player.getName(),
+                    failure);
+            player.sendMessage(
+                    "Your saved items need a grown-up helper before the next battle.");
+        }
     }
 
     private void clearRoundInventory(Player player) {
@@ -638,11 +656,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void restoreInventorySnapshot(Player player, InventorySnapshot snapshot) {
-        clearRoundInventory(player);
-        player.getInventory().setContents(cloneContents(snapshot.inventoryContents()));
-        player.getEnderChest().setContents(cloneContents(snapshot.enderChestContents()));
-        player.setItemOnCursor(
-                snapshot.cursorItem() == null ? null : snapshot.cursorItem().clone());
+        ItemStack[] inventory = cloneContents(snapshot.inventoryContents());
+        ItemStack[] enderChest = cloneContents(snapshot.enderChestContents());
+        ItemStack cursor =
+                snapshot.cursorItem() == null ? null : snapshot.cursorItem().clone();
+        player.closeInventory();
+        player.getInventory().setContents(inventory);
+        player.getEnderChest().setContents(enderChest);
+        player.setItemOnCursor(cursor);
         player.setGameMode(snapshot.originalGameMode());
         player.getPersistentDataContainer().remove(inventorySnapshotKey);
         player.updateInventory();

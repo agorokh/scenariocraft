@@ -37,6 +37,7 @@ session.
 | 2026-07-19 | Limit periodic short-countdown chat to `GATHERING` and `NOTE_PICK`. | The configurable reveal linger can be much longer, so ten-second announcements there would create avoidable chat spam. |
 | 2026-07-19 | Close open views, snapshot contestant inventory and ender-chest contents, vacate those items for the round, clear Creative-sourced items before reveal, and restore the snapshot only when the contestant leaves the round. | Keeping the snapshot separate for the entire round prevents both Creative-item leakage and drop-then-restore duplication. |
 | 2026-07-19 | Persist the protected inventory snapshot in the player's Paper persistent-data container before vacating items, and replay pending state during controller initialization or join. | An in-memory-only snapshot would be lost on JVM/server failure after an empty round inventory had already been saved to player data. |
+| 2026-07-19 | Keep failed/cross-version snapshot bytes for human recovery, stage decoded contents before replacing live state, and continue active-phase lockdown when a reconnect save fails. | Recovery must never discard the only protected copy or leave a still-enrolled contestant holding their restored normal-play inventory. |
 
 ## Surprises & Discoveries
 
@@ -74,10 +75,15 @@ session.
   survive the controller and JVM. The snapshot now persists before any clear, replays on
   enable/join, includes cursor state, blocks contestant drops during the active round, and
   is removed only after a successful restore and player-data save.
+- Recovery-edge review found that a reconnect save failure could bypass lockdown and that
+  pickups needed the same guard as drops. Reconnects now re-enter the phase from the
+  in-memory protected copy even when the redundant save fails, active contestants cannot
+  pick up items, restore stages cloned contents before applying them, and synchronous arena
+  enqueue exceptions have a focused abort-and-restore regression.
 
 ## Acceptance evidence
 
-- `make ci-fast` completed successfully with 43 tests. The focused coverage includes every
+- `make ci-fast` completed successfully with 45 tests. The focused coverage includes every
   legal and illegal phase pair, countdown arithmetic and warning boundaries, command
   authorization, one-contestant debug-fill cycling, reconnect state restoration, clean
   stop from every active phase, batched wall removal, and editor cancellation.

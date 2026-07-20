@@ -28,6 +28,7 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -224,6 +225,24 @@ class RoundControllerTest {
     }
 
     @Test
+    void synchronousArenaFailureAbortsAndRestoresContestants() {
+        TestRig rig =
+                new TestRig(
+                        new PhaseTimings(1, 1, 1, 1),
+                        Integer.MAX_VALUE);
+
+        rig.controller.start(rig.consoleStarter);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertTrue(rig.persistentData.isEmpty());
+        assertTrue(
+                rig.starterMessages.stream()
+                        .anyMatch(message -> message.startsWith("The arena could not get ready")));
+        rig.close();
+    }
+
+    @Test
     void pendingInventorySnapshotRestoresWhenControllerReinitializes() {
         TestRig rig = new TestRig();
         rig.controller.start(rig.player);
@@ -261,12 +280,45 @@ class RoundControllerTest {
                 new PlayerDropItemEvent(rig.player, droppedItem);
         rig.controller.onPlayerDropItem(activeDrop);
         assertTrue(activeDrop.isCancelled());
+        EntityPickupItemEvent activePickup =
+                new EntityPickupItemEvent(rig.player, droppedItem, 0);
+        rig.controller.onEntityPickupItem(activePickup);
+        assertTrue(activePickup.isCancelled());
 
         rig.controller.stop(rig.player);
         PlayerDropItemEvent idleDrop =
                 new PlayerDropItemEvent(rig.player, droppedItem);
         rig.controller.onPlayerDropItem(idleDrop);
         assertFalse(idleDrop.isCancelled());
+        EntityPickupItemEvent idlePickup =
+                new EntityPickupItemEvent(rig.player, droppedItem, 0);
+        rig.controller.onEntityPickupItem(idlePickup);
+        assertFalse(idlePickup.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void reconnectSaveFailureStillVacatesActiveContestantInventory() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.playerOnline.set(false);
+        rig.playerOnline.set(true);
+        rig.failSaveData.set(true);
+        int clearsBefore = rig.inventoryClears.get();
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertTrue(rig.inventoryClears.get() > clearsBefore);
+        rig.failSaveData.set(false);
+        rig.controller.stop(rig.player);
         rig.close();
     }
 
@@ -275,6 +327,7 @@ class RoundControllerTest {
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
+        private final AtomicBoolean failSaveData = new AtomicBoolean();
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -313,10 +366,14 @@ class RoundControllerTest {
         private final RoundController controller;
 
         private TestRig() {
-            this(new PhaseTimings(1, 1, 1, 1));
+            this(new PhaseTimings(1, 1, 1, 1), 0);
         }
 
         private TestRig(PhaseTimings timings) {
+            this(timings, 0);
+        }
+
+        private TestRig(PhaseTimings timings, int floorY) {
             BukkitTask task =
                     proxy(
                             BukkitTask.class,
@@ -403,6 +460,10 @@ class RoundControllerTest {
                                             yield null;
                                         }
                                         case "saveData" -> {
+                                            if (failSaveData.get()) {
+                                                throw new IllegalStateException(
+                                                        "test save failure");
+                                            }
                                             saveDataCalls.incrementAndGet();
                                             yield null;
                                         }
@@ -530,7 +591,7 @@ class RoundControllerTest {
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
                             true);
-            arena = new ArenaWorld(world, 0);
+            arena = new ArenaWorld(world, floorY);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());
             controller =
