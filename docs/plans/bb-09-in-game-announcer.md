@@ -82,6 +82,10 @@ session.
   fixture ineligible, exposing that the smoke no longer modeled the production contract. The
   smoke now waits for the real active export, overlays deterministic judge inputs into that
   exact directory, and verifies RCON, polling deduplication, and replay against its dynamic ID.
+- The first dynamic-ID smoke repair failed before Paper boot because a jq program containing
+  `$round_id` broke out of the outer single-quoted `bash -c` program and expanded under
+  `set -u`. The jq filter now stays inside double quotes with an escaped dollar, and final
+  assertions independently recover the dynamic ID from the server log.
 
 ## Acceptance evidence
 

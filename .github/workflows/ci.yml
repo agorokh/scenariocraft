@@ -359,7 +359,7 @@ jobs:
             judge_round="$1/plugins/ScenarioCraft/rounds/${active_round_id}"
             cp -R "$1/judge-fixture/." "${judge_round}/"
             jq --arg round_id "${active_round_id}" \
-              '.round_id = $round_id' \
+              ".round_id = \$round_id" \
               "${judge_round}/manifest.json" >"${judge_round}/manifest.json.tmp"
             mv "${judge_round}/manifest.json.tmp" "${judge_round}/manifest.json"
             SCENARIOCRAFT_JUDGE_CONFIG_DIR="$2" \
@@ -481,8 +481,17 @@ jobs:
               "${log}" || true
             failed=1
           fi
-          if ! grep -q \
-            'SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959' "${log}"; then
+          smoke_round_id="$(
+            { grep -Eo \
+                'plugins/ScenarioCraft/rounds/round-[0-9]{8}-[0-9]{6}' \
+                "${log}" || true; } |
+              tail -n 1 | awk -F/ '{print $NF}'
+          )"
+          if [[ ! "${smoke_round_id}" =~ ^round-[0-9]{8}-[0-9]{6}$ ]]; then
+            printf 'The active smoke round ID could not be recovered from the log.\n'
+            failed=1
+          elif ! grep -q \
+            "SCENARIOCRAFT_RESULTS_ANNOUNCED ${smoke_round_id}" "${log}"; then
             printf 'The judge result was not announced on the real Paper server.\n'
             grep -n -C 4 -E 'SCENARIOCRAFT_RESULTS|RCON|Winner|ERROR|Exception' \
               "${log}" || true
