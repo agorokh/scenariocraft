@@ -1815,6 +1815,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         Player player = attempt.player();
         Location destination = attempt.destination();
+        if (!player.isOnline()) {
+            reportTeleportFailure(
+                    attempt,
+                    "player disconnected before teleport dispatch",
+                    null);
+            return;
+        }
         if (playerReached(player, destination)) {
             finishTeleportSuccess(attempt);
             return;
@@ -1985,7 +1992,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void failAllTeleportAttempts() {
         for (TeleportAttempt attempt : List.copyOf(teleportAttempts.values())) {
             if (playerReached(attempt.player(), attempt.destination())) {
-                completeAttempt(attempt);
+                if (hasPendingTeleportRecovery(attempt.player())
+                        && playerReached(attempt.player(), hubLocation())) {
+                    finishTeleportSuccess(attempt);
+                } else {
+                    completeAttempt(attempt);
+                }
             } else {
                 reportTeleportFailure(
                         attempt, "controller closed before relocation confirmation", null);

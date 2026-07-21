@@ -1808,6 +1808,51 @@ class RoundControllerTest {
     }
 
     @Test
+    void closeRunsHubRecoveryForAnAlreadyArrivedPendingMove() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.ignoreTeleportCommand.set(true);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+
+        rig.controller.close();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertFalse(
+                rig.persistentData.containsKey(
+                        new NamespacedKey(rig.plugin, "teleport-recovery-pending")));
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    @Test
+    void delayedTeleportFailsWithoutDispatchWhenPlayerDisconnects() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.onPlayerRespawn(respawnEvent(rig));
+        rig.playerOnline.set(false);
+        rig.runDelayedTasks();
+
+        assertEquals(commandsBefore, rig.consoleCommands.size());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        rig.playerOnline.set(true);
+        rig.close();
+    }
+
+    @Test
     void closeDoesNotRunPlotArrivalCallbacksDuringShutdown() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);

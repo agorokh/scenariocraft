@@ -38,6 +38,7 @@ session.
 | 2026-07-20 | Isolate the real-Paper teleport probe from generated terrain and document inspection without a force-clear control. | The smoke should test the command path rather than block geometry, while manual registry deletion would violate the requirement to clear only after authoritative hub arrival and player-data persistence. |
 | 2026-07-20 | Keep round-start transport checks side-effect free and supervise an externally requested hub rescue as an owned delayed attempt. | Command registration is enough to fail a round before mutation, while every real relocation validates and dispatches the exact command; a pending player may reach only the hub and must still pass the normal confirmation and persistence boundary. |
 | 2026-07-20 | Resume an active contestant's phase only after recovery reaches the hub and durably clears. | Phase timers may continue while a player is pending; every phase move must route through hub recovery first, then apply the current phase so a BUILDING rejoin is not left uncontained at the hub. |
+| 2026-07-20 | During close, run only an already-arrived hub recovery's owned success callback; otherwise settle without phase side effects. | Durable recovery cleanup and pending inventory restoration are safe and required at the hub, while a plot-arrival callback could incorrectly enter BUILDING during shutdown. Delayed dispatch also fails before command execution when its player is offline. |
 
 ## Surprises & Discoveries
 
@@ -77,6 +78,11 @@ session.
   could race ahead of durable hub recovery. Arrival now settles first, phase moves recover at
   the hub before re-entry, and synchronous recovery no longer forces a redundant second start.
   Enable-time malformed-registry recovery is also explicit in the operator runbook.
+- A current-head review tightened the last asynchronous boundaries. The Paper probe now polls
+  and retries its complete marker sequence for up to 30 seconds before starting the battle;
+  controller close completes an already-arrived hub recovery without running unsafe plot
+  callbacks; offline delayed dispatch fails before sending a command; and enable-time registry
+  failure logs the durable recovery marker plus the runbook path before failing closed.
 
 ## Acceptance evidence
 
@@ -90,7 +96,7 @@ session.
   on-disk store reopen and successful hub retry.
 - `TeleportTransportTest` pins the exact namespaced, explicit-world, UUID-targeted production
   command including coordinates and rotation.
-- `make ci-fast` passed on Java 21 with 120 plugin tests and 13 renderer tests, all green.
+- `make ci-fast` passed on Java 21 with 122 plugin tests and 13 renderer tests, all green.
 - A local Paper 1.21.11 build 132 smoke run enabled ScenarioCraft, executed
   `minecraft:execute in minecraft:battle_world run minecraft:tp` against a marker entity,
   confirmed its authoritative destination, and shut down with all dimensions saved. The run
