@@ -15,8 +15,8 @@ renderer/judge process, Docker packaging, bootstrap data, and operator documenta
 
 - [x] Define the smallest end-to-end slice.
 - [x] Implement with tests.
-- [ ] Capture the issue's acceptance evidence. Dry-run evidence is complete; live-key and
-      one-human evidence remain.
+- [ ] Capture the issue's acceptance evidence. Dry-run and live-key judge evidence are
+      complete; integrated chat-announcement and one-human evidence remain.
 - [ ] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
 
@@ -45,6 +45,10 @@ session.
   newer subcommand. Local CI therefore ran in the pinned Java 21 Gradle image; the documented
   `docker compose` form was separately copy-paste validated through the installed Compose
   plugin binary.
+- The first live OpenAI pass returned schema-invalid output twice for one persona. The judge's
+  bounded retry path recovered, completed the round, and wrote a valid result without exposing
+  the API key. This is useful acceptance evidence for the real model boundary rather than the
+  deterministic dry-run path.
 
 ## Acceptance evidence
 
@@ -55,12 +59,16 @@ session.
   per-tick budget.
 - Headless RCON `/battle start` entered PREPARING at 06:18:48 UTC, exported two bundled
   sample plots at 06:20:22 UTC, and the dry-run judge wrote `results.txt` with a winner.
+- A fresh-volume live-key Compose probe loaded `OPENAI_API_KEY` from the ignored main-checkout
+  `.env`, reached `SCENARIOCRAFT_DEMO_ARENA_READY` in 97 seconds, started a headless round,
+  and wrote a real OpenAI-backed verdict for `round-20260721-072451` in 272 seconds total
+  (175 seconds after arena readiness). The probe removed its containers and named volumes.
 - The one-player controller regression exports `BuilderKid` as p1 and
   `ScenarioCraft Sample 2` as p2 through the normal voxel contract.
 - `make ci-fast` passed in the Java 21 Gradle container; draft PR #37's build and real-Paper
   smoke checks passed for implementation commit `112ce73`.
-- Pending after BB-09 integration: `make demo` live-key timing and
-  `SCENARIOCRAFT_RESULTS_ANNOUNCED` evidence with one human player.
+- Pending after BB-09 integration: `make demo` must also observe
+  `SCENARIOCRAFT_RESULTS_ANNOUNCED`, followed by the literal one-human-player chat check.
 
 ## Retrospective
 
