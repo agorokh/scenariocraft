@@ -25,11 +25,5 @@ evals-release: evals-unit
 	./evals/run.sh --dry-run
 
 site-check:
-	test -f site/index.html
-	test -f site/styles.css
-	test -f site/assets/branding/speed-build-logo.png
-	test "$$(grep -c '<article class="step' site/index.html)" -eq 7
-	grep -Fq 'name &amp; logo by our 10-year-old designer, working with ChatGPT' site/index.html
-	grep -Fq 'NOT AN OFFICIAL MINECRAFT PRODUCT' site/index.html
-	! grep -Eiq '(src|href)="(https?:)?//' site/index.html
-	! grep -Eiq '@import|url\([^)]*(https?:)?//' site/styles.css
+	python3 -m unittest discover -s scripts -p 'test_*.py'
+	python3 scripts/site_check.py
