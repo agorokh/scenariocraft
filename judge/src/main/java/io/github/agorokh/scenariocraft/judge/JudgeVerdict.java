@@ -62,7 +62,7 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
 
     private static void validateComment(String text) {
         if (text == null || text.isBlank() || text.length() > MAX_COMMENT_LENGTH
-                || text.chars().anyMatch(JudgeVerdict::isUnsafeControl)) {
+                || text.codePoints().anyMatch(JudgeVerdict::isUnsafeControl)) {
             throw new IllegalArgumentException("comment must contain safe single-line text");
         }
         String normalized = text.strip();

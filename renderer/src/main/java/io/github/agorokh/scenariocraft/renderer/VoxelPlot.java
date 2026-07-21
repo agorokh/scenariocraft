@@ -14,9 +14,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class VoxelPlot {
-    private static final int MAX_DIMENSION = 256;
-    private static final int MAX_BLOCKS = 1_000_000;
-    private static final int MAX_PALETTE_ENTRIES = 4096;
+    public static final int MAX_DIMENSION = 256;
+    public static final int MAX_BLOCKS = 1_000_000;
+    public static final int MAX_PALETTE_ENTRIES = 4096;
     private final String plotId;
     private final int originX;
     private final int originY;

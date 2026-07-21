@@ -250,7 +250,12 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 if (!output.isJsonObject()) {
                     continue;
                 }
-                JsonElement contentValue = output.getAsJsonObject().get("content");
+                JsonObject outputObject = output.getAsJsonObject();
+                if (hasString(outputObject, "type", "refusal")
+                        || outputObject.has("refusal")) {
+                    throw new JudgeException("OpenAI refused the judge request");
+                }
+                JsonElement contentValue = outputObject.get("content");
                 if (contentValue == null || !contentValue.isJsonArray()) {
                     continue;
                 }

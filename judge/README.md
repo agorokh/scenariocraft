@@ -43,6 +43,9 @@ link-count support. Live Responses envelopes must contain exactly one verdict an
 Arena configuration and judge manifests share the same eight-plot maximum. Decoded PNGs are capped
 at 4,194,304 pixels, persona names reject terminal/format controls, and result JSON/text publication
 removes both artifacts if either write fails.
+Voxel palette/block entry limits are enforced by a streaming preflight before Gson builds a tree.
+Supplementary-plane format controls are rejected, and top-level as well as nested Responses
+refusals fail the persona attempt closed.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

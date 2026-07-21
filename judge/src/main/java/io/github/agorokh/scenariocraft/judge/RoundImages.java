@@ -2,7 +2,11 @@ package io.github.agorokh.scenariocraft.judge;
 
 import io.github.agorokh.scenariocraft.renderer.VoxelPlot;
 import io.github.agorokh.scenariocraft.renderer.VoxelRenderer;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
@@ -12,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.nio.charset.StandardCharsets;
 
 final class RoundImages {
     static final long MAX_VOXEL_BYTES = 16L * 1024 * 1024;
@@ -37,6 +42,7 @@ final class RoundImages {
 
         Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
         byte[] voxelBytes = snapshotVoxelSource(roundRoot, voxelFile, plotId);
+        validateVoxelStructure(voxelBytes);
         Path temporaryOutput = Files.createTempDirectory("scenariocraft-judge-render-");
         Throwable primaryFailure = null;
         try {
@@ -147,6 +153,42 @@ final class RoundImages {
             throw new IOException("Voxel source changed while it was being read: " + voxelFile);
         }
         return bytes;
+    }
+
+    private static void validateVoxelStructure(byte[] bytes) throws IOException {
+        try (JsonReader reader = new JsonReader(new InputStreamReader(
+                new ByteArrayInputStream(bytes), StandardCharsets.UTF_8))) {
+            reader.beginObject();
+            while (reader.hasNext()) {
+                String name = reader.nextName();
+                if ("palette".equals(name)) {
+                    countArray(reader, VoxelPlot.MAX_PALETTE_ENTRIES, "palette");
+                } else if ("blocks".equals(name)) {
+                    countArray(reader, VoxelPlot.MAX_BLOCKS, "blocks");
+                } else {
+                    reader.skipValue();
+                }
+            }
+            reader.endObject();
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                throw new IOException("Voxel JSON has trailing data");
+            }
+        } catch (IllegalStateException exception) {
+            throw new IOException("Invalid voxel JSON", exception);
+        }
+    }
+
+    private static void countArray(JsonReader reader, int maximum, String name)
+            throws IOException {
+        reader.beginArray();
+        int count = 0;
+        while (reader.hasNext()) {
+            if (++count > maximum) {
+                throw new IOException("Voxel " + name + " exceeds the entry limit");
+            }
+            reader.skipValue();
+        }
+        reader.endArray();
     }
 
     private static void rejectSymbolicLinks(List<Path> paths) throws IOException {

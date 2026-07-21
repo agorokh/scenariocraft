@@ -50,6 +50,7 @@ session.
 | 2026-07-21 | Preserve a primary renderer failure when temp cleanup also fails, keep the documented eight-plot limit aligned with runtime, and translate a missing voxel fallback into the operator diagnostic. | Cleanup must not erase the actionable cause, and published contracts/errors must match actual behavior. |
 | 2026-07-21 | Apply `nlink` ownership only to untrusted round inputs, not process-generated temp PNGs, and inspect the complete Responses output before accepting exactly one verdict. | Voxel fallback must not depend on the system temp filesystem exposing Unix attributes, and a later refusal or duplicate output must not be hidden by an earlier valid-looking verdict. |
 | 2026-07-21 | Enforce the same eight-plot ceiling in arena config and judge manifests, fail both result artifacts as a unit, cap decoded pixels, validate persona-name controls, and recalculate aggregate size from stable snapshots. | Cross-component contracts must agree, partial publication must not expose a winner after failure, and preflight metadata cannot substitute for bounds on decoded or immutable data. |
+| 2026-07-21 | Use code-point comment validation, reject top-level Responses refusals, and stream-count voxel palette/block arrays before tree parsing. | UTF-16 code units miss astral format controls, refusal can appear outside content, and post-materialization limits do not prevent heap amplification. |
 
 ## Surprises & Discoveries
 

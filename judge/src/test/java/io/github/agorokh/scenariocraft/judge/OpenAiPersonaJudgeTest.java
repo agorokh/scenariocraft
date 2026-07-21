@@ -138,6 +138,12 @@ class OpenAiPersonaJudgeTest {
                 """.formatted(
                         new com.google.gson.Gson().toJson(validVerdict()),
                         new com.google.gson.Gson().toJson(validVerdict()));
+        String responseWithTopLevelRefusal = """
+                {"status":"completed","output":[
+                  {"content":[{"type":"output_text","text":%s}]},
+                  {"type":"refusal","refusal":"unsafe"}
+                ]}
+                """.formatted(new com.google.gson.Gson().toJson(validVerdict()));
 
         assertThrows(
                 JudgeException.class,
@@ -145,6 +151,10 @@ class OpenAiPersonaJudgeTest {
         assertThrows(
                 JudgeException.class,
                 () -> OpenAiPersonaJudge.parseResponse(responseWithTwoVerdicts, PERSONA.name()));
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseResponse(
+                        responseWithTopLevelRefusal, PERSONA.name()));
     }
 
     @Test

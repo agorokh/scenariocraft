@@ -76,6 +76,9 @@ class JudgeVerdictTest {
                 "Your roof has a strong shape.\u2028Add more blocks next."));
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof has a strong shape. Add more \u202eblocks next."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "Your roof has a strong shape. Add more "
+                        + new String(Character.toChars(0xE0001)) + "blocks next."));
     }
 
     private JudgeVerdict verdict(String comment) {

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.agorokh.scenariocraft.renderer.VoxelPlot;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.ByteBuffer;
@@ -111,6 +112,21 @@ class RoundImagesTest {
                 IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("outside the allowed range"));
+    }
+
+    @Test
+    void rejectsVoxelArraysDuringStreamingPreflight() throws Exception {
+        String palettes = "\"minecraft:air\",".repeat(VoxelPlot.MAX_PALETTE_ENTRIES)
+                + "\"minecraft:stone\"";
+        Files.writeString(temporaryDirectory.resolve("p1.voxels.json"), """
+                {"schema":1,"plot_id":"p1","origin":[100,64,200],"size":[0,0,0],
+                 "palette":[%s],"blocks":[]}
+                """.formatted(palettes));
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
+
+        assertTrue(exception.getMessage().contains("palette exceeds the entry limit"));
     }
 
     @Test
