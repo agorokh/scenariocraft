@@ -245,6 +245,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
             if (outputValue == null || !outputValue.isJsonArray()) {
                 throw new JudgeException("OpenAI response is missing output items");
             }
+            String verdictText = null;
             for (JsonElement output : outputValue.getAsJsonArray()) {
                 if (!output.isJsonObject()) {
                     continue;
@@ -262,11 +263,18 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                         throw new JudgeException("OpenAI refused the judge request");
                     }
                     if (hasString(item, "type", "output_text")) {
-                        return parseVerdict(requireString(item, "text"), expectedPersona);
+                        if (verdictText != null) {
+                            throw new JudgeException(
+                                    "OpenAI response contained multiple verdict texts");
+                        }
+                        verdictText = requireString(item, "text");
                     }
                 }
             }
-            throw new JudgeException("OpenAI response has no verdict text");
+            if (verdictText == null) {
+                throw new JudgeException("OpenAI response has no verdict text");
+            }
+            return parseVerdict(verdictText, expectedPersona);
         } catch (JsonParseException | IllegalArgumentException exception) {
             throw new JudgeException("OpenAI returned a malformed verdict", exception);
         }

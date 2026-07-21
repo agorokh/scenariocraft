@@ -24,12 +24,23 @@ final class JudgeImage {
     }
 
     static JudgeImage read(Path image, Path allowedRoot) throws IOException {
+        return read(image, allowedRoot, true);
+    }
+
+    static JudgeImage readGenerated(Path image, Path allowedRoot) throws IOException {
+        return read(image, allowedRoot, false);
+    }
+
+    private static JudgeImage read(Path image, Path allowedRoot, boolean requireOwnedInput)
+            throws IOException {
         BasicFileAttributes before = attributes(image);
         Path realImage = image.toRealPath();
         if (!realImage.startsWith(allowedRoot)) {
             throw new IOException("Judge image escapes its allowed directory: " + image);
         }
-        requireSingleLink(image);
+        if (requireOwnedInput) {
+            requireSingleLink(image);
+        }
         if (before.size() <= 0 || before.size() > MAX_BYTES) {
             throw new IOException("Judge image size is outside the allowed range: "
                     + image.getFileName());
@@ -45,7 +56,9 @@ final class JudgeImage {
 
         BasicFileAttributes after = attributes(image);
         Path realAfter = image.toRealPath();
-        requireSingleLink(image);
+        if (requireOwnedInput) {
+            requireSingleLink(image);
+        }
         if (before.fileKey() == null
                 || !Objects.equals(before.fileKey(), after.fileKey())
                 || before.size() != after.size()

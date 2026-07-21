@@ -32,7 +32,7 @@ final class RoundImages {
         List<Path> images = imagePaths(outputDirectory);
         rejectSymbolicLinks(images);
         if (allRegularFiles(images)) {
-            return snapshotImages(roundRoot, images);
+            return snapshotImages(roundRoot, images, true);
         }
 
         Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
@@ -61,7 +61,7 @@ final class RoundImages {
             if (!allRegularFiles(rendered)) {
                 throw new IOException("Renderer did not produce seven PNGs for " + plotId);
             }
-            return snapshotImages(renderedOutput.toRealPath(), rendered);
+            return snapshotImages(renderedOutput.toRealPath(), rendered, false);
         } catch (IOException | RuntimeException | Error exception) {
             primaryFailure = exception;
             throw exception;
@@ -78,7 +78,8 @@ final class RoundImages {
         return images;
     }
 
-    private static List<JudgeImage> snapshotImages(Path allowedRoot, List<Path> images)
+    private static List<JudgeImage> snapshotImages(
+            Path allowedRoot, List<Path> images, boolean untrustedInputs)
             throws IOException {
         long totalBytes = 0;
         for (Path image : images) {
@@ -89,7 +90,9 @@ final class RoundImages {
         }
         List<JudgeImage> snapshots = new ArrayList<>(images.size());
         for (Path image : images) {
-            snapshots.add(JudgeImage.read(image, allowedRoot));
+            snapshots.add(untrustedInputs
+                    ? JudgeImage.read(image, allowedRoot)
+                    : JudgeImage.readGenerated(image, allowedRoot));
         }
         return List.copyOf(snapshots);
     }

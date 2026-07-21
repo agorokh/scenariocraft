@@ -123,6 +123,31 @@ class OpenAiPersonaJudgeTest {
     }
 
     @Test
+    void rejectsLaterRefusalOrMultipleVerdictsInsteadOfAcceptingTheFirst() {
+        String responseWithRefusal = """
+                {"status":"completed","output":[
+                  {"content":[{"type":"output_text","text":%s}]},
+                  {"content":[{"type":"refusal","refusal":"unsafe"}]}
+                ]}
+                """.formatted(new com.google.gson.Gson().toJson(validVerdict()));
+        String responseWithTwoVerdicts = """
+                {"status":"completed","output":[
+                  {"content":[{"type":"output_text","text":%s}]},
+                  {"content":[{"type":"output_text","text":%s}]}
+                ]}
+                """.formatted(
+                        new com.google.gson.Gson().toJson(validVerdict()),
+                        new com.google.gson.Gson().toJson(validVerdict()));
+
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseResponse(responseWithRefusal, PERSONA.name()));
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseResponse(responseWithTwoVerdicts, PERSONA.name()));
+    }
+
+    @Test
     void sanitizesUsefulApiErrorDetailsWithoutEchoingSecrets() {
         String message = OpenAiPersonaJudge.httpErrorMessage(
                 429,
