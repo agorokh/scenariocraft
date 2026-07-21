@@ -220,6 +220,35 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void duplicateRconAnnouncementReportsThatTheResultWasAlreadyPresented() {
+        BattleResult active =
+                new BattleResultParser()
+                        .parse(BattleResultRepositoryTest.validResult("round-20260721-193000"));
+        BattleResultReader reader =
+                new BattleResultReader() {
+                    @Override
+                    public Optional<BattleResult> latest() {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Optional<BattleResult> round(String roundId) {
+                        return Optional.of(active);
+                    }
+                };
+        ServiceRig rig = new ServiceRig(reader, RoundPhase.REVEAL, "round-20260721-193000");
+        List<String> firstMessages = new ArrayList<>();
+        List<String> duplicateMessages = new ArrayList<>();
+
+        rig.service.announceRound("round-20260721-193000", sender(firstMessages));
+        rig.service.announceRound("round-20260721-193000", sender(duplicateMessages));
+
+        assertTrue(firstMessages.getLast().contains("announced"));
+        assertTrue(duplicateMessages.getLast().contains("already announced"));
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();

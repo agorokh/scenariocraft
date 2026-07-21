@@ -123,8 +123,11 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                                 "That judged round is no longer the active reveal, so it was not announced.");
                         return;
                     }
-                    announce(result.orElseThrow());
-                    sender.sendMessage("ScenarioCraft announced " + roundId + ".");
+                    if (announce(result.orElseThrow())) {
+                        sender.sendMessage("ScenarioCraft announced " + roundId + ".");
+                    } else {
+                        sender.sendMessage("ScenarioCraft already announced " + roundId + ".");
+                    }
                 },
                 sender,
                 announcementReadInFlight);
@@ -165,9 +168,9 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                 pollReadInFlight);
     }
 
-    private void announce(BattleResult result) {
+    private boolean announce(BattleResult result) {
         if (closed || result.equals(announcedResult)) {
-            return;
+            return false;
         }
         announcedResult = result;
         List<String> lines = formatter.chatLines(result);
@@ -182,6 +185,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                 .flatMap(winner -> winnerLocation.apply(winner.player()))
                 .ifPresent(location -> celebrate(result.roundId(), location));
         logger.info("SCENARIOCRAFT_RESULTS_ANNOUNCED " + result.roundId());
+        return true;
     }
 
     private void celebrate(String announcedRoundId, Location location) {

@@ -74,6 +74,8 @@ final class JudgeApplication {
             RoundResults results =
                     JudgeCouncil.judge(round, config, images, judge, diagnostics);
             ResultsWriter.write(canonicalRound, results);
+            output.print(ResultsWriter.humanReadable(results));
+            output.flush();
             try {
                 announcer.announce(results.roundId());
             } catch (IOException | RuntimeException announcementFailure) {
@@ -82,8 +84,6 @@ final class JudgeApplication {
                                 + safeDiagnostic(announcementFailure)
                                 + "; results remain available on disk.");
             }
-            output.print(ResultsWriter.humanReadable(results));
-            output.flush();
             diagnostics.flush();
             return results.hasWinner() ? 0 : 1;
         } catch (IOException | IllegalArgumentException | JudgeException exception) {
