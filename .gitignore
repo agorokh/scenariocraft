@@ -3,6 +3,7 @@
 .scratch/
 .local/
 build/
+node_modules/
 out/
 run/
 *.iml

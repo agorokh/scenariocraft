@@ -4,23 +4,24 @@ Every visual loaded by the Speed Build How to Play page is original to this repo
 
 - `assets/branding/speed-build-logo.png` is the children's original pixel-art identity,
   copied from the design council's supplied source file.
-- `assets/scenes/candy-volcano-*.png` are deterministic outputs from the repository's Java
-  voxel renderer. Their source is
-  `src/test/resources/fixtures/speed-build-candy-volcano.voxels.json` (schema v1).
+- `assets/rounds/<round-id>/*.png` are deterministic outputs from the repository's Java
+  voxel renderer. Each image is generated from the corresponding frozen
+  `data/rounds/<round-id>/p<N>.voxels.json` export (schema v1) during `make proof-round`.
 - `assets/fonts/bungee-latin.woff2` is the Latin subset of Bungee Regular, self-hosted
   from Google Fonts and licensed under the SIL Open Font License 1.1. The license is
   preserved at `assets/fonts/OFL.txt`.
 - The remaining story illustrations and judge portraits are inline SVG or CSS authored for
   this page. They do not copy Mojang assets or game-client UI.
 
-Regenerate the three voxel images from the repository root with Java 21:
+Regenerate and validate the current played-round images from the repository root with Docker
+Compose and a live judge key:
 
 ```sh
-./gradlew :renderer:installDist
-renderer/build/install/renderer/bin/renderer \
-  --in src/test/resources/fixtures/speed-build-candy-volcano.voxels.json \
-  --out renderer/build/site-candy-volcano
+OPENAI_API_KEY='<your OpenAI API key>' make proof-round
 ```
 
-Then copy `iso-ne.png`, `cut-z.png`, and `plan.png` to the three corresponding files under
-`site/assets/scenes/`. The SHA-256 values are recorded in the issue ExecPlan.
+The proof target runs the real Paper round, copies its frozen voxel exports, invokes the renderer,
+and rebuilds `site/index.html`. Public CI uses `make proof-check` to regenerate the renderer views,
+compare them byte-for-byte with the committed PNGs, validate the bundle, and regenerate the page
+without Docker, bots, or a judge key. The legacy candy-volcano fixture images remain renderer
+regression assets, but the public page does not load them as round proof.

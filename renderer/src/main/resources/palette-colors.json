@@ -33,9 +33,11 @@
   "minecraft:white_wool": "#E9ECEC",
   "minecraft:orange_wool": "#E77E22",
   "minecraft:magenta_wool": "#B24CD8",
+  "minecraft:magenta_concrete": "#A9309F",
   "minecraft:light_blue_wool": "#6699D8",
   "minecraft:yellow_wool": "#F1C40F",
   "minecraft:lime_wool": "#7FB238",
+  "minecraft:lime_concrete": "#5EA818",
   "minecraft:pink_wool": "#F27FA5",
   "minecraft:gray_wool": "#4C4C4C",
   "minecraft:light_gray_wool": "#999999",
@@ -48,5 +50,6 @@
   "minecraft:black_wool": "#191919",
   "minecraft:quartz_block": "#E8E3DA",
   "minecraft:terracotta": "#985E44",
-  "minecraft:deepslate": "#565658"
+  "minecraft:deepslate": "#565658",
+  "minecraft:gold_block": "#F9D849"
 }

@@ -129,3 +129,15 @@ overlay is sufficient:
 The Floodgate key is intentionally copied for this split plugin/standalone topology. If it
 is exposed, stop the stack, delete the Floodgate plugin directory so a new key is generated,
 replace the standalone copy, and restart both sides.
+
+## Played-for-real documentation proof
+
+From a clean clone with `OPENAI_API_KEY` exported, run `make proof-round`.
+The target joins Blocky, Crafty, and Pixel through Mineflayer, drives the Secret Chest and a
+complete real round, waits for live judge results in game, and publishes the round's frozen data
+and renderer images under `site/`. Every step has a timeout and exits non-zero on failure. The
+services remain available for inspection; finish with `docker compose down --volumes`.
+
+Public CI never starts this path and never receives a judge key. It regenerates every renderer
+view from the committed voxel exports with `make proof-check`, compares the PNGs byte-for-byte,
+and confirms that `site/index.html` regenerates byte-for-byte from the bundle.

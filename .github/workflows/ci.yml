@@ -35,6 +35,11 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      - name: Set up Node 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
       - name: Build and test
         run: make ci-fast
 

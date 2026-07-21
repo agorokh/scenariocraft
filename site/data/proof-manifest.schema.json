@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agorokh.github.io/scenariocraft/schemas/proof-round-v1.json",
+  "title": "ScenarioCraft played-for-real round proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "round_id",
+    "date",
+    "task",
+    "started_at",
+    "completed_at",
+    "duration_seconds",
+    "judge_render_palette",
+    "picker",
+    "rejected_bot",
+    "phase_timeline",
+    "chat_transcript",
+    "plots"
+  ],
+  "properties": {
+    "schema": { "const": 1 },
+    "round_id": { "type": "string", "pattern": "^round-[0-9]{8}-[0-9]{6}$" },
+    "date": { "type": "string", "format": "date" },
+    "task": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "duration_seconds": { "type": "integer", "minimum": 1 },
+    "judge_render_palette": {
+      "enum": ["hash-fallback-v1", "explicit-proof-materials-v1"]
+    },
+    "picker": { "enum": ["Blocky", "Crafty", "Pixel"] },
+    "rejected_bot": { "enum": ["Blocky", "Crafty", "Pixel"] },
+    "phase_timeline": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "at"],
+        "properties": {
+          "phase": {
+            "enum": ["PREPARING", "GATHERING", "NOTE_PICK", "BUILDING", "REVEAL", "RESULTS"]
+          },
+          "at": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "chat_transcript": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "recipient", "message"],
+        "properties": {
+          "at": { "type": "string", "format": "date-time" },
+          "recipient": { "enum": ["Blocky", "Crafty", "Pixel"] },
+          "message": { "type": "string", "minLength": 1, "maxLength": 2048 }
+        }
+      }
+    },
+    "plots": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plot_id", "player", "block_count", "voxel_file", "renders"],
+        "properties": {
+          "plot_id": { "type": "string", "pattern": "^p[1-9][0-9]*$" },
+          "player": { "enum": ["Blocky", "Crafty", "Pixel"] },
+          "block_count": { "type": "integer", "minimum": 1 },
+          "voxel_file": { "type": "string", "pattern": "^p[1-9][0-9]*\\.voxels\\.json$" },
+          "renders": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["isometric", "plan", "cutaway"],
+            "properties": {
+              "isometric": { "type": "string", "pattern": "^p[1-9][0-9]*-iso-ne\\.png$" },
+              "plan": { "type": "string", "pattern": "^p[1-9][0-9]*-plan\\.png$" },
+              "cutaway": { "type": "string", "pattern": "^p[1-9][0-9]*-cut-z\\.png$" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

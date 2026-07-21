@@ -55,6 +55,22 @@ class SiteCheckSafetyTest(unittest.TestCase):
         self.assertEqual([], parser.links)
         self.assertEqual(["https://example.com/"], parser.remote_resources)
 
+    def test_stylesheet_url_must_match_its_content_version(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            styles = Path(temporary_directory) / "styles.css"
+            styles.write_text("body { color: black; }", encoding="utf-8")
+            expected = site_check.versioned_asset_href("styles.css", styles)
+
+            self.assertIsNone(
+                site_check.stylesheet_version_problem([expected], styles)
+            )
+            self.assertIn(
+                "stylesheet URL must match its content version",
+                site_check.stylesheet_version_problem(
+                    ["styles.css?v=stale"], styles
+                ),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

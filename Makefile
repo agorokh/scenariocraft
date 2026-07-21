@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check site-check
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check proof-round proof-check renderer-dist site-check verify-wrapper
 
 demo:
 	./demo/run-headless.sh
@@ -6,14 +6,22 @@ demo:
 demo-dry-run:
 	SCENARIOCRAFT_DEMO_DRY_RUN=true ./demo/run-headless.sh
 
-ci-fast: site-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
+proof-round:
+	./e2e/run-proof-round.sh
+
+ci-fast: site-check proof-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
+	./gradlew build --no-daemon
+	./evals/run.sh --dry-run --allow-synthetic-only
+
+verify-wrapper:
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		sha256sum --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	else \
 		shasum -a 256 --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	fi
-	./gradlew build --no-daemon
-	./evals/run.sh --dry-run --allow-synthetic-only
+
+renderer-dist: verify-wrapper
+	./gradlew :renderer:installDist --no-daemon
 
 evals-unit:
 	python3 -m unittest discover -s evals/tests -p 'test_*.py'
@@ -49,3 +57,10 @@ bedrock-compose-check:
 
 bedrock-compose-smoke:
 	./demo/smoke-bedrock-compose.sh
+
+proof-check: renderer-dist
+	command -v node >/dev/null
+	node --test e2e/round-driver/test/*.test.mjs
+	SCENARIOCRAFT_RENDERER=renderer/build/install/renderer/bin/renderer \
+		node e2e/round-driver/assemble.mjs check --site site
+	node site/build-round-page.mjs --check site
