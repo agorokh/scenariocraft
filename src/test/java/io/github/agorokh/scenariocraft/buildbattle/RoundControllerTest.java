@@ -1813,6 +1813,32 @@ class RoundControllerTest {
     }
 
     @Test
+    void emptyDestinationListsFallBackToTheArenaSource() {
+        TestRig rig = new TestRig();
+        Block inside = rig.blockAt(0, 1, -3);
+        rig.advanceTo(RoundPhase.PREPARING);
+
+        SpongeAbsorbEvent sponge = new SpongeAbsorbEvent(inside, List.of());
+        rig.mutations.onArenaSpongeAbsorb(sponge);
+
+        LivingEntity portalEntity =
+                proxy(
+                        LivingEntity.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityCreatePortalEvent portal =
+                new EntityCreatePortalEvent(
+                        portalEntity, List.of(), org.bukkit.PortalType.NETHER);
+        rig.mutations.onArenaEntityCreatePortal(portal);
+
+        assertTrue(sponge.isCancelled());
+        assertTrue(portal.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void unavailableNamespacedTransportPreventsRoundStart() {
         TestRig rig = new TestRig();
         rig.teleportCommandsAvailable.set(false);

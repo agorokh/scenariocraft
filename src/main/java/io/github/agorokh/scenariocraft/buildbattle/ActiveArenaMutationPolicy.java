@@ -121,7 +121,7 @@ final class ActiveArenaMutationPolicy {
         boolean touchesArena = targets.stream().anyMatch(this::isArenaPosition);
         boolean assignedActor = actorBoundary != null;
         boolean strandedActor = actorId != null && strandedPlayer.test(actorId);
-        if (!touchesArena && !assignedActor && !strandedActor) {
+        if (!touchesArena && !assignedActor) {
             return Decision.ALLOW;
         }
         if (touchesArena

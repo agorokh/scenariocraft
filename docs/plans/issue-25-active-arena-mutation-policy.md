@@ -24,6 +24,8 @@ families, and establishes a checked-in regression matrix as the durable review c
   boundary checks and adding a build-ceiling regression.
 - [x] 2026-07-20: Correct retraction containment to follow pulled blocks toward the piston
   and add a legitimate inward-retraction regression.
+- [x] 2026-07-20: Preserve stranded-player freedom outside the arena and route empty event
+  destination lists through policy using their source.
 
 ## Decision Log
 
@@ -33,6 +35,7 @@ families, and establishes a checked-in regression matrix as the durable review c
 | 2026-07-20 | Treat the checked-in matrix and parameterized policy tests as two views of the same event-family contract. | Reviewers need a readable audit while tests must prevent deny families and boundary rules from drifting. |
 | 2026-07-20 | Permit ordinary in-plot physics and cancel only documented unsafe mutation families or boundary crossings. | Wholesale physics cancellation would break normal builds and violates the acceptance criteria. |
 | 2026-07-20 | Check the piston head in the facing direction, but check moved blocks in their actual movement direction; retraction uses the opposite face. | Paper's moved-block list omits a newly extended head when the piston pushes only air, while retract events report the facing direction even though pulled blocks move toward the piston. |
+| 2026-07-20 | Scope stranded-player restrictions to arena-touching mutations and use a non-null event source as the fallback destination for empty lists. | Recovery state must not lock a player out of other worlds, while an empty bounded Paper list must not bypass protected-arena policy. |
 
 ## Surprises & Discoveries
 
@@ -50,6 +53,8 @@ families, and establishes a checked-in regression matrix as the durable review c
   when extending into air. The listener now checks that bounded extra destination explicitly.
 - The follow-up current-head pass caught that `BlockPistonRetractEvent#getDirection()` reports
   the facing direction rather than the pulled blocks' movement direction.
+- The required reviewer found two edge cases outside the original matrix examples: recovery
+  state leaked across worlds, and legal empty Paper lists skipped listener policy evaluation.
 
 ## Acceptance evidence
 
@@ -61,6 +66,9 @@ families, and establishes a checked-in regression matrix as the durable review c
   moved-block list cannot extend a piston head beyond `maxBuildY`.
 - `RoundControllerTest.activeArenaAllowsPistonRetractionTowardThePiston` proves a sticky piston
   can pull an edge block inward without a false boundary denial.
+- `ActiveArenaMutationPolicyTest.strandedPlayerMutationOutsideArenaWorldRemainsAllowed` and
+  `RoundControllerTest.emptyDestinationListsFallBackToTheArenaSource` cover the required-review
+  findings without weakening protected-arena behavior.
 - Source review confirms the only loop introduced walks Paper's bounded piston moved-block list;
   no handler scans or mutates arena blocks.
 - GitHub Actions `build` and real Paper 1.21.11 `smoke` both passed for the pushed

@@ -462,10 +462,12 @@ final class ActiveArenaMutationListener implements Listener {
             Player actor,
             Block source,
             Collection<Block> targets) {
-        if (targets.isEmpty()) {
+        Collection<Block> effectiveTargets =
+                targets.isEmpty() && source != null ? List.of(source) : targets;
+        if (effectiveTargets.isEmpty()) {
             return;
         }
-        if (!allows(family, actor, source, targets)) {
+        if (!allows(family, actor, source, effectiveTargets)) {
             event.setCancelled(true);
         }
     }
@@ -476,14 +478,18 @@ final class ActiveArenaMutationListener implements Listener {
             Player actor,
             Location source,
             Collection<Block> targets) {
-        if (targets.isEmpty()) {
+        Collection<Position> effectiveTargets =
+                targets.isEmpty() && source != null
+                        ? List.of(position(source))
+                        : positions(targets);
+        if (effectiveTargets.isEmpty()) {
             return;
         }
         if (!policy.allows(
                 family,
                 actor == null ? null : actor.getUniqueId(),
                 source == null ? null : position(source),
-                positions(targets))) {
+                effectiveTargets)) {
             event.setCancelled(true);
         }
     }

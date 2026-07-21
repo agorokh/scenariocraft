@@ -101,6 +101,19 @@ final class ActiveArenaMutationPolicyTest {
                         List.of(elsewhere)));
     }
 
+    @Test
+    void strandedPlayerMutationOutsideArenaWorldRemainsAllowed() {
+        Position elsewhere = new Position(OTHER_WORLD, 1, 2, 1);
+
+        assertEquals(
+                Decision.ALLOW,
+                policy(RoundPhase.BUILDING, Set.of(NON_OWNER)).decide(
+                        Family.BLOCK_BREAK,
+                        NON_OWNER,
+                        elsewhere,
+                        List.of(elsewhere)));
+    }
+
     private static Stream<Family> boundarySensitiveFamilies() {
         return Stream.of(
                 Family.BLOCK_BREAK,
@@ -185,12 +198,17 @@ final class ActiveArenaMutationPolicyTest {
     }
 
     private static ActiveArenaMutationPolicy policy(RoundPhase phase) {
+        return policy(phase, Set.of());
+    }
+
+    private static ActiveArenaMutationPolicy policy(
+            RoundPhase phase, Set<UUID> strandedPlayers) {
         return new ActiveArenaMutationPolicy(
                 ARENA,
                 () -> phase,
                 () -> true,
                 playerId -> Map.of(OWNER, PLOT).get(playerId),
                 () -> List.of(PLOT),
-                Set.of()::contains);
+                strandedPlayers::contains);
     }
 }

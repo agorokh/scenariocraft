@@ -48,4 +48,7 @@ During any protected phase other than Building, every family above that can muta
 state is cancelled. The sole exception is `BlockPhysicsEvent`: cancellation can suppress normal
 neighbor updates and break legitimate builds, while the concrete mutation events provide the
 narrow enforcement points. None of these handlers scans the arena or mutates blocks; all work is
-limited to the event's bounded block list.
+limited to the event's bounded block list. If Paper reports an empty destination list, the event
+source is checked as the sole destination so the protected-phase policy still applies. Stranded
+players remain blocked from arena edits, but their status does not affect mutations outside the
+arena world.
