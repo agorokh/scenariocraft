@@ -35,7 +35,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private final AtomicBoolean commandReadInFlight = new AtomicBoolean();
     private final AtomicBoolean pollReadInFlight = new AtomicBoolean();
     private final BukkitTask pollingTask;
-    private String announcedRoundId;
+    private BattleResult announcedResult;
     private String pollingRoundId;
     private long ticksUntilPoll;
     private boolean closed;
@@ -165,10 +165,10 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     }
 
     private void announce(BattleResult result) {
-        if (closed || result.roundId().equals(announcedRoundId)) {
+        if (closed || result.equals(announcedResult)) {
             return;
         }
-        announcedRoundId = result.roundId();
+        announcedResult = result;
         List<String> lines = formatter.chatLines(result);
         String title = formatter.title(result);
         for (Player player : server.getOnlinePlayers()) {

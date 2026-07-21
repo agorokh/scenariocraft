@@ -88,42 +88,46 @@ class BattleResultParserTest {
     }
 
     @Test
-    void rejectsCruelCopiedFeedbackBeforeItCanReachPlayers() {
+    void cruelCopiedFeedbackIsReducedBeforeItCanReachPlayers() {
         String cruel =
                 """
                 Round: round-20260721-193000
                 Task: A moon base for cats
 
                 Alex (p1)
-                  Captain Comet: 2.00 — You are stupid.
+                  Captain Comet: 2.00 — The bright build is welcoming, and you are stupid.
 
                 Winner: Alex with 2.00
                 """;
 
-        IllegalArgumentException failure =
-                assertThrows(IllegalArgumentException.class, () -> parser.parse(cruel));
+        BattleResult result = parser.parse(cruel);
 
-        assertTrue(failure.getMessage().contains("kid-appropriate"));
+        assertEquals(
+                "A positive detail stood out in the build.",
+                result.contestants().getFirst().feedback().getFirst().comment());
+        assertFalse(formatter.chatLines(result).toString().contains("stupid"));
     }
 
     @Test
-    void rejectsSelfHarmLanguageBeforeItCanReachPlayers() {
+    void selfHarmLanguageInCopiedProseIsNotRetainedForPlayers() {
         String unsafe =
                 """
                 Round: round-20260721-193000
                 Task: A moon base for cats
 
                 Alex (p1)
-                  Captain Comet: 2.00 — You should kill yourself.
+                  Captain Comet: 2.00 — The bright roof is welcoming, and you should kill yourself.
 
                 Winner: Alex with 2.00
                 """;
 
-        assertThrows(IllegalArgumentException.class, () -> parser.parse(unsafe));
+        BattleResult result = parser.parse(unsafe);
+
+        assertFalse(formatter.chatLines(result).toString().contains("kill"));
     }
 
     @Test
-    void rejectsProfanityAssaultSlursAndMinecraftFormattingCodes() {
+    void unsafeCopiedProseIsReducedWhileMinecraftFormattingCodesAreRejected() {
         String template =
                 """
                 Round: round-20260721-193000
@@ -135,15 +139,16 @@ class BattleResultParserTest {
                 Winner: Alex with 2.00
                 """;
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> parser.parse(template.formatted("You are full of shit.")));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> parser.parse(template.formatted("I hope you get raped.")));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> parser.parse(template.formatted("You are a nigger.")));
+        for (String copiedProse :
+                List.of(
+                        "The bright roof is welcoming, damn it.",
+                        "The bright roof is welcoming, you fool.",
+                        "The bright roof is welcoming, followed by unsafe arbitrary prose.")) {
+            BattleResult result = parser.parse(template.formatted(copiedProse));
+            assertEquals(
+                    "A positive detail stood out in the roof.",
+                    result.contestants().getFirst().feedback().getFirst().comment());
+        }
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("The §kobfuscated roof is clever.")));
@@ -168,20 +173,30 @@ class BattleResultParserTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("Try adding more.")));
-        assertThrows(
-                IllegalArgumentException.class,
-                () ->
-                        parser.parse(
-                                template.formatted(
-                                        "The bright roof is clever, but you are a moron.")));
-
         BattleResult safeSummary =
                 parser.parse(
                         template.formatted(
-                                "The bright roof is clever, followed by arbitrary zogwort prose."));
+                                "The bright roof is clever, followed by arbitrary moron prose."));
         assertEquals(
                 "A positive detail stood out in the roof.",
                 safeSummary.contestants().getFirst().feedback().getFirst().comment());
+    }
+
+    @Test
+    void legalPlayerIdentifiersAreNotRejectedAsProse() {
+        BattleResult result =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: A moon base for cats
+
+                        Trash (p1)
+                          Captain Comet: 9.00 — The bright roof is welcoming.
+                        Winner: Trash with 9.00
+                        """);
+
+        assertEquals("Trash", result.contestants().getFirst().player());
+        assertEquals("Trash", result.winner().orElseThrow().player());
     }
 
     @Test

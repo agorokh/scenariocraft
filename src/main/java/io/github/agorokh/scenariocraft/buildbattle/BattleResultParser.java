@@ -118,7 +118,7 @@ final class BattleResultParser {
                 if (contestants.isEmpty()) {
                     throw invalid("places its result before the contestants");
                 }
-                winnerName = displayText(winner.group(1), 80, "winner");
+                winnerName = identifierText(winner.group(1), 80, "winner");
                 outcomeSeen = true;
                 continue;
             }
@@ -138,7 +138,7 @@ final class BattleResultParser {
                 if (player != null) {
                     addContestant(contestants, player, plotId, feedback);
                 }
-                player = displayText(contestant.group(1), 80, "player");
+                player = identifierText(contestant.group(1), 80, "player");
                 plotId = contestant.group(2);
                 feedback = new ArrayList<>();
                 continue;
@@ -197,6 +197,18 @@ final class BattleResultParser {
     }
 
     private static String displayText(String value, int maximumLength, String label) {
+        String normalized = structuralText(value, maximumLength, label);
+        if (UNSAFE_LANGUAGE.matcher(normalized).find()) {
+            throw invalid(label + " must use kid-appropriate language");
+        }
+        return normalized;
+    }
+
+    private static String identifierText(String value, int maximumLength, String label) {
+        return structuralText(value, maximumLength, label);
+    }
+
+    private static String structuralText(String value, int maximumLength, String label) {
         String normalized = value.strip().replaceAll("\\s+", " ");
         if (normalized.isBlank() || normalized.length() > maximumLength) {
             throw invalid(label + " has an invalid length");
@@ -205,21 +217,21 @@ final class BattleResultParser {
                 || normalized.codePoints().anyMatch(BattleResultParser::unsafeCodePoint)) {
             throw invalid(label + " contains unsafe characters");
         }
-        if (UNSAFE_LANGUAGE.matcher(normalized).find()) {
-            throw invalid(label + " must use kid-appropriate language");
-        }
         return normalized;
     }
 
     private static String feedbackText(String value) {
-        String normalized = displayText(value, 500, "comment");
+        String normalized = structuralText(value, 500, "comment");
         Matcher feature = BUILD_FEATURE.matcher(normalized);
         if (!feature.find() || !POSITIVE_EFFECT.matcher(normalized).find()) {
             throw invalid("comment must name a concrete strength");
         }
-        return "A positive detail stood out in the "
-                + feature.group().toLowerCase(Locale.ROOT)
-                + ".";
+        return displayText(
+                "A positive detail stood out in the "
+                        + feature.group().toLowerCase(Locale.ROOT)
+                        + ".",
+                500,
+                "comment");
     }
 
     private static boolean unsafeCodePoint(int codePoint) {

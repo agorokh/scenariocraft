@@ -54,6 +54,29 @@ class BattleResultServiceTest {
     }
 
     @Test
+    void correctedResultForTheSameRoundCanReplaceAnEarlyAnnouncement() throws Exception {
+        Path rounds = temporaryDirectory.resolve("replacement-rounds");
+        Path round = Files.createDirectories(rounds.resolve("round-20260721-193000"));
+        Path resultPath = round.resolve("results.txt");
+        Files.writeString(
+                resultPath,
+                BattleResultRepositoryTest.validResult("round-20260721-193000"));
+        ServiceRig rig = new ServiceRig(rounds, RoundPhase.REVEAL);
+
+        rig.poll.get().run();
+        Files.writeString(
+                resultPath,
+                BattleResultRepositoryTest.validResult("round-20260721-193000")
+                        .replace("A rocket-powered castle", "A moon base for cats"));
+        for (int tick = 0; tick <= 40; tick++) {
+            rig.poll.get().run();
+        }
+
+        assertEquals(2, rig.titles.size());
+        rig.service.close();
+    }
+
+    @Test
     void revealPollingDoesNotReplayThePreviousRoundsLatestResult() throws Exception {
         Path rounds = temporaryDirectory.resolve("rounds");
         Path previous = Files.createDirectories(rounds.resolve("round-20260721-190000"));

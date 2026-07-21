@@ -64,8 +64,8 @@ final class BattleResultRepository implements BattleResultReader {
                     throw new IOException("latest results.txt round id does not match its directory");
                 }
                 return Optional.of(parsed);
-            } catch (IllegalArgumentException malformed) {
-                throw new IOException("latest results.txt is malformed", malformed);
+            } catch (IOException | IllegalArgumentException unreadable) {
+                continue;
             }
         }
         return Optional.empty();

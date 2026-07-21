@@ -46,6 +46,7 @@ session.
 | 2026-07-21 | Require copied feedback to name a concrete build feature and positive effect, render only that allowlisted feature in a fixed safe strength sentence, reject common identity slurs, isolate automatic polling from manual reads, and expose an export ID only after its directory is published successfully. | Arbitrary copied prose cannot be made safe by an ever-growing denylist; the last presentation boundary must preserve the genuine-strength signal without broadcasting the untrusted tail, while a slow command or timestamp collision must never suppress or misdirect the active round announcement. |
 | 2026-07-21 | Gate published-ID discovery on the current controller export having started, and require exactly one terminal result record after all contestants. | REVEAL begins before wall removal/export, so the exporter can still expose the prior round during that gap; copied files also must not override contradictory winner state through record ordering. |
 | 2026-07-21 | Accept the judge contract's full 512-character task length in copied results and clamp only at presentation. | A task that exports and judges successfully must not become unreadable solely because the plugin used a narrower trust-boundary length. |
+| 2026-07-21 | Structurally validate raw copied comments, reduce them to the fixed allowlisted strength sentence, then language-check only the rendered sentence; treat player names as identifiers, skip corrupt latest-result candidates, and deduplicate announcements by parsed content rather than round ID. | Safe rewriting makes the raw tail non-presented data, legal player identifiers are not prose, one corrupt new artifact must not disable replay, and a corrected file for the active round must be able to replace an early version. |
 
 ## Surprises & Discoveries
 
@@ -104,11 +105,18 @@ session.
 - Input safety limits must align across producer and consumer. The judge permits 512-character
   tasks, so the plugin parser accepts the same bound while its chat/title formatter remains
   responsible for the shorter display limits.
+- Applying a prose denylist before discarding copied prose can reject judge-valid results
+  without improving player safety. Safety checks now follow data flow: structural checks on
+  raw input, allowlisted reduction, then language validation on the sentence actually shown.
+  Player names follow the structural identifier path instead of prose policy.
+- Replay resilience is per candidate, not only per directory scan: a malformed newest result
+  is skipped so an older valid result remains available. Announcement idempotence is based on
+  the parsed result value, allowing a corrected same-round artifact to announce once more.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 259 tests, judge 74 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 262 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -146,6 +154,9 @@ session.
   contradictory, repeated, or nonterminal outcome records.
 - Task-bound regression accepts 512 characters, rejects 513, and verifies the accepted task
   is still clamped to the chat presentation limit.
+- Current-head configured-reviewer regressions prove denylisted raw tails are discarded before
+  rendering, legal player identifiers remain readable, a malformed newest result falls back
+  to an older valid result, and corrected same-round content announces after the early result.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

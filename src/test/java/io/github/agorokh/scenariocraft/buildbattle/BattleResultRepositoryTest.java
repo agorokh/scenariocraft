@@ -56,6 +56,20 @@ class BattleResultRepositoryTest {
     }
 
     @Test
+    void malformedNewestResultDoesNotHideAnOlderCompletedResult() throws Exception {
+        Path rounds = temporaryDirectory.resolve("malformed-newest");
+        Path older = Files.createDirectories(rounds.resolve("round-20260721-190000"));
+        Files.writeString(
+                older.resolve("results.txt"), validResult("round-20260721-190000"));
+        Path newest = Files.createDirectories(rounds.resolve("round-20260721-193000"));
+        Files.writeString(newest.resolve("results.txt"), "not a result");
+
+        assertEquals(
+                "round-20260721-190000",
+                new BattleResultRepository(rounds).latest().orElseThrow().roundId());
+    }
+
+    @Test
     void requestedRoundRejectsAMismatchedResultHeader() throws Exception {
         Path rounds = temporaryDirectory.resolve("mismatch");
         Path round = Files.createDirectories(rounds.resolve("round-20260721-193000"));
