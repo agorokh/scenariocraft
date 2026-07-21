@@ -93,6 +93,34 @@ class VoxelRendererTest {
     }
 
     @Test
+    void showcaseImagesAreDeterministicAndMatchCommittedVoxelFixtures() throws Exception {
+        VoxelRenderer renderer = new VoxelRenderer();
+        Path openFirst = temporaryDirectory.resolve("showcase-open-first");
+        Path openSecond = temporaryDirectory.resolve("showcase-open-second");
+        Path wallsFirst = temporaryDirectory.resolve("showcase-walls-first");
+        Path wallsSecond = temporaryDirectory.resolve("showcase-walls-second");
+
+        VoxelPlot open = VoxelPlot.read(fixture("speed-build-rainbow-volcano.voxels.json"));
+        renderer.render(open, openFirst);
+        renderer.render(open, openSecond);
+        VoxelPlot walls = VoxelPlot.read(
+                fixture("speed-build-rainbow-volcano-walled.voxels.json"));
+        renderer.render(walls, wallsFirst);
+        renderer.render(walls, wallsSecond);
+
+        for (String name : OUTPUTS) {
+            assertArrayEquals(Files.readAllBytes(openFirst.resolve(name)),
+                    Files.readAllBytes(openSecond.resolve(name)), "open " + name);
+            assertArrayEquals(Files.readAllBytes(wallsFirst.resolve(name)),
+                    Files.readAllBytes(wallsSecond.resolve(name)), "walls " + name);
+        }
+        assertSiteImageMatches(openFirst, "iso-ne.png", "rainbow-volcano-iso.png");
+        assertSiteImageMatches(openFirst, "plan.png", "rainbow-volcano-gallery.png");
+        assertSiteImageMatches(wallsFirst, "iso-ne.png", "rainbow-volcano-walls.png");
+        assertSiteImageMatches(wallsFirst, "cut-z.png", "rainbow-volcano-cutaway.png");
+    }
+
+    @Test
     void emptyPlotProducesSevenTransparentImages() throws Exception {
         VoxelPlot plot = VoxelPlot.read(fixture("empty-plot.voxels.json"));
         Path output = temporaryDirectory.resolve("empty");
