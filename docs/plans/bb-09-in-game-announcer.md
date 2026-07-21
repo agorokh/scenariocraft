@@ -40,6 +40,7 @@ session.
 | 2026-07-21 | Run a one-tick phase observer that reads immediately when an active export ID appears, then honors the configured disk-read interval; require that interval not exceed REVEAL. | A repeating task scheduled only at the poll interval can miss an entire short phase depending on timer alignment. The per-tick work is an enum/ID check only; filesystem reads remain asynchronous and rate-limited. |
 | 2026-07-21 | Keep only the newest 256 round paths in a bounded priority queue while scanning history, and require every parsed header to match its directory name. | Historical accumulation must not permanently disable replay, while copied/misplaced results must never impersonate the active round. |
 | 2026-07-21 | Apply the judge's cruel-language denylist again at the plugin file boundary and require RCON round IDs to match the active REVEAL export. | Copied files are untrusted even when structurally valid, and a delayed authenticated command for an older round must not announce or celebrate inside a newer round. |
+| 2026-07-21 | Broaden copied-text rejection to self-harm/threat vocabulary, ignore `judge.yml` everywhere, and treat invalid optional RCON configuration as announcement failure rather than judging failure. | Player safety, credential containment, and durable publication must each fail independently at their own boundary. |
 
 ## Surprises & Discoveries
 
@@ -68,11 +69,14 @@ session.
 - The plugin cannot inherit safety guarantees from the standalone judge: cross-machine
   `results.txt` and delayed network commands each cross a trust/lifecycle boundary and need
   independent validation immediately before presentation.
+- “Optional announcement” applies to malformed configuration as well as network failure. A
+  typo in an RCON port must not prevent the fallback artifact from being produced, and a
+  credential-bearing file must be ignored mechanically rather than only by documentation.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 248 tests, judge 73 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 249 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -90,6 +94,9 @@ session.
   immediate active-round check and reject an interval longer than REVEAL.
 - Parser and service regressions reject cruel copied feedback and prevent a delayed RCON
   command for an older round from broadcasting or targeting the current winner plot.
+- Additional regressions reject self-harm language and verify malformed optional RCON
+  settings still reach the durable judging attempt. Root `.gitignore` rejects `judge.yml`
+  regardless of the configured content-directory depth.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

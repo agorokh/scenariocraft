@@ -82,4 +82,20 @@ class BattleResultParserTest {
 
         assertTrue(failure.getMessage().contains("kid-appropriate"));
     }
+
+    @Test
+    void rejectsSelfHarmLanguageBeforeItCanReachPlayers() {
+        String unsafe =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Alex (p1)
+                  Captain Comet: 2.00 — You should kill yourself.
+
+                Winner: Alex with 2.00
+                """;
+
+        assertThrows(IllegalArgumentException.class, () -> parser.parse(unsafe));
+    }
 }

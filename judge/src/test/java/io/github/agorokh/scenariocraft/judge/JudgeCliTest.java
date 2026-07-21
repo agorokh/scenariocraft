@@ -128,4 +128,23 @@ class JudgeCliTest {
         assertEquals(2, status);
         assertTrue(diagnostics.toString().contains("set SCENARIOCRAFT_JUDGE_CONFIG_DIR"));
     }
+
+    @Test
+    void invalidOptionalRconConfigurationStillAttemptsDurableJudging() {
+        StringWriter diagnostics = new StringWriter();
+        Path config = Path.of(System.getProperty("scenariocraft.repoRoot")).resolve("judge");
+
+        int status =
+                JudgeCli.run(
+                        new String[] {"--round", "definitely-missing-round", "--dry-run"},
+                        Map.of(
+                                "SCENARIOCRAFT_JUDGE_CONFIG_DIR", config.toString(),
+                                "SCENARIOCRAFT_RCON_PORT", "not-a-port"),
+                        new PrintWriter(new StringWriter()),
+                        new PrintWriter(diagnostics));
+
+        assertEquals(1, status);
+        assertTrue(diagnostics.toString().contains("results will still be written"));
+        assertTrue(diagnostics.toString().contains("Judge failed"));
+    }
 }

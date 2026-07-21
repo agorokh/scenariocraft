@@ -94,8 +94,9 @@ public final class JudgeCli {
                         "RCON announcement is not configured; results will still be written for plugin polling.");
             }
         } catch (java.io.IOException | IllegalArgumentException exception) {
-            diagnostics.println("RCON configuration is invalid: " + exception.getMessage());
-            return 2;
+            diagnostics.println(
+                    "RCON configuration is invalid; results will still be written for plugin polling: "
+                            + exception.getMessage());
         }
         return new JudgeApplication().run(
                 roundDirectory,
