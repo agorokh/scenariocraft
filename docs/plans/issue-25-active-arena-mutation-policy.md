@@ -2,7 +2,7 @@
 
 Issue: #25
 Owner: Codex
-Status: In progress
+Status: Complete
 
 ## Purpose
 
@@ -19,7 +19,7 @@ families, and establishes a checked-in regression matrix as the durable review c
   parameterized tests.
 - [x] 2026-07-20: Capture local acceptance evidence; pushed CI and Paper smoke remain.
 - [x] 2026-07-20: Complete `/review` against `code_review.md`; no P1 findings remained.
-- [ ] Record the retrospective.
+- [x] 2026-07-20: Record the retrospective after GitHub's real Paper smoke passed.
 
 ## Decision Log
 
@@ -50,8 +50,14 @@ families, and establishes a checked-in regression matrix as the durable review c
 - `make ci-fast` passes on Java 21 after the extraction and regression additions.
 - Source review confirms the only loop introduced walks Paper's bounded piston moved-block list;
   no handler scans or mutates arena blocks.
-- GitHub Actions build and Paper boot smoke: pending pushed implementation.
+- GitHub Actions `build` and real Paper 1.21.11 `smoke` both passed for the pushed
+  implementation head; the final ExecPlan-only head reruns the same required checks.
 
 ## Retrospective
 
-Pending completion.
+The active-arena protections now have a dedicated Build Battle policy/listener, a readable event
+contract, and parameterized regression coverage instead of continuing to grow round orchestration.
+The implementation preserved direct owner edits, added narrow same-plot rules for bounded
+environmental lists, explicitly denied unsafe indirect families, and left block physics alone.
+Future event-surface discoveries should add one matrix row, one policy family, one listener
+mapping, and one deny/allow regression rather than reopening `RoundController`.
