@@ -8,16 +8,20 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Flow;
 import java.util.regex.Pattern;
 
 final class OpenAiPersonaJudge implements PersonaJudge {
@@ -99,9 +103,9 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
-        HttpResponse<InputStream> response =
-                client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-        String responseBody = readBoundedResponse(response.body());
+        HttpResponse<String> response = client.send(
+                request, ignored -> boundedBodySubscriber());
+        String responseBody = response.body();
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String message = httpErrorMessage(
                     response.statusCode(), responseBody,
@@ -112,14 +116,8 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         return responseBody;
     }
 
-    static String readBoundedResponse(InputStream input) throws IOException, JudgeException {
-        try (input) {
-            byte[] bytes = input.readNBytes(MAX_RESPONSE_BYTES + 1);
-            if (bytes.length > MAX_RESPONSE_BYTES) {
-                throw new JudgeException("OpenAI response exceeded the byte limit");
-            }
-            return new String(bytes, StandardCharsets.UTF_8);
-        }
+    static HttpResponse.BodySubscriber<String> boundedBodySubscriber() {
+        return new BoundedBodySubscriber();
     }
 
     private void requireSafeVerdictText(JudgeVerdict verdict)
@@ -151,6 +149,55 @@ final class OpenAiPersonaJudge implements PersonaJudge {
     @FunctionalInterface
     interface ModerationSender {
         String send(String body) throws IOException, InterruptedException, JudgeException;
+    }
+
+    private static final class BoundedBodySubscriber
+            implements HttpResponse.BodySubscriber<String> {
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private final CompletableFuture<String> body = new CompletableFuture<>();
+        private Flow.Subscription subscription;
+
+        @Override
+        public CompletionStage<String> getBody() {
+            return body;
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription newSubscription) {
+            if (subscription != null) {
+                newSubscription.cancel();
+                return;
+            }
+            subscription = newSubscription;
+            subscription.request(1);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> buffers) {
+            for (ByteBuffer buffer : buffers) {
+                int length = buffer.remaining();
+                if ((long) bytes.size() + length > MAX_RESPONSE_BYTES) {
+                    subscription.cancel();
+                    body.completeExceptionally(
+                            new IOException("OpenAI response exceeded the byte limit"));
+                    return;
+                }
+                byte[] chunk = new byte[length];
+                buffer.get(chunk);
+                bytes.writeBytes(chunk);
+            }
+            subscription.request(1);
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            body.completeExceptionally(throwable);
+        }
+
+        @Override
+        public void onComplete() {
+            body.complete(bytes.toString(StandardCharsets.UTF_8));
+        }
     }
 
     static String moderationRequestBody(String comment) {

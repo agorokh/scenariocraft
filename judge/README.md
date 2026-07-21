@@ -17,6 +17,7 @@ key is never accepted as an argument or written to output. Live calls default to
 per-attempt timeout; set `SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS` to a positive integer to
 override it. HTTP connections default to 10 seconds; set
 `SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS` to override that timeout separately.
+The request timeout remains active through bounded response-body consumption.
 Every live kid-facing comment must also pass OpenAI moderation before it can enter a result.
 Transient moderation errors retry once against the same generated verdict; a flagged comment
 fails closed immediately without regenerating or rechecking unsafe text.

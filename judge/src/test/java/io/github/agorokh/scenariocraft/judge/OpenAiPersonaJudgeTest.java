@@ -13,7 +13,6 @@ import java.io.DataOutputStream;
 import java.awt.image.BufferedImage;
 import javax.imageio.ImageIO;
 import java.io.IOException;
-import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -22,6 +21,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Flow;
 import java.util.zip.CRC32;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -229,12 +231,26 @@ class OpenAiPersonaJudgeTest {
 
     @Test
     void rejectsOpenAiResponseBodiesAboveTheHeapBound() {
-        byte[] oversized = new byte[OpenAiPersonaJudge.MAX_RESPONSE_BYTES + 1];
+        var subscriber = OpenAiPersonaJudge.boundedBodySubscriber();
+        AtomicBoolean cancelled = new AtomicBoolean();
+        subscriber.onSubscribe(new Flow.Subscription() {
+            @Override
+            public void request(long count) {}
+
+            @Override
+            public void cancel() {
+                cancelled.set(true);
+            }
+        });
 
         assertThrows(
-                JudgeException.class,
-                () -> OpenAiPersonaJudge.readBoundedResponse(
-                        new ByteArrayInputStream(oversized)));
+                CompletionException.class,
+                () -> {
+                    subscriber.onNext(List.of(ByteBuffer.allocate(
+                            OpenAiPersonaJudge.MAX_RESPONSE_BYTES + 1)));
+                    subscriber.getBody().toCompletableFuture().join();
+                });
+        assertTrue(cancelled.get());
     }
 
     @Test
