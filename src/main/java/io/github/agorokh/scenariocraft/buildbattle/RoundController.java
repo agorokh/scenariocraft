@@ -259,6 +259,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.timerTask =
                 server.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
         strandedArenaPlayers.addAll(recoveryStore.pendingPlayers());
+        if (!strandedArenaPlayers.isEmpty()) {
+            logger.warning(
+                    "SCENARIOCRAFT_PENDING_RECOVERY_COUNT "
+                            + strandedArenaPlayers.size()
+                            + " player(s) await a confirmed hub return from "
+                            + recoveryStore.location()
+                            + "; recovery resumes when each player rejoins.");
+        }
         for (Player player : server.getOnlinePlayers()) {
             boolean hadPendingInventory =
                     player.getPersistentDataContainer()
@@ -985,7 +993,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         closed = true;
-        failAllTeleportAttempts();
+        settleTeleportAttemptsForClose(false);
         timerTask.cancel();
         blockEditor.cancel();
         timer = null;
@@ -997,7 +1005,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             logger.log(Level.WARNING, "Could not close the round exporter cleanly", failure);
         }
         restoreRoundPlayers();
-        failAllTeleportAttempts();
+        settleTeleportAttemptsForClose(true);
         contestants.clear();
         revealSpectators.clear();
         pendingPlotEntries.clear();
@@ -1995,7 +2003,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         attempt.tasks().clear();
     }
 
-    private void failAllTeleportAttempts() {
+    private void settleTeleportAttemptsForClose(boolean reportUnconfirmedRecovery) {
         for (TeleportAttempt attempt : List.copyOf(teleportAttempts.values())) {
             if (playerReached(attempt.player(), attempt.destination())) {
                 if (hasPendingTeleportRecovery(attempt.player())
@@ -2005,8 +2013,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     completeAttempt(attempt);
                 }
             } else {
-                reportTeleportFailure(
-                        attempt, "controller closed before relocation confirmation", null);
+                if (reportUnconfirmedRecovery
+                        && hasPendingTeleportRecovery(attempt.player())
+                        && locationsMatch(attempt.destination(), hubLocation())) {
+                    reportRelocationFailure(
+                            attempt.player(),
+                            attempt.destination(),
+                            "controller closed before hub recovery confirmation; durable recovery remains pending",
+                            null);
+                }
+                completeAttempt(attempt);
             }
         }
     }
@@ -2131,7 +2147,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private static boolean playerReached(Player player, Location destination) {
-        Location actual = player.getLocation();
+        return locationsMatch(player.getLocation(), destination);
+    }
+
+    private static boolean locationsMatch(Location actual, Location destination) {
         return actual.getWorld() == destination.getWorld()
                 && Math.abs(actual.getX() - destination.getX())
                         <= TELEPORT_CONFIRMATION_EPSILON
@@ -2224,8 +2243,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         try {
             recoveryStore.add(player.getUniqueId());
         } catch (RuntimeException failure) {
-            reportRecoveryPersistenceFailure(
-                    player, "plugin-owned recovery registry could not be saved", failure);
+            reportRecoveryRegistryFailure(player, "could not be saved", failure);
         }
         if (!player.getPersistentDataContainer()
                 .has(teleportRecoveryKey, PersistentDataType.BYTE)) {
@@ -2274,8 +2292,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             } catch (RuntimeException restoreFailure) {
                 failure.addSuppressed(restoreFailure);
             }
-            reportRecoveryPersistenceFailure(
-                    player, "plugin-owned recovery registry could not be cleared", failure);
+            reportRecoveryRegistryFailure(player, "could not be cleared", failure);
             player.setGameMode(GameMode.ADVENTURE);
             return;
         }
@@ -2297,6 +2314,29 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 "ScenarioCraft recovery persistence alert: "
                         + player.getName()
                         + " still needs a confirmed, saved hub recovery. Keep them contained and check the server log.";
+        server.getConsoleSender().sendMessage(alert);
+        for (Player onlinePlayer : server.getOnlinePlayers()) {
+            if (receivesOperatorAlerts(onlinePlayer)) {
+                onlinePlayer.sendMessage(alert);
+            }
+        }
+    }
+
+    private void reportRecoveryRegistryFailure(
+            Player player, String reason, RuntimeException failure) {
+        logger.log(
+                Level.SEVERE,
+                "SCENARIOCRAFT_RECOVERY_REGISTRY_FAILURE registry "
+                        + recoveryStore.location()
+                        + " "
+                        + reason
+                        + " for "
+                        + player.getName(),
+                failure);
+        String alert =
+                "ScenarioCraft recovery registry alert: "
+                        + player.getName()
+                        + " still needs a confirmed, saved hub recovery. Check atomic-move support and the registry path in the server log.";
         server.getConsoleSender().sendMessage(alert);
         for (Player onlinePlayer : server.getOnlinePlayers()) {
             if (receivesOperatorAlerts(onlinePlayer)) {

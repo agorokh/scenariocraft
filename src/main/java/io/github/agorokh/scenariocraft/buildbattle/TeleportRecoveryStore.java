@@ -58,6 +58,10 @@ public final class TeleportRecoveryStore {
         return pending.contains(playerId);
     }
 
+    public String location() {
+        return path == null ? "in-memory" : path.toString();
+    }
+
     public synchronized void add(UUID playerId) {
         replaceWith(playerId, true);
     }

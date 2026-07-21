@@ -78,9 +78,11 @@ entry only after it confirms the hub arrival and saves the player data. If the e
 keep the player contained and use the persistence alert's exception in the server log to fix
 the underlying storage problem before reconnecting them again. The registry requires a data
 folder filesystem that supports same-directory atomic moves; unsupported storage fails closed
-and emits `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE` rather than weakening the atomic-write
-guarantee. An operator command may move a pending player only to the configured hub; the
-controller supervises that arrival and performs the same saved, atomic clear sequence.
+at enable. Runtime registry writes emit `SCENARIOCRAFT_RECOVERY_REGISTRY_FAILURE` with the
+registry path, distinct from player-data `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE`, rather
+than weakening the atomic-write guarantee. An operator command may move a pending player only
+to the configured hub; the controller supervises that arrival and performs the same saved,
+atomic clear sequence.
 If enable fails with `Could not load teleport recovery registry`, stop the server and back up
 the registry before editing it. Correct any malformed line to a UUID; move the file aside only
 after verifying that no listed player is still mid-recovery, then restart and confirm every
@@ -94,8 +96,10 @@ player-data recovery marker or the plugin-owned registry fails, the console and 
 operators receive a separate persistence alert; keep the player contained and have them
 reconnect so the hub return and durable clear are retried. The server console is the durable
 on-call signal when no privileged player is online: monitor for
-`SCENARIOCRAFT_TELEPORT_FAILURE` and `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE`, then
-follow the recovery steps above before starting another round.
+`SCENARIOCRAFT_TELEPORT_FAILURE`, `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE`, and
+`SCENARIOCRAFT_RECOVERY_REGISTRY_FAILURE`, then follow the recovery steps above before starting
+another round. Startup logs `SCENARIOCRAFT_PENDING_RECOVERY_COUNT` with the registry path
+whenever persisted recoveries are waiting; each one resumes when that player rejoins.
 
 ## How this was built
 

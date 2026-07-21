@@ -40,6 +40,7 @@ session.
 | 2026-07-20 | Resume an active contestant's phase only after recovery reaches the hub and durably clears. | Phase timers may continue while a player is pending; every phase move must route through hub recovery first, then apply the current phase so a BUILDING rejoin is not left uncontained at the hub. |
 | 2026-07-20 | During close, run only an already-arrived hub recovery's owned success callback; otherwise settle without phase side effects. | Durable recovery cleanup and pending inventory restoration are safe and required at the hub, while a plot-arrival callback could incorrectly enter BUILDING during shutdown. Delayed dispatch also fails before command execution when its player is offline. |
 | 2026-07-20 | Apply recovery-first ordering to BUILDING respawns and probe atomic registry replacement during store open. | Respawn must not supersede a pending hub attempt with direct plot entry, and unsupported storage should fail at enable rather than during a player's first recovery write. |
+| 2026-07-20 | Settle non-arrived teleports during close without their phase failure callbacks, while keeping hub recovery durable and visible. | Plugin disable cannot safely wait for future scheduler ticks; invoking plot-entry failure callbacks during teardown can re-enter round abort. Best-effort hub dispatch remains, arrived recovery completes, and unconfirmed recovery stays persisted with an operator signal. |
 
 ## Surprises & Discoveries
 
@@ -88,6 +89,11 @@ session.
   Pending BUILDING respawns now use the hub as their respawn location, clear recovery there,
   and only then re-enter the plot. Store open now materializes the registry through the same
   atomic replacement path, making unsupported storage an enable-time failure.
+- Later review exposed two diagnostic boundaries. The smoke now waits for both Paper readiness
+  and ScenarioCraft's battle-world-ready line, limits the probe to 10 seconds, prints the last
+  100 log lines on failure, and resets its log offset before `battle start`. Shutdown settlement
+  no longer invokes phase failure callbacks. Persisted recovery count and registry I/O now have
+  distinct durable log markers that include the registry location.
 
 ## Acceptance evidence
 

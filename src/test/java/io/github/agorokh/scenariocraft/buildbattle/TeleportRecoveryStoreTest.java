@@ -26,6 +26,7 @@ class TeleportRecoveryStoreTest {
         assertTrue(Files.isRegularFile(registry));
         assertEquals(List.of(), Files.readAllLines(registry));
         assertEquals(Set.of(), store.pendingPlayers());
+        assertEquals(registry.toAbsolutePath().normalize().toString(), store.location());
     }
 
     @Test

@@ -184,10 +184,11 @@ jobs:
             battle_log_offset=0
             while kill -0 "${server_pid}" 2>/dev/null; do
               if test -f logs/latest.log &&
-                grep -q "Done (" logs/latest.log; then
+                grep -q "Done (" logs/latest.log &&
+                grep -q "ScenarioCraft enabled" logs/latest.log; then
                 battle_log_offset=$(wc -c <logs/latest.log)
                 probe_seen=0
-                for ((probe_attempt = 0; probe_attempt < 30; probe_attempt++)); do
+                for ((probe_attempt = 0; probe_attempt < 10; probe_attempt++)); do
                   printf "%s\n" \
                     "minecraft:execute in minecraft:battle_world run minecraft:fill -1 99 -1 5 102 6 minecraft:air" \
                     "minecraft:execute in minecraft:battle_world run minecraft:summon minecraft:armor_stand 0 100 0 {Tags:[\"scenariocraft_transport_probe\"],Invisible:1b,Marker:1b,NoGravity:1b}" \
@@ -206,9 +207,11 @@ jobs:
                   kill -0 "${server_pid}" 2>/dev/null || break
                 done
                 if test "${probe_seen}" -ne 1; then
-                  printf "Teleport transport probe did not succeed within 30 seconds.\n" >&2
+                  printf "Teleport transport probe did not succeed within 10 seconds.\n" >&2
+                  tail -n 100 logs/latest.log >&2 || true
                   exit 1
                 fi
+                battle_log_offset=$(wc -c <logs/latest.log)
                 printf "battle start\n" >&3
                 break
               fi

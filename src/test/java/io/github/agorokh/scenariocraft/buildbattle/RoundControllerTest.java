@@ -1899,6 +1899,9 @@ class RoundControllerTest {
         assertTrue(
                 rig.messages.stream()
                         .noneMatch(message -> message.contains("Build time!")));
+        assertTrue(
+                rig.messages.stream()
+                        .noneMatch(message -> message.contains("plots could not open safely")));
         assertEquals(0, rig.bossbarPlayers.get());
         rig.ignoreTeleportCommand.set(false);
         rig.close();
