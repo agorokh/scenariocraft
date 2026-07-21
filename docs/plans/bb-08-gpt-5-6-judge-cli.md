@@ -21,6 +21,7 @@ CI, and live acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
 - [x] Record the retrospective.
 - [x] 2026-07-21 resolve external review findings against the integrated BB-10 content.
+- [x] 2026-07-21 close late bounded-input, moderation-retry, CLI-path, and HTTP-body findings.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -51,6 +52,9 @@ session.
 | 2026-07-21 | Apply `nlink` ownership only to untrusted round inputs, not process-generated temp PNGs, and inspect the complete Responses output before accepting exactly one verdict. | Voxel fallback must not depend on the system temp filesystem exposing Unix attributes, and a later refusal or duplicate output must not be hidden by an earlier valid-looking verdict. |
 | 2026-07-21 | Enforce the same eight-plot ceiling in arena config and judge manifests, fail both result artifacts as a unit, cap decoded pixels, validate persona-name controls, and recalculate aggregate size from stable snapshots. | Cross-component contracts must agree, partial publication must not expose a winner after failure, and preflight metadata cannot substitute for bounds on decoded or immutable data. |
 | 2026-07-21 | Use code-point comment validation, reject top-level Responses refusals, and stream-count voxel palette/block arrays before tree parsing. | UTF-16 code units miss astral format controls, refusal can appear outside content, and post-materialization limits do not prevent heap amplification. |
+| 2026-07-21 | Retry moderation once against the same parsed verdict and treat a flagged verdict as non-retryable. | A transient moderation outage should not repeat the expensive vision generation or replace an already valid verdict, while unsafe text must never be rechecked for publication. |
+| 2026-07-21 | Enforce namespace-form, 256-character palette entries and a 1,024-chunk PNG ceiling before renderer or raster work. | File and array-size caps alone still permit repeated hashing of huge block IDs or CPU/allocation amplification from hundreds of thousands of empty PNG chunks. |
+| 2026-07-21 | Parse the round path inside the CLI error boundary and consume OpenAI bodies with a size-bounded subscriber. | Invalid local paths must produce a controlled status instead of a stack trace, and the configured request timeout must remain active until a bounded body is fully consumed. |
 
 ## Surprises & Discoveries
 
@@ -83,11 +87,17 @@ session.
 - The first snapshot-era hard-link test accidentally built only one of seven PNG paths, so the
   intended fallback path correctly ignored that unused hard link and reported a missing voxel
   source. Completing the seven-file set made the test exercise the actual upload-input gate.
+- Complete thread pagination exposed three late comments after an earlier clean-looking review
+  batch. Keeping the all-pages inventory authoritative caught palette-schema, palette-length,
+  and PNG chunk-count gaps before merge.
+- The persistent reviewer guide updates independently from formal reviews and can reveal a new
+  current-head focus after CI turns green. Its final passes exposed the moderation retry boundary,
+  invalid-path handling, and the input-stream timeout gap.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 99 plugin tests, 13 renderer tests, and 18 judge tests
-  (130 total), zero failures.
+- `make ci-fast` passed on Java 21 with 99 plugin tests, 14 renderer tests, and 66 judge tests
+  (179 total), zero failures.
 - The installed command `judge/build/install/judge/bin/judge --round
   rounds/round-20260721-193000 --dry-run` ran from a copy of the committed fixture runtime,
   produced two verdicts per contestant, means `8.75` and `6.75`, and named Alex/p1 the winner.
@@ -128,7 +138,12 @@ session.
   connect timeout, HTTP retry classification, and missing-config guidance.
 - Official OpenAI API documentation confirmed that `POST /v1/moderations` accepts text with
   `omni-moderation-latest` and returns a boolean `results[].flagged` decision. Malformed,
-  failed, or flagged moderation now consumes the same bounded persona retry as other errors.
+  failed, or flagged moderation fails closed; transient failures first retry the same parsed
+  verdict, while flagged content is non-retryable.
+- Final review-repair coverage includes frozen palette-ID validation, palette-entry and PNG
+  chunk bounds, invalid round-path diagnostics, independent moderation retry, and bounded timed
+  response-body consumption. The production-content dry run still selected Alex at `7.92` over
+  Sam at `5.92`.
 
 ## Retrospective
 
