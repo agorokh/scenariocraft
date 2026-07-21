@@ -36,6 +36,7 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 | 2026-07-21 | Pin Geyser and ViaVersion by exact Modrinth version ID, bound Floodgate download retries, and split repository-document assertions into `docs-check`. | Current-head review showed that floating betas, an unbounded setup download, and cross-domain `site-check` assertions could hide runtime drift or erode target contracts. |
 | 2026-07-21 | Seed and maintain `auth-type: floodgate` in the writable plugin volume before Paper starts, and add a Linux hosted-CI overlay boot plus RakNet probe. | The manual post-start edit/restart was brittle, while Compose rendering alone did not prove plugin download, Paper startup, Geyser binding, or host-plane UDP. |
 | 2026-07-21 | Apply a smoke-only Compose override that binds Java and Bedrock ports to `127.0.0.1`, and allow 30 minutes for the cold hosted path. | CI needs host-plane UDP proof without briefly exposing the offline-mode game server, and the bounded 300-second readiness wait must fit after image pulls, compilation, and plugin downloads. |
+| 2026-07-21 | Move Geyser auth mutation into an atomic, regression-tested seeder and bind the RakNet timeout to one end-to-end deadline. | Existing volumes can contain missing, spaced, commented, or duplicate `java.auth-type` entries; a discovery probe must also reject a stale pong and must not multiply its advertised timeout across resolved addresses. |
 
 ## Surprises & Discoveries
 
@@ -79,6 +80,11 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 - The first loopback-isolated CI run exposed a Docker Compose CLI detail: `compose port`
   accepts a numeric private port and a separate `--protocol` flag, not the `25565/tcp`
   notation used in Compose YAML. The live binding assertions now use the CLI form.
+- Final-head review found that the original config fallback could append a duplicate top-level
+  `java` map. The extracted seeder now updates the first map atomically, removes later
+  duplicates from earlier runs, preserves sibling settings, and has malformed-history,
+  missing-map, and new-file regression fixtures. The RakNet probe now correlates the echoed
+  timestamp and shares one deadline across every resolved address.
 
 ## Acceptance evidence
 

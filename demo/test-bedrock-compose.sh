@@ -44,9 +44,13 @@ jq -e '
     (.services["bedrock-plugins"].command | tostring | contains(floodgate_sha256)) and
     (.services["bedrock-plugins"].command | tostring | contains("wget -q -T 30 -t 3")) and
     (.services["bedrock-plugins"].command | tostring |
-      contains("/plugins/Geyser-Spigot")) and
+      contains("/demo/seed-geyser-config.sh")) and
     (.services["bedrock-plugins"].command | tostring |
-      contains("auth-type: floodgate")) and
+      contains("/plugins/Geyser-Spigot")) and
+    any(
+      .services["bedrock-plugins"].volumes[];
+      .target == "/demo/seed-geyser-config.sh" and .read_only == true
+    ) and
     .services.paper.depends_on["bedrock-plugins"].condition ==
       "service_completed_successfully" and
     any(

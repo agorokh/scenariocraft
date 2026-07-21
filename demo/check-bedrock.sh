@@ -47,12 +47,20 @@ timeout_seconds = int(sys.argv[3])
 timestamp = int(time.time() * 1000)
 ping = b"\x01" + struct.pack(">Q", timestamp) + MAGIC + struct.pack(">Q", secrets.randbits(64))
 last_error = "no response"
+deadline = time.monotonic() + timeout_seconds
 
-for family, socktype, proto, _, address in socket.getaddrinfo(
-    host, port, type=socket.SOCK_DGRAM
-):
+try:
+    addresses = socket.getaddrinfo(host, port, type=socket.SOCK_DGRAM)
+except socket.gaierror as error:
+    fail(f"Could not resolve Bedrock host {host!r}: {error}")
+
+for family, socktype, proto, _, address in addresses:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        last_error = f"timed out after {timeout_seconds} seconds"
+        break
     with socket.socket(family, socktype, proto) as probe:
-        probe.settimeout(timeout_seconds)
+        probe.settimeout(remaining)
         try:
             probe.connect(address)
             probe.send(ping)
@@ -63,28 +71,39 @@ for family, socktype, proto, _, address in socket.getaddrinfo(
 
     minimum_length = 1 + 8 + 8 + len(MAGIC) + 2
     if len(response) < minimum_length:
-        fail(f"RakNet pong was too short: {len(response)} bytes")
+        last_error = f"RakNet pong was too short: {len(response)} bytes"
+        continue
     if response[0] != 0x1C:
-        fail(f"Expected RakNet unconnected pong 0x1c, received 0x{response[0]:02x}")
+        last_error = (
+            f"expected RakNet unconnected pong 0x1c, received 0x{response[0]:02x}"
+        )
+        continue
+    if response[1:9] != ping[1:9]:
+        last_error = "RakNet pong timestamp did not match this probe"
+        continue
     if response[17:33] != MAGIC:
-        fail("RakNet pong contained an invalid offline-message identifier")
+        last_error = "RakNet pong contained an invalid offline-message identifier"
+        continue
 
     motd_length = struct.unpack(">H", response[33:35])[0]
     motd_bytes = response[35:]
     if len(motd_bytes) != motd_length:
-        fail(
+        last_error = (
             "RakNet pong MOTD length did not match payload: "
             f"declared {motd_length}, received {len(motd_bytes)}"
         )
+        continue
     try:
         motd = motd_bytes.decode("utf-8")
     except UnicodeDecodeError as error:
-        fail(f"RakNet pong MOTD was not UTF-8: {error}")
+        last_error = f"RakNet pong MOTD was not UTF-8: {error}"
+        continue
     if EXPECTED_MOTD not in motd:
-        fail(f"RakNet pong did not contain {EXPECTED_MOTD!r}: {motd}")
+        last_error = f"RakNet pong did not contain {EXPECTED_MOTD!r}: {motd}"
+        continue
 
     print(f"SCENARIOCRAFT_BEDROCK_OK host={host} port={port} motd={motd}")
     raise SystemExit(0)
 
-fail(f"No RakNet pong from {host}:{port}: {last_error}")
+fail(f"No valid RakNet pong from {host}:{port}: {last_error}")
 PY

@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke ci-fast demo demo-dry-run docs-check site-check
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check geyser-config-seed-check site-check
 
 demo:
 	./demo/run-headless.sh
@@ -6,7 +6,7 @@ demo:
 demo-dry-run:
 	SCENARIOCRAFT_DEMO_DRY_RUN=true ./demo/run-headless.sh
 
-ci-fast: site-check docs-check
+ci-fast: site-check docs-check geyser-config-seed-check bedrock-probe-check
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		sha256sum --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	else \
@@ -31,7 +31,14 @@ docs-check:
 	grep -Fq 'Docker Desktop on macOS' demo/README.md
 	test -x demo/check-bedrock.sh
 	test -x demo/smoke-bedrock-compose.sh
+	test -x demo/seed-geyser-config.sh
 	test -f docker-compose.smoke.yml
+
+geyser-config-seed-check:
+	./demo/test-geyser-config-seed.sh
+
+bedrock-probe-check:
+	./demo/test-check-bedrock.py
 
 bedrock-compose-check:
 	./demo/test-bedrock-compose.sh
