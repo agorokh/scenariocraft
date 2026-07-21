@@ -10,7 +10,7 @@ services:
         target='/plugins/floodgate-spigot.jar'
         temporary="$${target}.download"
         rm -f "$${temporary}"
-        wget -q -O "$${temporary}" "$${url}"
+        wget -q -T 30 -t 3 -O "$${temporary}" "$${url}"
         echo "$${expected}  $${temporary}" | sha256sum -c -
         mv "$${temporary}" "$${target}"
     volumes:
@@ -21,7 +21,7 @@ services:
       bedrock-plugins:
         condition: service_completed_successfully
     environment:
-      MODRINTH_PROJECTS: geyser,viaversion
+      MODRINTH_PROJECTS: geyser:U1DOZeks,viaversion:CjleI5xo
       MODRINTH_ALLOWED_VERSION_TYPE: beta
       MODRINTH_DEFAULT_VERSION_TYPE: beta
     ports:

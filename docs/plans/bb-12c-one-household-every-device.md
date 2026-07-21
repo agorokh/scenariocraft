@@ -33,6 +33,7 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 | 2026-07-21 | Document Docker Desktop on macOS as unsupported for the overlay's UDP host path and provide a host-run Geyser Standalone fallback. | The issue requires the platform limitation to remain visible rather than overstating support. |
 | 2026-07-21 | Install Floodgate 2.2.5 build 138 through a one-shot Compose service and verify SHA-256 before publishing it to the plugin volume. | A floating `latest` plugin URL executes mutable remote code at every start; a versioned URL plus committed digest fails closed. |
 | 2026-07-21 | State that the Docker bridge overlay does not provide console LAN discovery. | Published UDP accepts direct Bedrock connections but does not relay Geyser's broadcast from the container bridge to the physical LAN. |
+| 2026-07-21 | Pin Geyser and ViaVersion by exact Modrinth version ID, bound Floodgate download retries, and split repository-document assertions into `docs-check`. | Current-head review showed that floating betas, an unbounded setup download, and cross-domain `site-check` assertions could hide runtime drift or erode target contracts. |
 
 ## Surprises & Discoveries
 
@@ -54,6 +55,11 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   mutable Floodgate URL lacked integrity verification, and console discovery was overstated.
   The review fix pins the render environment, restores the Java-only fast gate, verifies the
   Floodgate digest, and narrows the console claim.
+- The next current-head review caught that forcing port 19132 tested an override rather than
+  the Compose fallback, and that the remaining plugin downloads and network wait were still
+  open-ended. The contract now explicitly unsets the caller variable, Geyser and ViaVersion
+  use exact Modrinth version IDs, Floodgate has three 30-second attempts, and `site-check`
+  again owns only `site/` assertions.
 
 ## Acceptance evidence
 
@@ -61,9 +67,13 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   passed: Gradle build, plugin tests, judge tests, renderer tests, jar assembly, and the
   existing page checks all completed successfully.
 - `demo/test-bedrock-compose.sh` rendered the combined Compose model as JSON and asserted the
-  default published `19132/udp` under a polluted caller environment, `geyser,viaversion`,
-  both beta version settings, the versioned Floodgate URL and SHA-256, the Paper dependency
-  on the verified installer, and `ScenarioCraft Speed Build demo` MOTD.
+  default published `19132/udp` with the caller variable explicitly unset, exact Geyser and
+  ViaVersion Modrinth version IDs, both beta version settings, the bounded versioned
+  Floodgate URL and SHA-256, the Paper dependency on the verified installer, and
+  `ScenarioCraft Speed Build demo` MOTD.
+- A `SETUP_ONLY` run of the pinned `itzg/minecraft-server:2026.4.0-java21` image resolved
+  `geyser:U1DOZeks` and `viaversion:CjleI5xo` into `Geyser-Spigot.jar` and
+  `ViaVersion-5.11.1-SNAPSHOT.jar` in a fresh data volume.
 - `demo/check-bedrock.sh` parsed a protocol-valid local RakNet pong fixture and printed
   `SCENARIOCRAFT_BEDROCK_OK` with the fixture's Speed Build MOTD.
 - A fresh isolated Compose-volume smoke downloaded Geyser 2.11.0-b1200, ViaVersion

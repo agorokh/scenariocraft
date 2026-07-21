@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check ci-fast demo demo-dry-run site-check
+.PHONY: bedrock-compose-check ci-fast demo demo-dry-run docs-check site-check
 
 demo:
 	./demo/run-headless.sh
@@ -6,7 +6,7 @@ demo:
 demo-dry-run:
 	SCENARIOCRAFT_DEMO_DRY_RUN=true ./demo/run-headless.sh
 
-ci-fast: site-check
+ci-fast: site-check docs-check
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		sha256sum --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	else \
@@ -22,12 +22,14 @@ site-check:
 	grep -Fq 'name &amp; logo by our 10-year-old designer, working with ChatGPT' site/index.html
 	grep -Fq 'NOT AN OFFICIAL MINECRAFT PRODUCT' site/index.html
 	grep -Fq 'One household, every device' site/index.html
-	grep -Fq 'One household, every device' README.md
-	grep -Fq 'Docker Desktop on macOS' demo/README.md
 	grep -Fq 'no game-client captures' site/index.html
-	test -x demo/check-bedrock.sh
 	! grep -Eiq '(src|href)="(https?:)?//' site/index.html
 	! grep -Eiq '@import|url\([^)]*(https?:)?//' site/styles.css
+
+docs-check:
+	grep -Fq 'One household, every device' README.md
+	grep -Fq 'Docker Desktop on macOS' demo/README.md
+	test -x demo/check-bedrock.sh
 
 bedrock-compose-check:
 	./demo/test-bedrock-compose.sh

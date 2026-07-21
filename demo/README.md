@@ -69,11 +69,14 @@ Bedrock UDP port without changing the Java-only base demo. On a Linux Docker hos
    `127.0.0.1` with that host's LAN address. Keep UDP 19132 open only to the trusted LAN.
 
 The beta version settings are intentional: Geyser currently publishes beta-type Modrinth
-builds. The `bedrock-plugins` setup service downloads Floodgate 2.2.5 build 138 from
-GeyserMC's versioned endpoint and verifies its committed SHA-256 checksum before placing the
-jar in the shared plugin volume; a changed artifact stops startup. Floodgate's Modrinth
-files do not match the Paper and Minecraft version tags used by this demo. ViaVersion
-bridges the newer Java protocol expected by current Geyser builds to Paper 1.21.11.
+builds. The overlay pins Geyser 2.11.0 build 1200 (`U1DOZeks`) and ViaVersion 5.11.1
+snapshot build 1042 (`CjleI5xo`), the exact Modrinth artifacts exercised by this delivery.
+The `bedrock-plugins` setup service downloads Floodgate 2.2.5 build 138 from GeyserMC's
+versioned endpoint with three 30-second attempts and verifies its committed SHA-256 checksum
+before placing the jar in the shared plugin volume; a stalled or changed artifact stops
+startup. Floodgate's Modrinth files do not match the Paper and Minecraft version tags used
+by this demo. ViaVersion bridges the newer Java protocol expected by Geyser to Paper
+1.21.11.
 
 ### How players join
 
