@@ -25,6 +25,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Verify workflow-based Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! build_type="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type)"; then
+            echo "::error title=GitHub Pages setup required::Set Settings > Pages > Build and deployment > Source to GitHub Actions, confirm the github-pages environment allows deployments, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+            exit 1
+          fi
+          if [[ "${build_type}" != "workflow" ]]; then
+            echo "::error title=GitHub Pages source is ${build_type}::Set Settings > Pages > Build and deployment > Source to GitHub Actions, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+            exit 1
+          fi
+
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
