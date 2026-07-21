@@ -287,6 +287,14 @@ main { overflow: hidden; }
   color: var(--ink-muted);
 }
 
+.weekend-beat {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper-soft);
+  border-left: 8px solid var(--grass-bright);
+  box-shadow: var(--shadow-sm);
+}
+
 .household-story {
   width: min(900px, calc(100% - 3rem));
   margin: 0 auto var(--space-7);
@@ -506,6 +514,43 @@ figcaption {
   width: 100%;
   height: auto;
   image-rendering: pixelated;
+}
+
+.challenge-showcase {
+  overflow: hidden;
+  background: var(--deepslate-dark);
+}
+
+.challenge-showcase figcaption { color: var(--on-dark-muted); }
+
+.showcase-prompt {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-4);
+  left: var(--space-4);
+  max-width: calc(100% - 2 * var(--space-4));
+  padding: var(--space-2) var(--space-3);
+  color: var(--deepslate-dark);
+  background: var(--grass-bright);
+  border: var(--border-ui);
+  border-radius: var(--corner-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.showcase-prompt small,
+.showcase-prompt b { display: block; }
+
+.showcase-prompt small {
+  font-size: var(--fs-sm);
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.showcase-prompt b {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  line-height: 1.05;
 }
 
 .framed-render {
@@ -981,6 +1026,42 @@ figcaption {
   font-size: var(--fs-sm);
 }
 
+.provenance > div:first-child > p:last-child {
+  max-width: 760px;
+  color: var(--ink-muted);
+}
+
+.proof-round { margin-top: var(--space-5); }
+
+.proof-thumbnails {
+  margin: var(--space-4) 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.proof-thumbnails figure {
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--frame-surface);
+  border: 3px solid var(--line);
+  border-radius: var(--corner-card);
+}
+
+.proof-thumbnails img {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--deepslate-dark);
+  image-rendering: pixelated;
+}
+
+.proof-thumbnails figcaption {
+  margin-top: var(--space-2);
+  font-size: .78rem;
+  text-align: left;
+}
+
 .provenance ul {
   margin: 0;
   padding: 0;
@@ -1133,6 +1214,8 @@ footer p { margin-bottom: var(--space-2); }
     grid-template-columns: 1fr;
     gap: var(--space-1);
   }
+
+  .proof-thumbnails { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

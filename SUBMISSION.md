@@ -14,6 +14,13 @@ phase machine, plot assignment, chat/title/bossbar feedback, reconnect handling,
 Paper-server round. Later feature PRs carry their own Codex session receipts in the same public
 history.
 
+Build Week gave the team a week; ours became a build weekend and a two-day proof pass. The first
+commit landed Saturday, July 18 at 3:16 PM PT, and the playable core—scaffold, arena, timed round,
+and Secret Chest—was merged by Sunday night. Monday and Tuesday added the judges, voxel renderer,
+played-for-real proof, cross-device bridge, runnable demo, and this page before Tuesday's
+submission. In short: first commit Saturday afternoon, a playable round by Sunday night,
+submitted Tuesday.
+
 ## What we built
 
 ScenarioCraft turns kid-invented game ideas into playable family rituals. Speed Build is its

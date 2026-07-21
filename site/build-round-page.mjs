@@ -47,59 +47,32 @@ export async function generateRoundPage(siteDirectory) {
   ].join('\n'))
   html = replaceRegion(html, 'picker-label',
     `              <text x="320" y="365" text-anchor="middle">${escapeHtml(manifest.picker.toUpperCase())}, YOU'RE UP!</text>`)
-  html = replaceRegion(html, 'challenge', [
-    `            <p>A title filled every robot player's screen and chat recorded the same prompt:`,
-    `              <strong>${escapeHtml(manifest.task)}.</strong></p>`,
-    `          </div>`,
-    `          <figure class="pixel-scene scene-reveal">`,
-    `            <div class="reveal-card" role="img" aria-label="Build ${escapeAttribute(manifest.task)}">`,
-    `              <span class="reveal-label">Real round challenge</span>`,
-    `              <strong>BUILD:</strong>`,
-    `              <b>${escapeHtml(manifest.task)}</b>`,
-    `              <span class="pixel-clock">ROUND ${escapeHtml(roundId.slice(-6))}</span>`,
-    `            </div>`,
-    `            <figcaption>Verbatim task parsed from the played round's chat transcript.</figcaption>`
-  ].join('\n'))
   html = replaceRegion(html, 'timer',
     `            <div class="bossbar" aria-label="Observed build window: ${escapeAttribute(formatClock(buildSeconds))}"><span style="width:100%"></span><b>BUILD! ${escapeHtml(formatClock(buildSeconds))}</b></div>`)
-  html = replaceRegion(html, 'isometric', renderFigure(
-    'render-scene framed-render',
-    `${assetRoot}/${first.renders.isometric}`,
-    `Isometric voxel render of ${first.player}'s real Speed Build plot`,
-    `${first.player} placed ${first.block_count} blocks; this is the renderer's isometric northeast view.`,
-    '<span class="wall wall-left" aria-hidden="true"></span>',
-    '<span class="wall wall-right" aria-hidden="true"></span>'
-  ))
-  html = replaceRegion(html, 'cutaway', renderFigure(
-    'render-scene cutaway',
-    `${assetRoot}/${second.renders.cutaway}`,
-    `Cutaway voxel render of ${second.player}'s real Speed Build plot`,
-    `${second.player} placed ${second.block_count} blocks; this cut-Z image comes from that exact voxel export.`,
-    '<span class="camera-tag">camera only</span>'
-  ))
-  html = replaceRegion(html, 'plan', [
-    `          <figure class="render-scene gallery-plan">`,
-    `            <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>`,
-    `            <img src="${assetRoot}/${escapeAttribute(third.renders.plan)}" width="1024" height="1024"`,
-    `                 alt="Top-down voxel render of ${escapeAttribute(third.player)}'s real Speed Build plot">`,
-    `            <div class="gallery-labels" aria-hidden="true">${manifest.plots.map(plot => `<span>${escapeHtml(plot.player)}</span>`).join('')}</div>`,
-    `            <figcaption>${escapeHtml(third.player)} placed ${escapeHtml(String(third.block_count))} blocks; every gallery label comes from the frozen game manifest.</figcaption>`,
-    `          </figure>`
-  ].join('\n'))
   html = replaceRegion(html, 'verdicts', verdictFigure(winner, results))
   html = replaceRegion(html, 'provenance', [
     `      <div>`,
     `        <p class="kicker">Made here, block by block</p>`,
-    `        <h2 id="made-here-heading">This walkthrough is a passing test</h2>`,
+    `        <h2 id="made-here-heading">Showcase story, played-round proof</h2>`,
+    `        <p>The rainbow volcano above is a scripted showcase build, rendered by the repository's own voxel renderer from checked-in voxel data. It teaches the game; it is not presented as a player's round.</p>`,
     `      </div>`,
+    `      <div class="proof-round">`,
+    `        <h3>Played-for-real proof round</h3>`,
+    `        <p>The separate robot round ran for ${escapeHtml(String(manifest.duration_seconds))} seconds with the verbatim task <strong>${escapeHtml(manifest.task)}</strong>. Its sparse builds stay here because proof should remain visible even when it is not the hero art.</p>`,
+    `        <div class="proof-thumbnails">`,
+    proofThumbnail(assetRoot, first, first.renders.isometric, 'isometric northeast'),
+    proofThumbnail(assetRoot, second, second.renders.cutaway, 'cut-Z'),
+    proofThumbnail(assetRoot, third, third.renders.plan, 'top-down plan'),
+    `        </div>`,
     `      <ul>`,
     `        <li><b>Round</b><span><code>${escapeHtml(manifest.round_id)}</code> · ${escapeHtml(manifest.date)} UTC</span></li>`,
     `        <li><b>Contestants</b><span>the contestants were open-source robot players (Mineflayer)</span></li>`,
-    `        <li><b>Images</b><span>every image is rendered from the blocks they actually placed; displayed colors use explicit entries for their exported materials</span></li>`,
+    `        <li><b>Round images</b><span>rendered from the blocks the robots actually placed; displayed colors use explicit entries for their exported materials</span></li>`,
     `        <li><b>Method</b><span>original renderer output; no game-client captures</span></li>`,
     `        <li><b>Verdicts</b><span>verdicts are unedited AI output; ${escapeHtml(paletteProvenance)}</span></li>`,
     `        <li><b>Source</b><span><code>site/data/rounds/${escapeHtml(roundId)}/</code></span></li>`,
-    `      </ul>`
+    `      </ul>`,
+    `      </div>`
   ].join('\n'))
   return html
 }
@@ -148,16 +121,14 @@ function verdictFigure(contestant, results) {
   ].join('\n')
 }
 
-function renderFigure(className, source, alt, caption, before = '', after = '') {
+function proofThumbnail(assetRoot, plot, renderName, viewLabel) {
   return [
-    `          <figure class="${className}">`,
-    before ? `            ${before}` : '',
-    `            <img src="${escapeAttribute(source)}" width="1024" height="1024"`,
-    `                 alt="${escapeAttribute(alt)}">`,
-    after ? `            ${after}` : '',
-    `            <figcaption>${escapeHtml(caption)}</figcaption>`,
+    `          <figure>`,
+    `            <img src="${assetRoot}/${escapeAttribute(renderName)}" width="1024" height="1024"`,
+    `                 alt="${escapeAttribute(`${viewLabel} render of ${plot.player}'s played-round plot`)}">`,
+    `            <figcaption>${escapeHtml(plot.player)} placed ${escapeHtml(String(plot.block_count))} blocks; rendered from the blocks they actually placed (${escapeHtml(viewLabel)}).</figcaption>`,
     `          </figure>`
-  ].filter(Boolean).join('\n')
+  ].join('\n')
 }
 
 function replaceRegion(html, name, content) {

@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check proof-round proof-check renderer-dist site-check verify-wrapper
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check proof-round proof-check renderer-dist showcase-fixtures-check showcase-scenes site-check verify-wrapper
 
 demo:
 	./demo/run-headless.sh
@@ -9,7 +9,7 @@ demo-dry-run:
 proof-round:
 	./e2e/run-proof-round.sh
 
-ci-fast: site-check proof-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
+ci-fast: site-check proof-check showcase-fixtures-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
 	./gradlew build --no-daemon
 	./evals/run.sh --dry-run --allow-synthetic-only
 
@@ -22,6 +22,13 @@ verify-wrapper:
 
 renderer-dist: verify-wrapper
 	./gradlew :renderer:installDist --no-daemon
+
+showcase-fixtures-check:
+	python3 scripts/generate_showcase_voxels.py --check
+
+showcase-scenes: renderer-dist
+	python3 scripts/generate_showcase_voxels.py --write
+	./gradlew :renderer:regenerateShowcase --no-daemon
 
 evals-unit:
 	python3 -m unittest discover -s evals/tests -p 'test_*.py'

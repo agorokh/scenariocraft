@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Meet ScenarioCraft's Speed Build: a kid-designed, Codex-built, GPT-5.6-refereed OpenAI Build Week game, with a seven-step tour and home quickstart.">
   <title>ScenarioCraft Speed Build — How to Play | OpenAI Build Week</title>
-  <link rel="stylesheet" href="styles.css?v=70d9fbe79154">
+  <link rel="stylesheet" href="styles.css?v=9ccb804b63ed">
 </head>
 <body>
   <a class="skip-link" href="#how-to-play">Skip to the seven steps</a>
@@ -38,6 +38,9 @@
       <h2 id="story-heading">A Speed Build round in 60 seconds</h2>
       <p>No game download needed for this tour. Every picture below was drawn for
         ScenarioCraft or rendered from its own voxel data.</p>
+      <p class="weekend-beat"><strong>Build Week became our build weekend:</strong> first commit
+        Saturday afternoon, a playable round by Sunday night, submitted Tuesday. The last two
+        days made it provable—with judges, renderer views, and a demo a stranger can run.</p>
     </section>
 
     <section class="household-story" aria-labelledby="household-heading">
@@ -119,19 +122,14 @@
             <span class="step-number">03</span>
             <p class="step-kicker">The big reveal</p>
             <h2>The secret challenge is revealed</h2>
-<!-- proof:challenge:start -->
-            <p>A title filled every robot player's screen and chat recorded the same prompt:
-              <strong>A moon base for cats.</strong></p>
+            <p>For this walkthrough, imagine the title filling every screen with one colorful
+              prompt: <strong>A rainbow volcano.</strong></p>
           </div>
-          <figure class="pixel-scene scene-reveal">
-            <div class="reveal-card" role="img" aria-label="Build A moon base for cats">
-              <span class="reveal-label">Real round challenge</span>
-              <strong>BUILD:</strong>
-              <b>A moon base for cats</b>
-              <span class="pixel-clock">ROUND 214219</span>
-            </div>
-            <figcaption>Verbatim task parsed from the played round's chat transcript.</figcaption>
-<!-- proof:challenge:end -->
+          <figure class="render-scene challenge-showcase">
+            <span class="showcase-prompt"><small>Showcase challenge</small><b>A rainbow volcano</b></span>
+            <img src="assets/scenes/rainbow-volcano-iso.png" width="1024" height="1024"
+                 alt="Isometric scripted showcase of a large textured volcano with seven rainbow lava flows and a glowing crater">
+            <figcaption>A scripted showcase build, rendered by the repository's own voxel renderer from checked-in voxel data.</figcaption>
           </figure>
         </article>
       </li>
@@ -148,15 +146,11 @@
             <div class="bossbar" aria-label="Observed build window: 1:29"><span style="width:100%"></span><b>BUILD! 1:29</b></div>
 <!-- proof:timer:end -->
           </div>
-<!-- proof:isometric:start -->
           <figure class="render-scene framed-render">
-            <span class="wall wall-left" aria-hidden="true"></span>
-            <img src="assets/rounds/round-20260721-214219/p1-iso-ne.png" width="1024" height="1024"
-                 alt="Isometric voxel render of Blocky&#39;s real Speed Build plot">
-            <span class="wall wall-right" aria-hidden="true"></span>
-            <figcaption>Blocky placed 6 blocks; this is the renderer&#39;s isometric northeast view.</figcaption>
+            <img src="assets/scenes/rainbow-volcano-walls.png" width="1024" height="1024"
+                 alt="Outside isometric view of tall pale anti-peek walls and roof hiding the rainbow volcano except for a tiny crater glow">
+            <figcaption>The same scripted showcase plot enclosed by renderer-drawn anti-peek walls and roof; only a crater spark escapes.</figcaption>
           </figure>
-<!-- proof:isometric:end -->
         </article>
       </li>
 
@@ -169,14 +163,12 @@
             <p>We can slice through the block-by-block voxel export to show a build in
               progress. Players can never see this view during the round. Nice try, peekers.</p>
           </div>
-<!-- proof:cutaway:start -->
           <figure class="render-scene cutaway">
             <span class="camera-tag">camera only</span>
-            <img src="assets/rounds/round-20260721-214219/p2-cut-z.png" width="1024" height="1024"
-                 alt="Cutaway voxel render of Crafty&#39;s real Speed Build plot">
-            <figcaption>Crafty placed 11 blocks; this cut-Z image comes from that exact voxel export.</figcaption>
+            <img src="assets/scenes/rainbow-volcano-cutaway.png" width="1024" height="1024"
+                 alt="Cut-Z renderer view slicing through the anti-peek walls, roof, volcano rock, and glowing orange lava column">
+            <figcaption>The scripted showcase's cut-Z view slices through walls and volcano together, exposing the hidden lava column.</figcaption>
           </figure>
-<!-- proof:cutaway:end -->
         </article>
       </li>
 
@@ -189,15 +181,13 @@
             <p>Block edits stop, the dividers dissolve, and everybody tours the gallery.
               This is the admire-first part: every build made it from a blank plot.</p>
           </div>
-<!-- proof:plan:start -->
           <figure class="render-scene gallery-plan">
             <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            <img src="assets/rounds/round-20260721-214219/p3-plan.png" width="1024" height="1024"
-                 alt="Top-down voxel render of Pixel's real Speed Build plot">
-            <div class="gallery-labels" aria-hidden="true"><span>Blocky</span><span>Crafty</span><span>Pixel</span></div>
-            <figcaption>Pixel placed 18 blocks; every gallery label comes from the frozen game manifest.</figcaption>
+            <img src="assets/scenes/rainbow-volcano-gallery.png" width="1024" height="1024"
+                 alt="Top-down renderer view of the revealed rainbow volcano with colorful flows, glowing crater, textured cone, and green gallery floor">
+            <div class="gallery-labels" aria-hidden="true"><span>Walls down</span><span>Gallery open</span><span>Judges next</span></div>
+            <figcaption>The walls-down plan view of the scripted showcase leads straight into the three-judge panel.</figcaption>
           </figure>
-<!-- proof:plan:end -->
         </article>
       </li>
 
@@ -287,16 +277,16 @@
           </details>
 
           <details class="ingredient ingredient-issues">
-            <summary data-tooltip="23 public issues · hand-verified July 21, 2026"><span class="recipe-icon" aria-hidden="true">23</span><b>Issues opened</b></summary>
-            <div class="item-tooltip"><strong>23 public issues</strong><span>Every build slice began as a checkable issue. Hand-verified July 21, 2026.</span><a href="https://github.com/agorokh/scenariocraft/issues?q=is%3Aissue">Count the issues</a></div>
+            <summary data-tooltip="27 public issues · hand-verified July 21, 2026"><span class="recipe-icon" aria-hidden="true">27</span><b>Issues opened</b></summary>
+            <div class="item-tooltip"><strong>27 public issues</strong><span>Every build slice began as a checkable issue. Hand-verified July 21, 2026.</span><a href="https://github.com/agorokh/scenariocraft/issues?q=is%3Aissue">Count the issues</a></div>
           </details>
           <details class="ingredient ingredient-codex">
-            <summary data-tooltip="23 issues · 21 merged PRs · three calendar days"><span class="recipe-icon" aria-hidden="true">C</span><b>Codex</b></summary>
-            <div class="item-tooltip"><strong>The builder</strong><span>Codex built every line in this public repository from GitHub issues, with a session receipt on each delivery PR.</span><a href="https://github.com/agorokh/scenariocraft/pulls?q=is%3Apr">Follow the PR trail</a></div>
+            <summary data-tooltip="27 issues · 25 merged PRs · playable Sunday, submitted Tuesday"><span class="recipe-icon" aria-hidden="true">C</span><b>Codex</b></summary>
+            <div class="item-tooltip"><strong>The builder</strong><span>Codex built every line from public issues: first commit Saturday afternoon, a playable round by Sunday night, submitted Tuesday after judges, renders, and demo proof.</span><a href="https://github.com/agorokh/scenariocraft/issues?q=is%3Aissue">Count the issues</a><a href="https://github.com/agorokh/scenariocraft/pulls?q=is%3Apr+is%3Amerged">Count the merges</a></div>
           </details>
           <details class="ingredient ingredient-prs">
-            <summary data-tooltip="21 merged PRs · first commit July 18 · verified July 21"><span class="recipe-icon" aria-hidden="true">21</span><b>PRs merged</b></summary>
-            <div class="item-tooltip"><strong>21 merged pull requests</strong><span>From the first commit on July 18 to July 21: three calendar days elapsed. Hand-verified July 21, 2026.</span><a href="https://github.com/agorokh/scenariocraft/pulls?q=is%3Apr+is%3Amerged">Count the merges</a></div>
+            <summary data-tooltip="25 merged PRs · hand-verified July 21, 2026"><span class="recipe-icon" aria-hidden="true">25</span><b>PRs merged</b></summary>
+            <div class="item-tooltip"><strong>25 merged pull requests</strong><span>The linked query counts merged PRs only. Hand-verified July 21, 2026.</span><a href="https://github.com/agorokh/scenariocraft/pulls?q=is%3Apr+is%3Amerged">Count the merges</a></div>
           </details>
 
           <details class="ingredient ingredient-models">
@@ -327,16 +317,38 @@
 <!-- proof:provenance:start -->
       <div>
         <p class="kicker">Made here, block by block</p>
-        <h2 id="made-here-heading">This walkthrough is a passing test</h2>
+        <h2 id="made-here-heading">Showcase story, played-round proof</h2>
+        <p>The rainbow volcano above is a scripted showcase build, rendered by the repository's own voxel renderer from checked-in voxel data. It teaches the game; it is not presented as a player's round.</p>
       </div>
+      <div class="proof-round">
+        <h3>Played-for-real proof round</h3>
+        <p>The separate robot round ran for 161 seconds with the verbatim task <strong>A moon base for cats</strong>. Its sparse builds stay here because proof should remain visible even when it is not the hero art.</p>
+        <div class="proof-thumbnails">
+          <figure>
+            <img src="assets/rounds/round-20260721-214219/p1-iso-ne.png" width="1024" height="1024"
+                 alt="isometric northeast render of Blocky&#39;s played-round plot">
+            <figcaption>Blocky placed 6 blocks; rendered from the blocks they actually placed (isometric northeast).</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/rounds/round-20260721-214219/p2-cut-z.png" width="1024" height="1024"
+                 alt="cut-Z render of Crafty&#39;s played-round plot">
+            <figcaption>Crafty placed 11 blocks; rendered from the blocks they actually placed (cut-Z).</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/rounds/round-20260721-214219/p3-plan.png" width="1024" height="1024"
+                 alt="top-down plan render of Pixel&#39;s played-round plot">
+            <figcaption>Pixel placed 18 blocks; rendered from the blocks they actually placed (top-down plan).</figcaption>
+          </figure>
+        </div>
       <ul>
         <li><b>Round</b><span><code>round-20260721-214219</code> · 2026-07-21 UTC</span></li>
         <li><b>Contestants</b><span>the contestants were open-source robot players (Mineflayer)</span></li>
-        <li><b>Images</b><span>every image is rendered from the blocks they actually placed; displayed colors use explicit entries for their exported materials</span></li>
+        <li><b>Round images</b><span>rendered from the blocks the robots actually placed; displayed colors use explicit entries for their exported materials</span></li>
         <li><b>Method</b><span>original renderer output; no game-client captures</span></li>
         <li><b>Verdicts</b><span>verdicts are unedited AI output; the live panel and displayed images used the same explicit material colors</span></li>
         <li><b>Source</b><span><code>site/data/rounds/round-20260721-214219/</code></span></li>
       </ul>
+      </div>
 <!-- proof:provenance:end -->
       </div>
     </section>
