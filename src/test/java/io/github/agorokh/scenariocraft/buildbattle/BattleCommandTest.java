@@ -6,7 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
+import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.junit.jupiter.api.Test;
 
 class BattleCommandTest {
@@ -61,17 +64,25 @@ class BattleCommandTest {
         FakeResults results = new FakeResults();
         BattleCommand command = new BattleCommand(settings(true), round, results);
         SenderRig player = new SenderRig("BuilderKid", false, true);
-        SenderRig console = new SenderRig("CONSOLE", true);
+        SenderRig commandBlock = new SenderRig("@", true, BlockCommandSender.class);
+        SenderRig console = new SenderRig("CONSOLE", true, ConsoleCommandSender.class);
+        SenderRig rcon = new SenderRig("Rcon", true, RemoteConsoleCommandSender.class);
 
         command.onCommand(player.sender(), null, "battle", new String[] {"results"});
         command.onCommand(player.sender(), null, "battle", new String[] {"announce-results"});
+        command.onCommand(
+                commandBlock.sender(), null, "battle", new String[] {"announce-results"});
         command.onCommand(console.sender(), null, "battle", new String[] {"announce-results"});
+        command.onCommand(rcon.sender(), null, "battle", new String[] {"announce-results"});
 
         assertEquals(1, results.replays);
-        assertEquals(1, results.announcements);
+        assertEquals(2, results.announcements);
         assertEquals(
                 "Only the server console can announce judge results.",
                 player.messages().getLast());
+        assertEquals(
+                "Only the server console can announce judge results.",
+                commandBlock.messages().getLast());
     }
 
     @Test
@@ -137,14 +148,23 @@ class BattleCommandTest {
         }
 
         private SenderRig(String name, boolean operator, boolean player) {
-            this(messages(name, operator, player));
+            this(messages(
+                    name,
+                    operator,
+                    player ? org.bukkit.entity.Player.class : CommandSender.class));
+        }
+
+        private SenderRig(
+                String name, boolean operator, Class<? extends CommandSender> senderType) {
+            this(messages(name, operator, senderType));
         }
 
         private SenderRig(SenderParts parts) {
             this(parts.sender(), parts.messages());
         }
 
-        private static SenderParts messages(String name, boolean operator, boolean player) {
+        private static SenderParts messages(
+                String name, boolean operator, Class<? extends CommandSender> senderType) {
             List<String> messages = new ArrayList<>();
             java.lang.reflect.InvocationHandler handler =
                     (ignored, method, arguments) ->
@@ -157,9 +177,7 @@ class BattleCommandTest {
                                 }
                                 default -> defaultValue(method.getReturnType());
                             };
-            CommandSender sender = player
-                    ? proxy(org.bukkit.entity.Player.class, handler)
-                    : proxy(CommandSender.class, handler);
+            CommandSender sender = proxy(senderType, handler);
             return new SenderParts(sender, messages);
         }
     }

@@ -70,4 +70,14 @@ class RconConfigTest {
                 IllegalArgumentException.class,
                 () -> RconConfig.load(config, Map.of()));
     }
+
+    @Test
+    void malformedYamlIsReportedAsInvalidConfiguration() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(config, "rcon: [unterminated");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RconConfig.load(config, Map.of()));
+    }
 }

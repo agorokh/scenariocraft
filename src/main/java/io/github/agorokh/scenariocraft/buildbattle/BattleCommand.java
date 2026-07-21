@@ -4,6 +4,8 @@ import java.util.Objects;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.RemoteConsoleCommandSender;
 
 /** Bedrock-compatible text command for starting and stopping Build Battle rounds. */
 public final class BattleCommand implements CommandExecutor {
@@ -50,7 +52,8 @@ public final class BattleCommand implements CommandExecutor {
             return true;
         }
         if (arguments[0].equalsIgnoreCase("announce-results")) {
-            if (sender instanceof org.bukkit.entity.Player) {
+            if (!(sender instanceof ConsoleCommandSender)
+                    && !(sender instanceof RemoteConsoleCommandSender)) {
                 sender.sendMessage("Only the server console can announce judge results.");
                 return true;
             }

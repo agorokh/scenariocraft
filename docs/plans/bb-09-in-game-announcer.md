@@ -19,6 +19,7 @@ lifecycle state, and real-server acceptance evidence.
 - [x] Implement with tests.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
+- [x] Resolve current-head review findings and rerun local CI.
 - [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -32,6 +33,8 @@ session.
 | 2026-07-20 | Make one plugin-side results service own bounded `results.txt` parsing, replay formatting, title/chat broadcast, winner particles, and duplicate suppression. | `/battle results`, the REVEAL poll, and the RCON-triggered command must display the same Bedrock-safe text without racing into duplicate announcements or exposing raw JSON. |
 | 2026-07-20 | Send the plugin's existing `battle results` command over Source RCON instead of assembling player-facing Minecraft commands in the judge. | Paper stays authoritative for current phase, plot coordinates, command output, and deduplication, while the judge still initiates the complete in-game announcement through RCON. |
 | 2026-07-20 | Read RCON settings from `SCENARIOCRAFT_RCON_HOST`, `SCENARIOCRAFT_RCON_PORT`, and `SCENARIOCRAFT_RCON_PASSWORD`, falling back to optional `judge.yml` fields. | Deployments can keep credentials out of the repository while retaining a file-based configuration option requested by the issue. |
+| 2026-07-21 | Keep result-file reads for automatic polling on an async scheduler task and return only the announcement to the server thread. | Even bounded filesystem work can stall a tick on slow storage; a single-flight handoff keeps Bukkit calls on the main thread without overlapping reads. |
+| 2026-07-21 | Treat a missing `results-poll-ticks` as the packaged default, while still rejecting an explicitly invalid value. | Existing generated configs do not gain newly added keys during upgrade, so a mandatory lookup would prevent the plugin from enabling. |
 
 ## Surprises & Discoveries
 
@@ -53,11 +56,16 @@ session.
 - `Server.broadcastMessage` includes command senders in its permission-aware broadcast. While a
   new Paper RCON sender was initializing, that path dereferenced an unset permission delegate.
   Sending chat lines directly to online players is both safer and a closer match for the issue.
+- Current-head review caught three boundary cases that the first pass missed: legacy plugin
+  configs omit newly added keys, command blocks are non-player command senders, and SnakeYAML
+  reports malformed input with its own runtime exception type. Regression tests now pin the
+  backward-compatible default, console/RCON-only command path, and best-effort malformed-YAML
+  behavior.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 135 plugin tests, 76 judge tests, and 14 renderer tests
-  (225 total), zero failures.
+- `make ci-fast` passed on Java 21 with 136 plugin tests, 77 judge tests, and 14 renderer tests
+  (227 total), zero failures after the current-head review fixes.
 - `BattleResultsReaderTest`, `ResultAnnouncementFormatterTest`, and
   `ResultAnnouncementServiceTest` cover the friendly no-results path, strict bounded text
   parsing, raw-JSON rejection/cleaning, 120-code-point chat lines, 64-code-point titles,

@@ -27,7 +27,7 @@ class ResultAnnouncementServiceTest {
     Path temporaryDirectory;
 
     @Test
-    void revealPollAnnouncesOnceWithTitleChatAndWinnerParticles() throws Exception {
+    void revealPollReadsOffThreadAndAnnouncesOnceOnServerThread() throws Exception {
         Path round = temporaryDirectory.resolve("rounds/round-20260721-193000");
         Files.createDirectories(round);
         Files.writeString(
@@ -36,6 +36,8 @@ class ResultAnnouncementServiceTest {
         List<String> titles = new ArrayList<>();
         AtomicInteger particles = new AtomicInteger();
         AtomicInteger cancellations = new AtomicInteger();
+        List<Runnable> asynchronousTasks = new ArrayList<>();
+        List<Runnable> serverTasks = new ArrayList<>();
         World world = proxy(
                 World.class,
                 (ignored, method, arguments) -> {
@@ -65,10 +67,20 @@ class ResultAnnouncementServiceTest {
                 });
         BukkitScheduler scheduler = proxy(
                 BukkitScheduler.class,
-                (ignored, method, arguments) ->
-                        method.getName().equals("runTaskTimer")
-                                ? task
-                                : defaultValue(method.getReturnType()));
+                (ignored, method, arguments) -> {
+                    if (method.getName().equals("runTaskTimer")) {
+                        return task;
+                    }
+                    if (method.getName().equals("runTaskAsynchronously")) {
+                        asynchronousTasks.add((Runnable) arguments[1]);
+                        return task;
+                    }
+                    if (method.getName().equals("runTask")) {
+                        serverTasks.add((Runnable) arguments[1]);
+                        return task;
+                    }
+                    return defaultValue(method.getReturnType());
+                });
         Server server = proxy(
                 Server.class,
                 (ignored, method, arguments) ->
@@ -94,8 +106,14 @@ class ResultAnnouncementServiceTest {
                 20L);
 
         service.poll();
+        assertTrue(playerChat.isEmpty());
+        asynchronousTasks.removeFirst().run();
+        assertTrue(playerChat.isEmpty());
+        serverTasks.removeFirst().run();
         int firstChatCount = playerChat.size();
         service.poll();
+        asynchronousTasks.removeFirst().run();
+        serverTasks.removeFirst().run();
         service.close();
 
         assertTrue(firstChatCount >= 4);

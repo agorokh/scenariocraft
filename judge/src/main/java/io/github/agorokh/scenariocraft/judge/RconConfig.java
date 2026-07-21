@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.snakeyaml.engine.v2.api.Load;
 import org.snakeyaml.engine.v2.api.LoadSettings;
+import org.snakeyaml.engine.v2.exceptions.YamlEngineException;
 
 /** Validated Source-RCON settings loaded from environment or optional judge.yml. */
 record RconConfig(String host, int port, String password, Duration timeout) {
@@ -87,7 +88,12 @@ record RconConfig(String host, int port, String password, Duration timeout) {
                 .setAllowDuplicateKeys(false)
                 .setMaxAliasesForCollections(0)
                 .build();
-        Object loaded = new Load(settings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
+        Object loaded;
+        try {
+            loaded = new Load(settings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
+        } catch (YamlEngineException failure) {
+            throw new IllegalArgumentException("judge.yml contains invalid YAML", failure);
+        }
         if (!(loaded instanceof Map<?, ?> root)) {
             throw new IllegalArgumentException("judge.yml must contain a mapping");
         }

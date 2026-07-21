@@ -49,6 +49,16 @@ class ArenaConfigLoaderTest {
     }
 
     @Test
+    void existingConfigWithoutPollSettingUsesBackwardCompatibleDefault() {
+        YamlConfiguration existingConfig = packagedConfig();
+        existingConfig.set("results-poll-ticks", null);
+
+        BattleSettings settings = ArenaConfigLoader.load(existingConfig);
+
+        assertEquals(20, settings.resultsPollTicks());
+    }
+
+    @Test
     void restrictedStartAllowsOperatorsAndConfiguredNames() {
         YamlConfiguration config = packagedConfig();
         config.set("allow-any-start", false);

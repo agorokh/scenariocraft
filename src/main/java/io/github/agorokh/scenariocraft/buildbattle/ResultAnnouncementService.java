@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -24,11 +25,14 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
             "The latest judge results need a grown-up helper to check the results file.";
 
     private final BattleRound round;
+    private final Plugin plugin;
     private final Server server;
     private final Logger logger;
     private final BattleResultsReader reader;
     private final Function<String, Location> celebrationLocation;
     private final BukkitTask pollTask;
+    private final AtomicBoolean pollInFlight = new AtomicBoolean();
+    private final AtomicBoolean closed = new AtomicBoolean();
     private String announcedFingerprint;
     private String loggedReadFailure;
 
@@ -39,6 +43,7 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
             Function<String, Location> celebrationLocation,
             long pollTicks) {
         this.round = Objects.requireNonNull(round, "round");
+        this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
         this.logger = Objects.requireNonNull(plugin.getLogger(), "logger");
         this.reader = Objects.requireNonNull(reader, "reader");
@@ -108,16 +113,46 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
     }
 
     void poll() {
-        if (round.phase() != RoundPhase.REVEAL) {
+        if (round.phase() != RoundPhase.REVEAL
+                || closed.get()
+                || !pollInFlight.compareAndSet(false, true)) {
             return;
         }
         try {
-            Optional<BattleResultsReader.LatestResult> latest = reader.latestRound();
-            latest.ifPresent(this::announce);
-            loggedReadFailure = null;
-        } catch (IOException | IllegalArgumentException failure) {
+            server.getScheduler().runTaskAsynchronously(plugin, this::readLatestForPoll);
+        } catch (RuntimeException failure) {
+            pollInFlight.set(false);
             logReadFailure(failure);
         }
+    }
+
+    private void readLatestForPoll() {
+        PollRead result;
+        try {
+            result = new PollRead(reader.latestRound(), null);
+        } catch (IOException | IllegalArgumentException failure) {
+            result = new PollRead(Optional.empty(), failure);
+        }
+        PollRead completed = result;
+        try {
+            server.getScheduler().runTask(plugin, () -> completePoll(completed));
+        } catch (RuntimeException failure) {
+            pollInFlight.set(false);
+            logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
+        }
+    }
+
+    private void completePoll(PollRead result) {
+        pollInFlight.set(false);
+        if (closed.get() || round.phase() != RoundPhase.REVEAL) {
+            return;
+        }
+        if (result.failure() != null) {
+            logReadFailure(result.failure());
+            return;
+        }
+        result.latest().ifPresent(this::announce);
+        loggedReadFailure = null;
     }
 
     private boolean announce(BattleResultsReader.LatestResult latest) {
@@ -170,6 +205,10 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
 
     @Override
     public void close() {
+        closed.set(true);
         pollTask.cancel();
     }
+
+    private record PollRead(
+            Optional<BattleResultsReader.LatestResult> latest, Exception failure) {}
 }
