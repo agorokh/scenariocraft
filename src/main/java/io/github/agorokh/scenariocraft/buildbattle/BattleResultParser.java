@@ -21,6 +21,14 @@ final class BattleResultParser {
             Pattern.compile("  (.{1,64}): [0-9]+(?:\\.[0-9]{1,2})? — (.{1,500})");
     private static final Pattern WINNER =
             Pattern.compile("Winner: (.{1,80}) with [0-9]+(?:\\.[0-9]{1,2})?");
+    private static final Pattern CRUEL_LANGUAGE =
+            Pattern.compile(
+                    "\\b(?:awful|bad|boring|disgusting|dumb|embarrassing|failure|garbage|gross|"
+                            + "hate|horrible|idiot|incompetent|lazy|loser|nobody|pathetic|pointless|"
+                            + "shame|stupid|sucks?|talentless|terrible|trash|ugly|useless|"
+                            + "worthless|worst)\\b|\\b(?:no|without) talent\\b|"
+                            + "\\black(?:s|ing)? talent\\b",
+                    Pattern.CASE_INSENSITIVE);
 
     BattleResult read(Path path) throws IOException {
         if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
@@ -132,6 +140,9 @@ final class BattleResultParser {
         }
         if (normalized.codePoints().anyMatch(BattleResultParser::unsafeCodePoint)) {
             throw invalid(label + " contains unsafe characters");
+        }
+        if (CRUEL_LANGUAGE.matcher(normalized).find()) {
+            throw invalid(label + " must use kid-appropriate language");
         }
         return normalized;
     }

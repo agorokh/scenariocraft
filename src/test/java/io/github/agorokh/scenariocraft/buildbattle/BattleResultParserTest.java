@@ -63,4 +63,23 @@ class BattleResultParserTest {
                 IllegalArgumentException.class,
                 () -> parser.parse("Round: round-20260721-193000\nTask: T\n" + overlong));
     }
+
+    @Test
+    void rejectsCruelCopiedFeedbackBeforeItCanReachPlayers() {
+        String cruel =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Alex (p1)
+                  Captain Comet: 2.00 — You are stupid.
+
+                Winner: Alex with 2.00
+                """;
+
+        IllegalArgumentException failure =
+                assertThrows(IllegalArgumentException.class, () -> parser.parse(cruel));
+
+        assertTrue(failure.getMessage().contains("kid-appropriate"));
+    }
 }

@@ -78,6 +78,27 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void delayedRconAnnouncementCannotPresentAnInactiveRound() throws Exception {
+        Path rounds = temporaryDirectory.resolve("rcon-rounds");
+        Path previous = Files.createDirectories(rounds.resolve("round-20260721-190000"));
+        Files.writeString(
+                previous.resolve("results.txt"),
+                BattleResultRepositoryTest.validResult("round-20260721-190000"));
+        ServiceRig rig =
+                new ServiceRig(
+                        rounds,
+                        RoundPhase.REVEAL,
+                        "round-20260721-193000");
+        List<String> consoleMessages = new ArrayList<>();
+
+        rig.service.announceRound("round-20260721-190000", sender(consoleMessages));
+
+        assertTrue(rig.titles.isEmpty());
+        assertTrue(consoleMessages.getLast().contains("no longer the active reveal"));
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();

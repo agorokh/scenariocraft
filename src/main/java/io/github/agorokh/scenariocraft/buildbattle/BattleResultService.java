@@ -96,6 +96,12 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                         sender.sendMessage("That round does not have judging results yet.");
                         return;
                     }
+                    if (phase.get() != RoundPhase.REVEAL
+                            || resultRoundId.get().filter(roundId::equals).isEmpty()) {
+                        sender.sendMessage(
+                                "That judged round is no longer the active reveal, so it was not announced.");
+                        return;
+                    }
                     announce(result.orElseThrow());
                     sender.sendMessage("ScenarioCraft announced " + roundId + ".");
                 },
