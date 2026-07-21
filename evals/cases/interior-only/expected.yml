@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source": {"kind": "synthetic", "reference": "Issue #13 cutaway-view regression case"},
+  "scores": {
+    "theme_fit": {"min": 6, "max": 9},
+    "creativity": {"min": 6, "max": 9},
+    "effort": {"min": 6, "max": 9},
+    "detail": {"min": 7, "max": 10}
+  },
+  "ordering": {"higher_than": ["empty-plot", "single-block", "off-theme-elaborate"], "lower_than": ["on-theme-detailed"]},
+  "tone": {"genuine_positive": true, "banned_phrases": ["empty", "nothing inside", "plain box", "you failed"]},
+  "structure": {"valid_schema": true, "reason_precedes_score": true}
+}

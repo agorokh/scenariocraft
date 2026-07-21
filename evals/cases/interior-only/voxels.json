@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "interior-only",
+  "origin": [0, 64, 0],
+  "size": [3, 3, 3],
+  "palette": ["minecraft:air", "minecraft:stone", "minecraft:oak_planks", "minecraft:red_wool"],
+  "blocks": [1,1,1,1,1,1,1,1,1, 1,2,1,2,3,2,1,2,1, 1,1,1,1,1,1,1,1,1]
+}

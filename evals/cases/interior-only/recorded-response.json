@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "round_id": "round-20260721-120005",
+  "task": "Build a cozy mountain cabin",
+  "contestants": [{
+    "plot_id": "p1",
+    "player": "Eval builder",
+    "verdicts": [
+      {"persona": "Professor Brickworth", "reasoning": "The center cross-sections reveal an oak-lined room and red-wool centerpiece behind the stone shell.", "scores": {"theme_fit": 8, "creativity": 7, "effort": 8, "detail": 9}, "comment": "Your interior room has a warm detailed color pattern. Consider adding a doorway through the stone wall next."},
+      {"persona": "Granny Redstone", "reasoning": "The cutaway views show a deliberately furnished cabin interior that exterior views alone cannot reveal.", "scores": {"theme_fit": 8, "creativity": 8, "effort": 8, "detail": 9}, "comment": "Your cozy interior design makes the hidden room feel welcoming. Keep the warm palette and add a small window next."}
+    ],
+    "mean": 8.125,
+    "failures": []
+  }],
+  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 8.125}
+}

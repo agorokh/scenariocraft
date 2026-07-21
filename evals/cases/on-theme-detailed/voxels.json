@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "on-theme-detailed",
+  "origin": [0, 64, 0],
+  "size": [3, 3, 3],
+  "palette": ["minecraft:air", "minecraft:dark_oak_planks", "minecraft:white_wool", "minecraft:oak_fence"],
+  "blocks": [0,1,0,1,1,1,0,1,0, 0,3,0,1,1,1,0,3,0, 0,2,0,0,2,0,0,2,0]
+}
