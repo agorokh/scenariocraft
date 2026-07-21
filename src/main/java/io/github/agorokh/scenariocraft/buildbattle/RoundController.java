@@ -5,7 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.math.BigDecimal;
+import java.io.File;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 import java.util.function.IntUnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.regex.Pattern;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -74,6 +73,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -96,8 +96,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int MAX_SNAPSHOT_SLOTS = 128;
     private static final double TELEPORT_CONFIRMATION_EPSILON = 1.0E-6;
     private static final long[] TELEPORT_CONFIRMATION_DELAYS = {1L, 4L, 15L};
-    private static final Pattern COMMAND_WORLD_KEY =
-            Pattern.compile("[a-z0-9._-]+:[a-z0-9/._-]+");
 
     private final Plugin plugin;
     private final Server server;
@@ -109,13 +107,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
     private final RoundExporter roundExporter;
+    private final TeleportTransport teleportTransport;
+    private final TeleportRecoveryStore recoveryStore;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
     private final Set<UUID> strandedArenaPlayers = new LinkedHashSet<>();
-    private final Map<UUID, Long> teleportAttempts = new LinkedHashMap<>();
-    private final Map<UUID, Location> expectedTeleportDestinations =
-            new LinkedHashMap<>();
+    private final Map<UUID, GameMode> recoveryGameModes = new LinkedHashMap<>();
+    private final Map<UUID, TeleportAttempt> teleportAttempts = new LinkedHashMap<>();
     private final Set<UUID> pendingPlotEntries = new LinkedHashSet<>();
     private final NamespacedKey inventorySnapshotKey;
     private final NamespacedKey teleportRecoveryKey;
@@ -132,7 +131,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private boolean movingContestantsToPlots;
     private boolean plotEntryFailed;
     private boolean awaitingPlotEntries;
-    private long nextTeleportAttempt;
 
     public RoundController(
             Plugin plugin,
@@ -152,7 +150,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         plugin,
                         arena.world(),
                         settings.arena().blocksPerTick(),
-                        logger));
+                        logger),
+                new TeleportTransport(plugin.getServer()),
+                recoveryStoreFor(plugin));
+    }
+
+    public RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            TeleportTransport teleportTransport,
+            TeleportRecoveryStore recoveryStore) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                bound -> ThreadLocalRandom.current().nextInt(bound),
+                ignored -> placeTaskBook(arena),
+                RoundExportService.forPlugin(
+                        plugin,
+                        arena.world(),
+                        settings.arena().blocksPerTick(),
+                        logger),
+                teleportTransport,
+                recoveryStore);
     }
 
     RoundController(
@@ -171,7 +196,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 logger,
                 randomIndex,
                 taskBookPlacer,
-                ignored -> {});
+                ignored -> {},
+                new TeleportTransport(plugin.getServer()),
+                TeleportRecoveryStore.inMemory());
     }
 
     RoundController(
@@ -183,6 +210,30 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             IntUnaryOperator randomIndex,
             Consumer<String> taskBookPlacer,
             RoundExporter roundExporter) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                randomIndex,
+                taskBookPlacer,
+                roundExporter,
+                new TeleportTransport(plugin.getServer()),
+                TeleportRecoveryStore.inMemory());
+    }
+
+    RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            IntUnaryOperator randomIndex,
+            Consumer<String> taskBookPlacer,
+            RoundExporter roundExporter,
+            TeleportTransport teleportTransport,
+            TeleportRecoveryStore recoveryStore) {
         Objects.requireNonNull(plugin, "plugin");
         this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
@@ -194,6 +245,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.taskDeck = new TaskDeck(settings.tasks(), randomIndex);
         this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
         this.roundExporter = Objects.requireNonNull(roundExporter, "roundExporter");
+        this.teleportTransport = Objects.requireNonNull(teleportTransport, "teleportTransport");
+        this.recoveryStore = Objects.requireNonNull(recoveryStore, "recoveryStore");
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
         this.teleportRecoveryKey =
@@ -205,6 +258,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         server.getPluginManager().registerEvents(this, plugin);
         this.timerTask =
                 server.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
+        strandedArenaPlayers.addAll(recoveryStore.pendingPlayers());
+        if (!strandedArenaPlayers.isEmpty()) {
+            logger.warning(
+                    "SCENARIOCRAFT_PENDING_RECOVERY_COUNT "
+                            + strandedArenaPlayers.size()
+                            + " player(s) await a confirmed hub return from "
+                            + recoveryStore.location()
+                            + "; recovery resumes when each player rejoins.");
+        }
         for (Player player : server.getOnlinePlayers()) {
             boolean hadPendingInventory =
                     player.getPersistentDataContainer()
@@ -214,6 +276,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 retryStrandedExit(player);
             }
         }
+    }
+
+    private static TeleportRecoveryStore recoveryStoreFor(Plugin plugin) {
+        File dataFolder = plugin.getDataFolder();
+        if (dataFolder == null) {
+            return TeleportRecoveryStore.inMemory();
+        }
+        return TeleportRecoveryStore.open(
+                dataFolder.toPath().resolve("pending-teleport-recovery.txt"));
     }
 
     @Override
@@ -250,6 +321,24 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         .filter(player -> !settings.isExempt(player.getName()))
                         .sorted(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER))
                         .toList();
+        List<Player> pendingRecoveryPlayers =
+                players.stream().filter(this::hasPendingTeleportRecovery).toList();
+        if (!pendingRecoveryPlayers.isEmpty()) {
+            for (Player player : pendingRecoveryPlayers) {
+                retryStrandedExit(player);
+            }
+            if (players.stream().anyMatch(this::hasPendingTeleportRecovery)) {
+                sender.sendMessage(
+                        "A builder is still returning safely to the hub. Please wait for a grown-up helper.");
+                return;
+            }
+        }
+        if (!teleportTransport.isAvailable()) {
+            reportTransportUnavailable(
+                    sender,
+                    "round start requires minecraft:execute and minecraft:tp");
+            return;
+        }
         if (players.size() > settings.arena().maxPlots()) {
             sender.sendMessage(
                     "There are more builders than plots right now. Please ask a grown-up helper to adjust the arena.");
@@ -297,7 +386,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 plots.get(index),
                                 boundaries.get(index),
                                 inventorySnapshot));
-                strandedArenaPlayers.remove(player.getUniqueId());
             }
         } catch (RuntimeException failure) {
             for (Player player : players) {
@@ -380,6 +468,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         notifyJoiningOperatorOfPendingTeleportFailures(player);
+        boolean hadPendingInventory =
+                player.getPersistentDataContainer()
+                        .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
+        if (hasPendingTeleportRecovery(player)) {
+            if (hadPendingInventory) {
+                restorePendingInventory(
+                        player, () -> resumeActiveContestant(player));
+            } else {
+                retryStrandedExit(
+                        player, 0L, () -> resumeActiveContestant(player));
+            }
+            return;
+        }
         Contestant contestant = contestants.get(player.getUniqueId());
         if (contestant != null && phase() != RoundPhase.IDLE) {
             try {
@@ -395,16 +496,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             applyCurrentPhase(player, contestant);
             return;
         }
-        boolean hadPendingInventory =
-                player.getPersistentDataContainer()
-                        .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         restorePendingInventory(player);
         if (hadPendingInventory) {
-            return;
-        }
-        if (strandedArenaPlayers.contains(player.getUniqueId())
-                || hasPendingTeleportRecovery(player)) {
-            retryStrandedExit(player);
             return;
         }
         if (phase() == RoundPhase.REVEAL) {
@@ -437,6 +530,64 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (spectator != null) {
             restoreSpectator(player, spectator);
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        Contestant contestant = contestants.get(player.getUniqueId());
+        if (phase() != RoundPhase.BUILDING || contestant == null) {
+            return;
+        }
+
+        player.setGameMode(GameMode.ADVENTURE);
+        buildBossBar.removePlayer(player);
+        if (hasPendingTeleportRecovery(player)) {
+            event.setRespawnLocation(hubLocation());
+            retryStrandedExit(
+                    player, 1L, () -> resumeActiveContestant(player));
+            return;
+        }
+        if (!isUsablePlot(contestant)) {
+            Location hub = hubLocation();
+            event.setRespawnLocation(hub);
+            markStrandedForRecovery(player);
+            recoveryGameModes.putIfAbsent(
+                    player.getUniqueId(), contestant.inventorySnapshot().originalGameMode());
+            reportRelocationFailure(
+                    player,
+                    hub,
+                    "assigned plot was unavailable during BUILDING respawn",
+                    null);
+            teleportAfter(
+                    player,
+                    hub,
+                    () ->
+                            finishHubRecovery(
+                                    player,
+                                    () -> resetPersonalBorder(player)),
+                    () -> markStrandedForRecovery(player),
+                    1L);
+            return;
+        }
+
+        Location destination = plotLocation(contestant);
+        event.setRespawnLocation(destination);
+        teleportAfter(
+                player,
+                destination,
+                () -> {
+                    if (phase() == RoundPhase.BUILDING
+                            && contestants.get(player.getUniqueId()) == contestant) {
+                        applyPersonalBorder(player, contestant);
+                        enableBuildingControls(player);
+                    } else {
+                        player.setGameMode(GameMode.ADVENTURE);
+                        markStrandedForRecovery(player);
+                    }
+                },
+                () -> constrainContestantAfterFailedExit(player, contestant),
+                1L);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -714,11 +865,26 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     public void onContestantTeleport(PlayerTeleportEvent event) {
         Contestant contestant = contestants.get(event.getPlayer().getUniqueId());
         Location destination = event.getTo();
+        if (destination == null) {
+            return;
+        }
+        if (hasPendingTeleportRecovery(event.getPlayer())) {
+            if (matchesExpectedTeleport(event.getPlayer(), destination)) {
+                return;
+            }
+            if (!sameDestination(hubLocation(), destination)) {
+                event.setCancelled(true);
+                return;
+            }
+            retryStrandedExit(
+                    event.getPlayer(), 1L, () -> resumeActiveContestant(event.getPlayer()));
+            return;
+        }
         boolean plotContainmentActive =
                 phase() == RoundPhase.BUILDING
                         || (phase() == RoundPhase.NOTE_PICK
                                 && awaitingPlotEntries);
-        if (!plotContainmentActive || destination == null) {
+        if (!plotContainmentActive) {
             return;
         }
         if (contestant == null) {
@@ -827,6 +993,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         closed = true;
+        settleTeleportAttemptsForClose(false);
         timerTask.cancel();
         blockEditor.cancel();
         timer = null;
@@ -838,6 +1005,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             logger.log(Level.WARNING, "Could not close the round exporter cleanly", failure);
         }
         restoreRoundPlayers();
+        settleTeleportAttemptsForClose(true);
         contestants.clear();
         revealSpectators.clear();
         pendingPlotEntries.clear();
@@ -1162,6 +1330,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void applyCurrentPhase(Player player, Contestant contestant) {
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
+        }
         clearRoundInventory(player);
         switch (phase()) {
             case PREPARING, GATHERING -> moveToHub(player, contestant);
@@ -1186,15 +1362,31 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveToHub(Player player, Contestant contestant) {
-        resetPersonalBorder(player);
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
+        }
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
                 player,
                 hubLocation(),
-                () -> buildBossBar.removePlayer(player),
+                () -> {
+                    resetPersonalBorder(player);
+                    buildBossBar.removePlayer(player);
+                },
                 () -> {
                     if (phase() == RoundPhase.BUILDING) {
                         constrainContestantAfterFailedExit(player, contestant);
+                    } else {
+                        recoveryGameModes.putIfAbsent(
+                                player.getUniqueId(),
+                                contestant.inventorySnapshot().originalGameMode());
+                        markStrandedForRecovery(player);
+                        player.setGameMode(GameMode.ADVENTURE);
                     }
                     buildBossBar.removePlayer(player);
                 });
@@ -1204,17 +1396,22 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (awaitingPlotEntries) {
             pendingPlotEntries.add(player.getUniqueId());
         }
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
+        }
         clearRoundInventory(player);
-        resetPersonalBorder(player);
+        if (!isInsideAssignedPlot(player, contestant)) {
+            resetPersonalBorder(player);
+        }
         player.setGameMode(GameMode.ADVENTURE);
-        PlotBounds plot = contestant.plot();
         teleport(
                 player,
-                new Location(
-                        arena.world(),
-                        plot.centerX() + 0.5,
-                        arena.floorY() + 1.0,
-                        plot.centerZ() + 0.5),
+                plotLocation(contestant),
                 () -> {
                     applyPersonalBorder(player, contestant);
                     if (phase() == RoundPhase.BUILDING) {
@@ -1265,6 +1462,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveContestantToTour(Player player, Contestant contestant) {
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player, 0L, () -> resumeActiveContestant(player));
+            return;
+        }
         clearRoundInventory(player);
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
@@ -1293,12 +1495,13 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private void restoreContestantToHub(Player player, Contestant contestant) {
         buildBossBar.removePlayer(player);
-        resetPersonalBorder(player);
         markStrandedForRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, contestant.inventorySnapshot());
             inventoryRestored = true;
+            recoveryGameModes.put(
+                    player.getUniqueId(), contestant.inventorySnapshot().originalGameMode());
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -1308,16 +1511,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "Your saved items need a grown-up helper before the next battle.");
             player.setGameMode(GameMode.ADVENTURE);
         }
-        boolean restored = inventoryRestored;
         teleport(
                 player,
                 hubLocation(),
-                () -> {},
+                () ->
+                        finishHubRecovery(
+                                player,
+                                () -> resetPersonalBorder(player)),
                 () -> {
                     markStrandedForRecovery(player);
-                    if (!restored) {
-                        player.setGameMode(GameMode.ADVENTURE);
-                    }
+                    player.setGameMode(GameMode.ADVENTURE);
                 });
     }
 
@@ -1525,15 +1728,18 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private boolean matchesExpectedTeleport(
             Player player, Location destination) {
-        Location expected =
-                expectedTeleportDestinations.get(player.getUniqueId());
-        return expected != null
-                && expected.getWorld() == destination.getWorld()
-                && Math.abs(expected.getX() - destination.getX())
+        TeleportAttempt attempt = teleportAttempts.get(player.getUniqueId());
+        Location expected = attempt == null ? null : attempt.destination();
+        return expected != null && sameDestination(expected, destination);
+    }
+
+    private static boolean sameDestination(Location expected, Location actual) {
+        return expected.getWorld() == actual.getWorld()
+                && Math.abs(expected.getX() - actual.getX())
                         <= TELEPORT_CONFIRMATION_EPSILON
-                && Math.abs(expected.getY() - destination.getY())
+                && Math.abs(expected.getY() - actual.getY())
                         <= TELEPORT_CONFIRMATION_EPSILON
-                && Math.abs(expected.getZ() - destination.getZ())
+                && Math.abs(expected.getZ() - actual.getZ())
                         <= TELEPORT_CONFIRMATION_EPSILON;
     }
 
@@ -1555,8 +1761,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void constrainContestantAfterFailedExit(
             Player player, Contestant contestant) {
         markStrandedForRecovery(player);
+        recoveryGameModes.putIfAbsent(
+                player.getUniqueId(), contestant.inventorySnapshot().originalGameMode());
         player.setGameMode(GameMode.ADVENTURE);
-        applyPersonalBorder(player, contestant);
+        if (isInsideAssignedPlot(player, contestant)) {
+            applyPersonalBorder(player, contestant);
+        } else {
+            resetPersonalBorder(player);
+        }
         buildBossBar.removePlayer(player);
     }
 
@@ -1570,246 +1782,190 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             Location destination,
             Runnable onSuccess,
             Runnable onFailure) {
-        long attempt = ++nextTeleportAttempt;
+        beginTeleportAttempt(player, destination, onSuccess, onFailure, 0L);
+    }
+
+    private void teleportAfter(
+            Player player,
+            Location destination,
+            Runnable onSuccess,
+            Runnable onFailure,
+            long delayTicks) {
+        beginTeleportAttempt(player, destination, onSuccess, onFailure, delayTicks);
+    }
+
+    private void beginTeleportAttempt(
+            Player player,
+            Location destination,
+            Runnable onSuccess,
+            Runnable onFailure,
+            long delayTicks) {
+        Objects.requireNonNull(destination.getWorld(), "teleport destination world");
+        TeleportAttempt previous = teleportAttempts.remove(player.getUniqueId());
+        if (previous != null) {
+            cancelAttempt(previous);
+        }
+        TeleportAttempt attempt =
+                new TeleportAttempt(
+                        player,
+                        destination.clone(),
+                        onSuccess,
+                        onFailure);
         teleportAttempts.put(player.getUniqueId(), attempt);
-        expectedTeleportDestinations.put(
-                player.getUniqueId(), destination.clone());
-        World world =
-                Objects.requireNonNull(
-                        destination.getWorld(), "teleport destination world");
-        String worldKey = world.getKey().toString();
-        if (!COMMAND_WORLD_KEY.matcher(worldKey).matches()) {
-            logger.severe(
-                    "SCENARIOCRAFT_TELEPORT_FAILURE invalid arena world key: "
-                            + worldKey);
-            player.sendMessage(
-                    "The battle could not move you safely. Please ask a grown-up helper.");
-            notifyOperatorsOfTeleportFailure(player, destination);
-            finishTeleportFailure(player, attempt, onFailure);
+        if (delayTicks > 0L) {
+            scheduleOwnedTask(
+                    attempt,
+                    () -> dispatchTeleport(attempt, false),
+                    delayTicks,
+                    "teleport dispatch scheduling failed");
+        } else {
+            dispatchTeleport(attempt, false);
+        }
+    }
+
+    private void dispatchTeleport(TeleportAttempt attempt, boolean retry) {
+        if (!isCurrentTeleportAttempt(attempt)) {
+            return;
+        }
+        Player player = attempt.player();
+        Location destination = attempt.destination();
+        if (!player.isOnline()) {
+            reportTeleportFailure(
+                    attempt,
+                    "player disconnected before teleport dispatch",
+                    null);
+            return;
+        }
+        if (playerReached(player, destination)) {
+            finishTeleportSuccess(attempt);
+            return;
+        }
+        if (!teleportTransport.isAvailable()) {
+            reportTeleportFailure(
+                    attempt,
+                    "namespaced console transport is unavailable",
+                    null);
             return;
         }
         try {
-            String command =
-                    "minecraft:execute in "
-                            + worldKey
-                            + " run minecraft:tp "
-                            + player.getUniqueId()
-                            + " "
-                            + commandNumber(destination.getX())
-                            + " "
-                            + commandNumber(destination.getY())
-                            + " "
-                            + commandNumber(destination.getZ())
-                            + " "
-                            + commandNumber(destination.getYaw())
-                            + " "
-                            + commandNumber(destination.getPitch());
-            if (!server.dispatchCommand(server.getConsoleSender(), command)) {
-                scheduleTeleportDispatchRetry(
-                        player,
-                        destination,
-                        command,
-                        attempt,
-                        onSuccess,
-                        onFailure);
+            if (!teleportTransport.dispatch(player, destination)) {
+                if (retry) {
+                    reportTeleportFailure(
+                            attempt,
+                            "console command was rejected twice",
+                            null);
+                } else {
+                    scheduleOwnedTask(
+                            attempt,
+                            () -> dispatchTeleport(attempt, true),
+                            1L,
+                            "teleport dispatch retry scheduling failed");
+                }
                 return;
             }
             if (playerReached(player, destination)) {
-                finishTeleportSuccess(player, attempt, onSuccess);
+                finishTeleportSuccess(attempt);
                 return;
             }
-            scheduleTeleportConfirmation(
-                    player,
-                    destination,
-                    attempt,
-                    onSuccess,
-                    onFailure,
-                    0);
+            scheduleTeleportConfirmation(attempt, 0);
         } catch (RuntimeException failure) {
             reportTeleportFailure(
-                    player,
-                    destination,
-                    "console dispatch or verification scheduling failed",
-                    failure,
                     attempt,
-                    onFailure);
+                    retry
+                            ? "console dispatch retry failed"
+                            : "console dispatch or verification scheduling failed",
+                    failure);
         }
     }
 
-    private void scheduleTeleportDispatchRetry(
-            Player player,
-            Location destination,
-            String command,
-            long attempt,
-            Runnable onSuccess,
-            Runnable onFailure) {
+    private void scheduleTeleportConfirmation(TeleportAttempt attempt, int delayIndex) {
+        scheduleOwnedTask(
+                attempt,
+                () -> {
+                    if (!isCurrentTeleportAttempt(attempt)) {
+                        return;
+                    }
+                    Player player = attempt.player();
+                    if (playerReached(player, attempt.destination())) {
+                        finishTeleportSuccess(attempt);
+                        return;
+                    }
+                    if (closed || !player.isOnline()) {
+                        reportTeleportFailure(
+                                attempt,
+                                closed
+                                        ? "controller closed before teleport confirmation"
+                                        : "player disconnected before teleport confirmation",
+                                null);
+                        return;
+                    }
+                    int nextDelayIndex = delayIndex + 1;
+                    if (nextDelayIndex < TELEPORT_CONFIRMATION_DELAYS.length) {
+                        scheduleTeleportConfirmation(attempt, nextDelayIndex);
+                        return;
+                    }
+                    reportTeleportFailure(
+                            attempt,
+                            "console command did not move the player after 20 ticks",
+                            null);
+                },
+                TELEPORT_CONFIRMATION_DELAYS[delayIndex],
+                "teleport verification scheduling failed");
+    }
+
+    private void scheduleOwnedTask(
+            TeleportAttempt attempt,
+            Runnable action,
+            long delayTicks,
+            String schedulingFailureReason) {
         try {
-            server.getScheduler()
-                    .runTaskLater(
-                            plugin,
-                            () -> {
-                                if (!isCurrentTeleportAttempt(player, attempt)) {
-                                    return;
-                                }
-                                if (playerReached(player, destination)) {
-                                    finishTeleportSuccess(
-                                            player, attempt, onSuccess);
-                                    return;
-                                }
-                                if (closed || !player.isOnline()) {
-                                    reportTeleportFailure(
-                                            player,
-                                            destination,
-                                            "player unavailable before teleport dispatch retry",
-                                            null,
-                                            attempt,
-                                            onFailure);
-                                    return;
-                                }
-                                try {
-                                    if (!server.dispatchCommand(
-                                            server.getConsoleSender(), command)) {
-                                        reportTeleportFailure(
-                                                player,
-                                                destination,
-                                                "console command was rejected twice",
-                                                null,
-                                                attempt,
-                                                onFailure);
-                                        return;
-                                    }
-                                    if (playerReached(player, destination)) {
-                                        finishTeleportSuccess(
-                                                player, attempt, onSuccess);
-                                        return;
-                                    }
-                                    scheduleTeleportConfirmation(
-                                            player,
-                                            destination,
-                                            attempt,
-                                            onSuccess,
-                                            onFailure,
-                                            0);
-                                } catch (RuntimeException failure) {
-                                    reportTeleportFailure(
-                                            player,
-                                            destination,
-                                            "console dispatch retry failed",
-                                            failure,
-                                            attempt,
-                                            onFailure);
-                                }
-                            },
-                            1L);
+            BukkitTask task =
+                    server.getScheduler().runTaskLater(plugin, action, delayTicks);
+            if (isCurrentTeleportAttempt(attempt)) {
+                attempt.tasks().add(task);
+            } else {
+                task.cancel();
+            }
         } catch (RuntimeException failure) {
-            reportTeleportFailure(
-                    player,
-                    destination,
-                    "teleport dispatch retry scheduling failed",
-                    failure,
-                    attempt,
-                    onFailure);
+            reportTeleportFailure(attempt, schedulingFailureReason, failure);
         }
     }
 
-    private void scheduleTeleportConfirmation(
-            Player player,
-            Location destination,
-            long attempt,
-            Runnable onSuccess,
-            Runnable onFailure,
-            int delayIndex) {
-        try {
-            server.getScheduler()
-                    .runTaskLater(
-                            plugin,
-                            () -> {
-                                if (!isCurrentTeleportAttempt(player, attempt)) {
-                                    return;
-                                }
-                                if (playerReached(player, destination)) {
-                                    finishTeleportSuccess(
-                                            player, attempt, onSuccess);
-                                    return;
-                                }
-                                if (closed || !player.isOnline()) {
-                                    reportTeleportFailure(
-                                            player,
-                                            destination,
-                                            closed
-                                                    ? "controller closed before teleport confirmation"
-                                                    : "player disconnected before teleport confirmation",
-                                            null,
-                                            attempt,
-                                            onFailure);
-                                    return;
-                                }
-                                int nextDelayIndex = delayIndex + 1;
-                                if (nextDelayIndex
-                                        < TELEPORT_CONFIRMATION_DELAYS.length) {
-                                    scheduleTeleportConfirmation(
-                                            player,
-                                            destination,
-                                            attempt,
-                                            onSuccess,
-                                            onFailure,
-                                            nextDelayIndex);
-                                    return;
-                                }
-                                reportTeleportFailure(
-                                        player,
-                                        destination,
-                                        "console command did not move the player after 20 ticks",
-                                        null,
-                                        attempt,
-                                        onFailure);
-                            },
-                            TELEPORT_CONFIRMATION_DELAYS[delayIndex]);
-        } catch (RuntimeException failure) {
-            reportTeleportFailure(
-                    player,
-                    destination,
-                    "teleport verification scheduling failed",
-                    failure,
-                    attempt,
-                    onFailure);
-        }
+    private boolean isCurrentTeleportAttempt(TeleportAttempt attempt) {
+        return !attempt.completed()
+                && teleportAttempts.get(attempt.player().getUniqueId()) == attempt;
     }
 
-    private boolean isCurrentTeleportAttempt(Player player, long attempt) {
-        return Objects.equals(
-                teleportAttempts.get(player.getUniqueId()), attempt);
-    }
-
-    private void finishTeleportSuccess(
-            Player player, long attempt, Runnable onSuccess) {
-        if (!teleportAttempts.remove(player.getUniqueId(), attempt)) {
+    private void finishTeleportSuccess(TeleportAttempt attempt) {
+        if (!completeAttempt(attempt)) {
             return;
         }
-        expectedTeleportDestinations.remove(player.getUniqueId());
-        strandedArenaPlayers.remove(player.getUniqueId());
-        clearTeleportRecovery(player);
-        onSuccess.run();
+        attempt.onSuccess().run();
     }
 
-    private void finishTeleportFailure(
-            Player player, long attempt, Runnable onFailure) {
-        if (teleportAttempts.remove(player.getUniqueId(), attempt)) {
-            expectedTeleportDestinations.remove(player.getUniqueId());
-            onFailure.run();
+    private void finishTeleportFailure(TeleportAttempt attempt) {
+        if (completeAttempt(attempt)) {
+            attempt.onFailure().run();
         }
     }
 
     private void reportTeleportFailure(
+            TeleportAttempt attempt,
+            String reason,
+            RuntimeException failure) {
+        if (!isCurrentTeleportAttempt(attempt)) {
+            return;
+        }
+        reportRelocationFailure(
+                attempt.player(), attempt.destination(), reason, failure);
+        finishTeleportFailure(attempt);
+    }
+
+    private void reportRelocationFailure(
             Player player,
             Location destination,
             String reason,
-            RuntimeException failure,
-            long attempt,
-            Runnable onFailure) {
-        if (!isCurrentTeleportAttempt(player, attempt)) {
-            return;
-        }
+            RuntimeException failure) {
         String message =
                 "SCENARIOCRAFT_TELEPORT_FAILURE "
                         + reason
@@ -1828,7 +1984,47 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         player.sendMessage(
                 "The battle could not move you safely. Please ask a grown-up helper.");
         notifyOperatorsOfTeleportFailure(player, destination);
-        finishTeleportFailure(player, attempt, onFailure);
+    }
+
+    private boolean completeAttempt(TeleportAttempt attempt) {
+        if (!isCurrentTeleportAttempt(attempt)) {
+            return false;
+        }
+        teleportAttempts.remove(attempt.player().getUniqueId());
+        attempt.complete();
+        attempt.tasks().forEach(BukkitTask::cancel);
+        attempt.tasks().clear();
+        return true;
+    }
+
+    private void cancelAttempt(TeleportAttempt attempt) {
+        attempt.complete();
+        attempt.tasks().forEach(BukkitTask::cancel);
+        attempt.tasks().clear();
+    }
+
+    private void settleTeleportAttemptsForClose(boolean reportUnconfirmedRecovery) {
+        for (TeleportAttempt attempt : List.copyOf(teleportAttempts.values())) {
+            if (playerReached(attempt.player(), attempt.destination())) {
+                if (hasPendingTeleportRecovery(attempt.player())
+                        && playerReached(attempt.player(), hubLocation())) {
+                    finishTeleportSuccess(attempt);
+                } else {
+                    completeAttempt(attempt);
+                }
+            } else {
+                if (reportUnconfirmedRecovery
+                        && hasPendingTeleportRecovery(attempt.player())
+                        && locationsMatch(attempt.destination(), hubLocation())) {
+                    reportRelocationFailure(
+                            attempt.player(),
+                            attempt.destination(),
+                            "controller closed before hub recovery confirmation; durable recovery remains pending",
+                            null);
+                }
+                completeAttempt(attempt);
+            }
+        }
     }
 
     private void notifyOperatorsOfTeleportFailure(
@@ -1869,41 +2065,92 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void retryStrandedExit(Player player) {
-        GameMode recoveredGameMode = player.getGameMode();
+        retryStrandedExit(player, 0L, () -> {}, () -> {});
+    }
+
+    private void retryStrandedExit(
+            Player player, long delayTicks, Runnable afterRecovery) {
+        retryStrandedExit(player, delayTicks, afterRecovery, () -> {});
+    }
+
+    private void retryStrandedExit(
+            Player player,
+            long delayTicks,
+            Runnable afterRecovery,
+            Runnable afterFailure) {
+        GameMode recoveredGameMode =
+                recoveryGameModes.getOrDefault(
+                        player.getUniqueId(), player.getGameMode());
         strandedArenaPlayers.add(player.getUniqueId());
-        resetPersonalBorder(player);
         player.setGameMode(GameMode.ADVENTURE);
         Location destination = hubLocation();
         if (playerReached(player, destination)) {
-            clearTeleportRecovery(player);
-            strandedArenaPlayers.remove(player.getUniqueId());
-            player.setGameMode(recoveredGameMode);
-            logger.info(
-                    "Cleared recovered hub marker for "
-                            + player.getName()
-                            + " after confirming they were already safe.");
+            finishHubRecovery(
+                    player,
+                    () -> {
+                        resetPersonalBorder(player);
+                        player.setGameMode(recoveredGameMode);
+                        logger.info(
+                                "Cleared recovered hub marker for "
+                                        + player.getName()
+                                        + " after confirming they were already safe.");
+                        afterRecovery.run();
+                    });
             return;
         }
         persistTeleportRecovery(player);
-        teleport(
-                player,
-                destination,
-                () -> {
-                    player.setGameMode(recoveredGameMode);
-                    strandedArenaPlayers.remove(player.getUniqueId());
-                    logger.info(
-                            "Confirmed recovered hub return for "
-                                    + player.getName()
-                                    + ".");
-                },
+        Runnable onSuccess =
+                () ->
+                        finishHubRecovery(
+                                player,
+                                () -> {
+                                    resetPersonalBorder(player);
+                                    player.setGameMode(recoveredGameMode);
+                                    logger.info(
+                                            "Confirmed recovered hub return for "
+                                                    + player.getName()
+                                                    + ".");
+                                    afterRecovery.run();
+                                });
+        Runnable onFailure =
                 () -> {
                     player.setGameMode(GameMode.ADVENTURE);
                     markStrandedForRecovery(player);
-                });
+                    afterFailure.run();
+                };
+        if (delayTicks > 0L) {
+            teleportAfter(player, destination, onSuccess, onFailure, delayTicks);
+        } else {
+            teleport(player, destination, onSuccess, onFailure);
+        }
+    }
+
+    private void failPendingPlotEntry(Player player) {
+        if (phase() != RoundPhase.NOTE_PICK || !awaitingPlotEntries) {
+            return;
+        }
+        pendingPlotEntries.remove(player.getUniqueId());
+        plotEntryFailed = true;
+        if (!movingContestantsToPlots) {
+            abortAfterPlotEntryFailure();
+        }
+    }
+
+    private void resumeActiveContestant(Player player) {
+        Contestant contestant = contestants.get(player.getUniqueId());
+        if (!closed
+                && player.isOnline()
+                && contestant != null
+                && phase() != RoundPhase.IDLE) {
+            applyCurrentPhase(player, contestant);
+        }
     }
 
     private static boolean playerReached(Player player, Location destination) {
-        Location actual = player.getLocation();
+        return locationsMatch(player.getLocation(), destination);
+    }
+
+    private static boolean locationsMatch(Location actual, Location destination) {
         return actual.getWorld() == destination.getWorld()
                 && Math.abs(actual.getX() - destination.getX())
                         <= TELEPORT_CONFIRMATION_EPSILON
@@ -1913,22 +2160,53 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         <= TELEPORT_CONFIRMATION_EPSILON;
     }
 
-    private static String commandNumber(double value) {
-        if (!Double.isFinite(value)) {
-            throw new IllegalArgumentException(
-                    "teleport coordinates must be finite");
+    private void reportTransportUnavailable(CommandSender sender, String operation) {
+        String logMessage =
+                "SCENARIOCRAFT_TELEPORT_FAILURE "
+                        + operation
+                        + "; restore minecraft:execute and minecraft:tp before retrying";
+        logger.severe(logMessage);
+        String operatorMessage =
+                "ScenarioCraft teleport alert: the exact namespaced console transport is unavailable. Restore minecraft:execute and minecraft:tp, then retry.";
+        server.getConsoleSender().sendMessage(operatorMessage);
+        for (Player onlinePlayer : server.getOnlinePlayers()) {
+            if (receivesOperatorAlerts(onlinePlayer)) {
+                onlinePlayer.sendMessage(operatorMessage);
+            }
         }
-        return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
+        sender.sendMessage(
+                sender instanceof Player
+                        ? "The battle cannot move everyone safely yet. Please ask a grown-up helper."
+                        : operatorMessage);
     }
 
-    private static String commandNumber(float value) {
-        if (!Float.isFinite(value)) {
-            throw new IllegalArgumentException(
-                    "teleport rotation must be finite");
-        }
-        return new BigDecimal(Float.toString(value))
-                .stripTrailingZeros()
-                .toPlainString();
+    private boolean isUsablePlot(Contestant contestant) {
+        Location destination = plotLocation(contestant);
+        return plots.contains(contestant.plot())
+                && destination.getBlockY() >= arena.world().getMinHeight()
+                && destination.getBlockY() < arena.world().getMaxHeight()
+                && contestant.boundary()
+                        .containsEditableBlock(
+                                destination.getBlockX(),
+                                destination.getBlockY(),
+                                destination.getBlockZ());
+    }
+
+    private boolean isInsideAssignedPlot(Player player, Contestant contestant) {
+        Location actual = player.getLocation();
+        return actual.getWorld() == arena.world()
+                && contestant.boundary()
+                        .containsEditableBlock(
+                                actual.getBlockX(), actual.getBlockY(), actual.getBlockZ());
+    }
+
+    private Location plotLocation(Contestant contestant) {
+        PlotBounds plot = contestant.plot();
+        return new Location(
+                arena.world(),
+                plot.centerX() + 0.5,
+                arena.floorY() + 1.0,
+                plot.centerZ() + 0.5);
     }
 
     private Location tourLocation() {
@@ -1954,12 +2232,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private boolean hasPendingTeleportRecovery(Player player) {
-        return player.getPersistentDataContainer()
-                .has(teleportRecoveryKey, PersistentDataType.BYTE);
+        UUID playerId = player.getUniqueId();
+        return strandedArenaPlayers.contains(playerId)
+                || recoveryStore.contains(playerId)
+                || player.getPersistentDataContainer()
+                        .has(teleportRecoveryKey, PersistentDataType.BYTE);
     }
 
     private void persistTeleportRecovery(Player player) {
-        if (!hasPendingTeleportRecovery(player)) {
+        try {
+            recoveryStore.add(player.getUniqueId());
+        } catch (RuntimeException failure) {
+            reportRecoveryRegistryFailure(player, "could not be saved", failure);
+        }
+        if (!player.getPersistentDataContainer()
+                .has(teleportRecoveryKey, PersistentDataType.BYTE)) {
             player.getPersistentDataContainer()
                     .set(
                             teleportRecoveryKey,
@@ -1969,21 +2256,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         try {
             player.saveData();
         } catch (RuntimeException failure) {
-            logger.log(
-                    Level.SEVERE,
-                    "Could not persist teleport recovery marker for "
-                            + player.getName(),
-                    failure);
-            String alert =
-                    "ScenarioCraft recovery persistence alert: "
-                            + player.getName()
-                            + "'s recovery marker could not be saved. Keep the server running, retry their hub return, and check the server log.";
-            server.getConsoleSender().sendMessage(alert);
-            for (Player onlinePlayer : server.getOnlinePlayers()) {
-                if (receivesOperatorAlerts(onlinePlayer)) {
-                    onlinePlayer.sendMessage(alert);
-                }
-            }
+            reportRecoveryPersistenceFailure(
+                    player, "player-data recovery marker could not be saved", failure);
         }
     }
 
@@ -1992,35 +2266,103 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         persistTeleportRecovery(player);
     }
 
-    private void clearTeleportRecovery(Player player) {
-        if (!hasPendingTeleportRecovery(player)) {
+    private void finishHubRecovery(Player player, Runnable onCleared) {
+        if (!playerReached(player, hubLocation())) {
+            markStrandedForRecovery(player);
             return;
         }
         player.getPersistentDataContainer().remove(teleportRecoveryKey);
         try {
             player.saveData();
         } catch (RuntimeException failure) {
-            logger.log(
-                    Level.WARNING,
-                    "Could not persist cleared teleport recovery marker for "
-                            + player.getName(),
-                    failure);
+            player.getPersistentDataContainer()
+                    .set(teleportRecoveryKey, PersistentDataType.BYTE, (byte) 1);
+            reportRecoveryPersistenceFailure(
+                    player, "cleared player-data recovery marker could not be saved", failure);
+            player.setGameMode(GameMode.ADVENTURE);
+            return;
+        }
+        try {
+            recoveryStore.remove(player.getUniqueId());
+        } catch (RuntimeException failure) {
+            player.getPersistentDataContainer()
+                    .set(teleportRecoveryKey, PersistentDataType.BYTE, (byte) 1);
+            try {
+                player.saveData();
+            } catch (RuntimeException restoreFailure) {
+                failure.addSuppressed(restoreFailure);
+            }
+            reportRecoveryRegistryFailure(player, "could not be cleared", failure);
+            player.setGameMode(GameMode.ADVENTURE);
+            return;
+        }
+        strandedArenaPlayers.remove(player.getUniqueId());
+        recoveryGameModes.remove(player.getUniqueId());
+        onCleared.run();
+    }
+
+    private void reportRecoveryPersistenceFailure(
+            Player player, String reason, RuntimeException failure) {
+        logger.log(
+                Level.SEVERE,
+                "SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE "
+                        + reason
+                        + " for "
+                        + player.getName(),
+                failure);
+        String alert =
+                "ScenarioCraft recovery persistence alert: "
+                        + player.getName()
+                        + " still needs a confirmed, saved hub recovery. Keep them contained and check the server log.";
+        server.getConsoleSender().sendMessage(alert);
+        for (Player onlinePlayer : server.getOnlinePlayers()) {
+            if (receivesOperatorAlerts(onlinePlayer)) {
+                onlinePlayer.sendMessage(alert);
+            }
+        }
+    }
+
+    private void reportRecoveryRegistryFailure(
+            Player player, String reason, RuntimeException failure) {
+        logger.log(
+                Level.SEVERE,
+                "SCENARIOCRAFT_RECOVERY_REGISTRY_FAILURE registry "
+                        + recoveryStore.location()
+                        + " "
+                        + reason
+                        + " for "
+                        + player.getName(),
+                failure);
+        String alert =
+                "ScenarioCraft recovery registry alert: "
+                        + player.getName()
+                        + " still needs a confirmed, saved hub recovery. Check atomic-move support and the registry path in the server log.";
+        server.getConsoleSender().sendMessage(alert);
+        for (Player onlinePlayer : server.getOnlinePlayers()) {
+            if (receivesOperatorAlerts(onlinePlayer)) {
+                onlinePlayer.sendMessage(alert);
+            }
         }
     }
 
     private void restorePendingInventory(Player player) {
+        restorePendingInventory(player, () -> {});
+    }
+
+    private void restorePendingInventory(
+            Player player, Runnable afterRecovery) {
         PersistentDataContainer data = player.getPersistentDataContainer();
         byte[] encoded =
                 data.get(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         if (encoded == null) {
             return;
         }
-        resetPersonalBorder(player);
         markStrandedForRecovery(player);
         boolean inventoryRestored = false;
         try {
             restoreInventorySnapshot(player, decodeInventorySnapshot(encoded));
             inventoryRestored = true;
+            recoveryGameModes.put(player.getUniqueId(), player.getGameMode());
         } catch (RuntimeException failure) {
             logger.log(
                     Level.SEVERE,
@@ -2035,12 +2377,18 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 player,
                 hubLocation(),
                 () -> {
-                    if (restored) {
-                        logger.info(
-                                "Restored pending round inventory for "
-                                        + player.getName()
-                                        + ".");
-                    }
+                    finishHubRecovery(
+                            player,
+                            () -> {
+                                resetPersonalBorder(player);
+                                if (restored) {
+                                    logger.info(
+                                            "Restored pending round inventory for "
+                                                    + player.getName()
+                                                    + ".");
+                                }
+                                afterRecovery.run();
+                            });
                 },
                 () -> {
                     markStrandedForRecovery(player);
@@ -2196,6 +2544,54 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private static String friendlyPhase(RoundPhase phase) {
         return phase.name().toLowerCase().replace('_', ' ');
+    }
+
+    private static final class TeleportAttempt {
+        private final Player player;
+        private final Location destination;
+        private final Runnable onSuccess;
+        private final Runnable onFailure;
+        private final Set<BukkitTask> tasks = new LinkedHashSet<>();
+        private boolean completed;
+
+        private TeleportAttempt(
+                Player player,
+                Location destination,
+                Runnable onSuccess,
+                Runnable onFailure) {
+            this.player = Objects.requireNonNull(player, "player");
+            this.destination = Objects.requireNonNull(destination, "destination");
+            this.onSuccess = Objects.requireNonNull(onSuccess, "onSuccess");
+            this.onFailure = Objects.requireNonNull(onFailure, "onFailure");
+        }
+
+        private Player player() {
+            return player;
+        }
+
+        private Location destination() {
+            return destination;
+        }
+
+        private Runnable onSuccess() {
+            return onSuccess;
+        }
+
+        private Runnable onFailure() {
+            return onFailure;
+        }
+
+        private Set<BukkitTask> tasks() {
+            return tasks;
+        }
+
+        private boolean completed() {
+            return completed;
+        }
+
+        private void complete() {
+            completed = true;
+        }
     }
 
     private record Contestant(

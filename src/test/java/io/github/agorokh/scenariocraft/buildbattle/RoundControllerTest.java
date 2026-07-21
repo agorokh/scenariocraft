@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -32,6 +33,8 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.boss.BossBar;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandMap;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.damage.DamageSource;
@@ -73,6 +76,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -86,8 +90,11 @@ import org.bukkit.scheduler.BukkitScheduler;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class RoundControllerTest {
+    @TempDir Path temporaryDirectory;
+
     @Test
     void nonPickerCannotOpenTheSecretChestAndReceivesFriendlyFeedback() {
         TestRig rig = new TestRig();
@@ -373,7 +380,7 @@ class RoundControllerTest {
 
         rig.runTimerTick();
         rig.gameMode.set(GameMode.SURVIVAL);
-        rig.lastTeleport.set(null);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
         rig.controller.onPlayerJoin(
                 new org.bukkit.event.player.PlayerJoinEvent(
                         rig.player, net.kyori.adventure.text.Component.empty()));
@@ -426,11 +433,14 @@ class RoundControllerTest {
         rig.failSaveData.set(true);
 
         rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertEquals(0.5, rig.lastTeleport.get().getX());
         assertEquals(0.5, rig.lastTeleport.get().getZ());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertFalse(rig.persistentData.isEmpty());
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("saved items need")));
@@ -445,16 +455,17 @@ class RoundControllerTest {
     }
 
     @Test
-    void failedRoundExitTeleportDoesNotReapplyPersonalBorder() {
+    void failedRoundExitTeleportKeepsPlotBorderUntilHubArrival() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
         rig.failTeleportDispatch.set(true);
 
         rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
-        assertNull(rig.playerWorldBorder.get());
-        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         BlockBreakEvent strandedBreak =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
         rig.controller.onContestantBlockBreak(strandedBreak);
@@ -682,7 +693,7 @@ class RoundControllerTest {
                         rig.spectator,
                         net.kyori.adventure.text.Component.empty()));
 
-        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        assertEquals(commandsBefore, rig.consoleCommands.size());
         rig.controller.stop(rig.player);
         rig.close();
     }
@@ -697,6 +708,9 @@ class RoundControllerTest {
         assertFalse(rig.persistentData.isEmpty());
         rig.controller.close();
         rig.failTeleportDispatch.set(false);
+        // A real restart reloads the last successfully saved mode, not the later volatile
+        // Adventure containment applied after the failed dispatch.
+        rig.gameMode.set(GameMode.SURVIVAL);
         RoundController replacement =
                 new RoundController(
                         rig.plugin,
@@ -870,10 +884,88 @@ class RoundControllerTest {
 
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
-        assertNotNull(rig.playerWorldBorder.get());
+        assertNull(rig.playerWorldBorder.get());
         assertFalse(rig.persistentData.isEmpty());
         rig.failTeleportDispatch.set(false);
         rig.controller.stop(rig.player);
+        rig.close();
+    }
+
+    @Test
+    void buildingRejoinKeepsExistingPlotBorderDuringConfirmation() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.lastTeleport.set(new Location(rig.world, 0.25, 1.0, -2.5));
+        rig.ignoreTeleportCommand.set(true);
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertFalse(rig.delayedTasks.isEmpty());
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    @Test
+    void activeContestantRecoveryRejoinsThroughHubBeforeReturningToPlot() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.runDelayedTasks();
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        rig.failTeleportDispatch.set(false);
+
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        rig.close();
+    }
+
+    @Test
+    void synchronousReentryFailureRetainsOriginalRecoveryGameMode() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.runDelayedTasks();
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.teleportCommandsAvailable.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+
+        rig.playerOnline.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        rig.playerOnline.set(true);
+        rig.teleportCommandsAvailable.set(true);
         rig.close();
     }
 
@@ -1538,10 +1630,472 @@ class RoundControllerTest {
         rig.close();
     }
 
+    @Test
+    void unavailableNamespacedTransportPreventsRoundStart() {
+        TestRig rig = new TestRig();
+        rig.teleportCommandsAvailable.set(false);
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(rig.persistentData.isEmpty());
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("exact namespaced console transport")));
+        rig.close();
+    }
+
+    @Test
+    void roundStartDoesNotProbeWhenRequiredHubArrivalIsAlreadySatisfied() {
+        TestRig rig = new TestRig();
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        assertEquals(commandsBefore, rig.consoleCommands.size());
+        rig.close();
+    }
+
+    @Test
+    void roundStartContinuesAfterSynchronousHubRecoveryClear() {
+        TestRig rig = new TestRig();
+        rig.recoveryStore.add(rig.playerId);
+
+        rig.controller.start(rig.player);
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        rig.close();
+    }
+
+    @Test
+    void commandPathLossBeforePlotRelocationAbortsSafely() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.teleportCommandsAvailable.set(false);
+
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        rig.teleportCommandsAvailable.set(true);
+        rig.close();
+    }
+
+    @Test
+    void buildingRespawnConfirmsPlotBeforeRestoringControls() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        PlayerRespawnEvent respawn =
+                respawnEvent(rig);
+
+        rig.controller.onPlayerRespawn(respawn);
+
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(0, rig.bossbarPlayers.get());
+        assertEquals(0.5, respawn.getRespawnLocation().getX());
+        assertEquals(-2.5, respawn.getRespawnLocation().getZ());
+
+        rig.lastTeleport.set(respawn.getRespawnLocation().clone());
+        rig.runDelayedTasks();
+
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertEquals(1, rig.bossbarPlayers.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void pendingBuildingRespawnRecoversAtHubBeforePlotReentry() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.recoveryStore.add(rig.playerId);
+        rig.ignoreTeleportCommand.set(true);
+        PlayerRespawnEvent respawn = respawnEvent(rig);
+        int commandsBeforeRespawn = rig.consoleCommands.size();
+
+        rig.controller.onPlayerRespawn(respawn);
+
+        assertEquals(0.5, respawn.getRespawnLocation().getX());
+        assertEquals(0.5, respawn.getRespawnLocation().getZ());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        while (rig.consoleCommands.size() == commandsBeforeRespawn) {
+            assertFalse(rig.delayedTasks.isEmpty());
+            rig.runNextDelayedTask();
+        }
+        assertTrue(rig.consoleCommands.getLast().endsWith(" 0.5 1 0.5 0 0"));
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.lastTeleport.set(respawn.getRespawnLocation().clone());
+        rig.ignoreTeleportCommand.set(false);
+        rig.runDelayedTasks();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void unusableRespawnPlotFallsBackToDurableHubRecovery() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.worldMaxHeight.set(1);
+        PlayerRespawnEvent respawn =
+                respawnEvent(rig);
+
+        rig.controller.onPlayerRespawn(respawn);
+
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        assertTrue(
+                rig.spectatorMessages.stream()
+                        .anyMatch(message -> message.contains("ScenarioCraft teleport alert")));
+        rig.lastTeleport.set(respawn.getRespawnLocation().clone());
+        rig.runDelayedTasks();
+        assertNull(rig.playerWorldBorder.get());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        rig.worldMaxHeight.set(320);
+        rig.close();
+    }
+
+    @Test
+    void pluginRecoveryStoreRediscoversPlayerAfterPlayerDataSaveFailure() {
+        Path registry = temporaryDirectory.resolve("pending-recovery.txt");
+        TestRig rig = new TestRig(TeleportRecoveryStore.open(registry));
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.failSaveData.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        rig.controller.close();
+        rig.persistentData.clear();
+        rig.failSaveData.set(false);
+        rig.failTeleportDispatch.set(false);
+        rig.gameMode.set(GameMode.SURVIVAL);
+        TeleportRecoveryStore reopenedStore = TeleportRecoveryStore.open(registry);
+        assertTrue(reopenedStore.contains(rig.playerId));
+
+        RoundController replacement =
+                new RoundController(
+                        rig.plugin,
+                        rig.settings,
+                        rig.arena,
+                        rig.editor,
+                        Logger.getAnonymousLogger(),
+                        ignored -> 0,
+                        ignored -> {},
+                        ignored -> {},
+                        new TeleportTransport(rig.server),
+                        reopenedStore);
+
+        assertFalse(reopenedStore.contains(rig.playerId));
+        assertFalse(TeleportRecoveryStore.open(registry).contains(rig.playerId));
+        assertEquals(0.5, rig.lastTeleport.get().getX());
+        assertEquals(0.5, rig.lastTeleport.get().getZ());
+        replacement.close();
+        rig.close();
+    }
+
+    @Test
+    void supersededRespawnCancelsObsoleteConfirmationTask() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        PlayerRespawnEvent first =
+                respawnEvent(rig);
+        PlayerRespawnEvent second =
+                respawnEvent(rig);
+
+        rig.controller.onPlayerRespawn(first);
+        rig.controller.onPlayerRespawn(second);
+
+        assertTrue(rig.delayedTaskCancellations.get() >= 1);
+        rig.lastTeleport.set(second.getRespawnLocation().clone());
+        rig.runDelayedTasks();
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertEquals(1, rig.bossbarPlayers.get());
+        rig.close();
+    }
+
+    @Test
+    void closeSettlesAndCancelsPendingRespawnTask() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        PlayerRespawnEvent respawn =
+                respawnEvent(rig);
+        rig.controller.onPlayerRespawn(respawn);
+
+        rig.controller.close();
+        Location closedLocation = rig.lastTeleport.get().clone();
+        rig.runDelayedTasks();
+
+        assertTrue(rig.delayedTaskCancellations.get() >= 1);
+        assertEquals(0.5, closedLocation.getX());
+        assertEquals(0.5, closedLocation.getZ());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        rig.close();
+    }
+
+    @Test
+    void closePreservesArrivalThatSettledBeforeConfirmationTask() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.ignoreTeleportCommand.set(true);
+        long alertsBefore =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+        rig.runTimerTick();
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.spectatorLocation.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.ignoreTeleportCommand.set(false);
+
+        rig.controller.close();
+
+        long alertsAfter =
+                rig.spectatorMessages.stream()
+                        .filter(message -> message.contains("ScenarioCraft teleport alert"))
+                        .count();
+        assertEquals(alertsBefore, alertsAfter);
+        assertNull(rig.playerWorldBorder.get());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        rig.close();
+    }
+
+    @Test
+    void closeRunsHubRecoveryForAnAlreadyArrivedPendingMove() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.ignoreTeleportCommand.set(true);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+
+        rig.controller.close();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertFalse(
+                rig.persistentData.containsKey(
+                        new NamespacedKey(rig.plugin, "teleport-recovery-pending")));
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    @Test
+    void delayedTeleportFailsWithoutDispatchWhenPlayerDisconnects() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.onPlayerRespawn(respawnEvent(rig));
+        rig.playerOnline.set(false);
+        rig.runDelayedTasks();
+
+        assertEquals(commandsBefore, rig.consoleCommands.size());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(
+                rig.playerMessages.stream()
+                        .anyMatch(message -> message.contains("could not move you safely")));
+        rig.playerOnline.set(true);
+        rig.close();
+    }
+
+    @Test
+    void closeDoesNotRunPlotArrivalCallbacksDuringShutdown() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, -2.5));
+
+        rig.controller.close();
+
+        assertTrue(
+                rig.messages.stream()
+                        .noneMatch(message -> message.contains("Build time!")));
+        assertTrue(
+                rig.messages.stream()
+                        .noneMatch(message -> message.contains("plots could not open safely")));
+        assertEquals(0, rig.bossbarPlayers.get());
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    @Test
+    void pendingRecoveryAcceptsHubRescueWithoutAnExistingAttempt() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+        rig.failTeleportDispatch.set(false);
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        PlayerTeleportEvent unrelated =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 20.5, 1.0, 20.5),
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(unrelated);
+        assertTrue(unrelated.isCancelled());
+
+        Location hub = new Location(rig.world, 0.5, 1.0, 0.5);
+        PlayerTeleportEvent hubRescue =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        hub,
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(hubRescue);
+
+        assertFalse(hubRescue.isCancelled());
+        rig.lastTeleport.set(hub.clone());
+        rig.teleportCommandsAvailable.set(false);
+        rig.runDelayedTasks();
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertNull(rig.playerWorldBorder.get());
+        rig.teleportCommandsAvailable.set(true);
+        rig.close();
+    }
+
+    @Test
+    void phaseMoveRecoversPendingContestantAtHubBeforePlotEntry() {
+        TestRig rig = new TestRig();
+        rig.controller.start(rig.player);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+        rig.runBlockTick();
+        rig.runDelayedTasks();
+        assertEquals(RoundPhase.GATHERING, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.consoleCommands.getLast().endsWith(" 0.5 1 0.5 0 0"));
+
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.ignoreTeleportCommand.set(false);
+        rig.runDelayedTasks();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void failedPendingRecoveryAbortsPlotEntryWithoutSoftlock() {
+        TestRig rig = new TestRig();
+        rig.controller.start(rig.player);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+        rig.runBlockTick();
+        rig.runDelayedTasks();
+        assertEquals(RoundPhase.GATHERING, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.runTimerTick();
+        rig.runTimerTick();
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(
+                rig.messages.stream()
+                        .anyMatch(message -> message.contains("plots could not open safely")));
+        rig.failTeleportDispatch.set(false);
+        rig.close();
+    }
+
+    @Test
+    void idlePendingRecoveryAllowsOnlyControllerExpectedHubMove() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+        rig.failTeleportDispatch.set(false);
+        rig.ignoreTeleportCommand.set(true);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        PlayerTeleportEvent unrelated =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 20.5, 1.0, 20.5),
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(unrelated);
+        assertTrue(unrelated.isCancelled());
+
+        PlayerTeleportEvent expectedHub =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 0.5, 1.0, 0.5),
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(expectedHub);
+        assertFalse(expectedHub.isCancelled());
+
+        rig.lastTeleport.set(expectedHub.getTo().clone());
+        rig.runDelayedTasks();
+        PlayerTeleportEvent afterRecovery =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 20.5, 1.0, 20.5),
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(afterRecovery);
+        assertFalse(afterRecovery.isCancelled());
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    private static PlayerRespawnEvent respawnEvent(TestRig rig) {
+        return new PlayerRespawnEvent(
+                rig.player,
+                rig.world.getSpawnLocation(),
+                false,
+                false,
+                false,
+                PlayerRespawnEvent.RespawnReason.DEATH);
+    }
+
     private static final class TestRig {
         private final AtomicReference<Runnable> blockTick = new AtomicReference<>();
         private final AtomicReference<Runnable> timerTick = new AtomicReference<>();
-        private final List<Runnable> delayedTasks = new ArrayList<>();
+        private final List<ScheduledRunnable> delayedTasks = new ArrayList<>();
         private final AtomicBoolean playerOnline = new AtomicBoolean(true);
         private final AtomicBoolean failChunkLoads = new AtomicBoolean();
         private final AtomicBoolean failSaveData = new AtomicBoolean();
@@ -1549,6 +2103,9 @@ class RoundControllerTest {
         private final AtomicBoolean failTaskBookPlacement = new AtomicBoolean();
         private final AtomicBoolean failTeleportDispatch = new AtomicBoolean();
         private final AtomicBoolean ignoreTeleportCommand = new AtomicBoolean();
+        private final AtomicBoolean teleportCommandsAvailable = new AtomicBoolean(true);
+        private final AtomicInteger delayedTaskCancellations = new AtomicInteger();
+        private final AtomicInteger worldMaxHeight = new AtomicInteger(320);
         private final AtomicReference<GameMode> gameMode =
                 new AtomicReference<>(GameMode.SURVIVAL);
         private final AtomicReference<GameMode> spectatorGameMode =
@@ -1601,20 +2158,33 @@ class RoundControllerTest {
         private final Player spectator;
         private final CommandSender consoleStarter;
         private final Plugin plugin;
+        private final Server server;
         private final BattleSettings settings;
         private final ArenaWorld arena;
         private final BatchedBlockEditor editor;
+        private final TeleportRecoveryStore recoveryStore;
         private final RoundController controller;
 
         private TestRig() {
-            this(new PhaseTimings(1, 1, 1, 1), 0);
+            this(new PhaseTimings(1, 1, 1, 1), 0, TeleportRecoveryStore.inMemory());
+        }
+
+        private TestRig(TeleportRecoveryStore recoveryStore) {
+            this(new PhaseTimings(1, 1, 1, 1), 0, recoveryStore);
         }
 
         private TestRig(PhaseTimings timings) {
-            this(timings, 0);
+            this(timings, 0, TeleportRecoveryStore.inMemory());
         }
 
         private TestRig(PhaseTimings timings, int floorY) {
+            this(timings, floorY, TeleportRecoveryStore.inMemory());
+        }
+
+        private TestRig(
+                PhaseTimings timings,
+                int floorY,
+                TeleportRecoveryStore recoveryStore) {
             BukkitTask task =
                     proxy(
                             BukkitTask.class,
@@ -1657,6 +2227,8 @@ class RoundControllerTest {
                                     switch (method.getName()) {
                                         case "getSpawnLocation" -> new Location(worldRef(), 0, 1, 0);
                                         case "getName" -> ArenaWorldService.WORLD_NAME;
+                                        case "getMinHeight" -> -64;
+                                        case "getMaxHeight" -> worldMaxHeight.get();
                                         case "getKey" ->
                                                 new NamespacedKey(
                                                         "minecraft",
@@ -1674,6 +2246,7 @@ class RoundControllerTest {
                                         case "getBlockAt" -> secretChestBlock;
                                         default -> defaultValue(method.getReturnType());
                                     });
+            lastTeleport.set(new Location(world, 0.5, floorY + 1.0, 0.5));
             playerInventory =
                     trackedInventory(
                             PlayerInventory.class, inventoryContents, inventoryClears);
@@ -1803,6 +2376,26 @@ class RoundControllerTest {
                     proxy(
                             PluginManager.class,
                             (ignored, method, arguments) -> defaultValue(method.getReturnType()));
+            Command registeredCommand =
+                    new Command("teleport-test-marker") {
+                        @Override
+                        public boolean execute(
+                                CommandSender sender,
+                                String commandLabel,
+                                String[] arguments) {
+                            return true;
+                        }
+                    };
+            CommandMap commandMap =
+                    proxy(
+                            CommandMap.class,
+                            (ignored, method, arguments) ->
+                                    method.getName().equals("getCommand")
+                                                    && teleportCommandsAvailable.get()
+                                                    && (arguments[0].equals("minecraft:execute")
+                                                            || arguments[0].equals("minecraft:tp"))
+                                            ? registeredCommand
+                                            : defaultValue(method.getReturnType()));
             BukkitScheduler scheduler =
                     proxy(
                             BukkitScheduler.class,
@@ -1827,17 +2420,32 @@ class RoundControllerTest {
                                             yield task;
                                         }
                                         case "runTaskLater" -> {
-                                            delayedTasks.add((Runnable) arguments[1]);
-                                            yield task;
+                                            AtomicBoolean cancelled = new AtomicBoolean();
+                                            delayedTasks.add(
+                                                    new ScheduledRunnable(
+                                                            (Runnable) arguments[1], cancelled));
+                                            yield proxy(
+                                                    BukkitTask.class,
+                                                    (taskProxy, taskMethod, taskArguments) -> {
+                                                        if (taskMethod.getName().equals("cancel")
+                                                                && cancelled.compareAndSet(
+                                                                        false, true)) {
+                                                            delayedTaskCancellations
+                                                                    .incrementAndGet();
+                                                        }
+                                                        return defaultValue(
+                                                                taskMethod.getReturnType());
+                                                    });
                                         }
                                         default -> defaultValue(method.getReturnType());
                                     });
-            Server server =
+            server =
                     proxy(
                             Server.class,
                             (ignored, method, arguments) ->
                                     switch (method.getName()) {
                                         case "getScheduler" -> scheduler;
+                                        case "getCommandMap" -> commandMap;
                                         case "getPluginManager" -> pluginManager;
                                         case "getOnlinePlayers" ->
                                                 (Collection<Player>) List.of(player, spectator);
@@ -1886,6 +2494,7 @@ class RoundControllerTest {
             arena = new ArenaWorld(world, floorY);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());
+            this.recoveryStore = recoveryStore;
             controller =
                     new RoundController(
                             plugin,
@@ -1925,7 +2534,9 @@ class RoundControllerTest {
                                 public boolean isReadingArena() {
                                     return exportReading.get();
                                 }
-                            });
+                            },
+                            new TeleportTransport(server),
+                            recoveryStore);
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }
@@ -2029,12 +2640,18 @@ class RoundControllerTest {
 
         private void runDelayedTasks() {
             while (!delayedTasks.isEmpty()) {
-                delayedTasks.removeFirst().run();
+                ScheduledRunnable scheduled = delayedTasks.removeFirst();
+                if (!scheduled.cancelled().get()) {
+                    scheduled.action().run();
+                }
             }
         }
 
         private void runNextDelayedTask() {
-            delayedTasks.removeFirst().run();
+            ScheduledRunnable scheduled = delayedTasks.removeFirst();
+            if (!scheduled.cancelled().get()) {
+                scheduled.action().run();
+            }
         }
 
         private PlayerInteractEvent chestInteraction(Player interactingPlayer) {
@@ -2107,9 +2724,12 @@ class RoundControllerTest {
                                     yield null;
                                 }
                                 case "isEmpty" -> data.isEmpty();
-                                default -> defaultValue(method.getReturnType());
-                            });
+                                    default -> defaultValue(method.getReturnType());
+                                });
         }
+
+        private record ScheduledRunnable(
+                Runnable action, AtomicBoolean cancelled) {}
     }
 
     @SuppressWarnings("unchecked")
