@@ -215,6 +215,21 @@ class OpenAiPersonaJudgeTest {
     }
 
     @Test
+    void moderationExhaustionCannotTriggerAnotherVisionRequest() {
+        AtomicInteger moderationCalls = new AtomicInteger();
+
+        JudgeException exception = assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.moderateText("safe verdict", body -> {
+                    moderationCalls.incrementAndGet();
+                    throw new IOException("temporary moderation failure");
+                }));
+
+        assertFalse(exception.retryable());
+        assertEquals(2, moderationCalls.get());
+    }
+
+    @Test
     void doesNotRetryAFlaggedVerdict() {
         AtomicInteger moderationCalls = new AtomicInteger();
 

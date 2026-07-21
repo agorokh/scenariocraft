@@ -137,10 +137,13 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 }
                 return;
             } catch (IOException | JudgeException exception) {
-                if (attempt == MODERATION_ATTEMPTS
-                        || exception instanceof JudgeException judgeException
-                                && !judgeException.retryable()) {
+                if (exception instanceof JudgeException judgeException
+                        && !judgeException.retryable()) {
                     throw exception;
+                }
+                if (attempt == MODERATION_ATTEMPTS) {
+                    throw new JudgeException(
+                            "OpenAI moderation failed after retry", exception, false);
                 }
             }
         }

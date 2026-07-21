@@ -55,6 +55,7 @@ session.
 | 2026-07-21 | Retry moderation once against the same parsed verdict and treat a flagged verdict as non-retryable. | A transient moderation outage should not repeat the expensive vision generation or replace an already valid verdict, while unsafe text must never be rechecked for publication. |
 | 2026-07-21 | Enforce namespace-form, 256-character palette entries and a 1,024-chunk PNG ceiling before renderer or raster work. | File and array-size caps alone still permit repeated hashing of huge block IDs or CPU/allocation amplification from hundreds of thousands of empty PNG chunks. |
 | 2026-07-21 | Parse the round path inside the CLI error boundary and consume OpenAI bodies with a size-bounded subscriber. | Invalid local paths must produce a controlled status instead of a stack trace, and the configured request timeout must remain active until a bounded body is fully consumed. |
+| 2026-07-21 | Make exhausted moderation retries non-retryable to the outer persona loop, cap both HTTP timeouts at 600 seconds, and reuse renderer plot limits in manifest validation. | Moderation must never regenerate a valid vision verdict, operational timeouts need a finite range, and one shared physical-limit definition prevents contract drift. |
 
 ## Surprises & Discoveries
 
@@ -96,8 +97,8 @@ session.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 99 plugin tests, 14 renderer tests, and 66 judge tests
-  (179 total), zero failures.
+- `make ci-fast` passed on Java 21 with 99 plugin tests, 14 renderer tests, and 68 judge tests
+  (181 total), zero failures.
 - The installed command `judge/build/install/judge/bin/judge --round
   rounds/round-20260721-193000 --dry-run` ran from a copy of the committed fixture runtime,
   produced two verdicts per contestant, means `8.75` and `6.75`, and named Alex/p1 the winner.

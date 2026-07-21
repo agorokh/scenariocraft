@@ -1,6 +1,7 @@
 package io.github.agorokh.scenariocraft.judge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.PrintWriter;
@@ -66,7 +67,7 @@ class JudgeCliTest {
                 new PrintWriter(diagnostics));
 
         assertEquals(2, status);
-        assertTrue(diagnostics.toString().contains("must be a positive integer"));
+        assertTrue(diagnostics.toString().contains("between 1 and 600 seconds"));
     }
 
     @Test
@@ -100,6 +101,18 @@ class JudgeCliTest {
                         Map.of("SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS", "17"),
                         "SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS",
                         10));
+    }
+
+    @Test
+    void rejectsConfiguredTimeoutsAboveTheOperationalLimit() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> JudgeCli.configuredDuration(
+                        Map.of("SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS", "601"),
+                        "SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS",
+                        90));
+
+        assertTrue(exception.getMessage().contains("between 1 and 600 seconds"));
     }
 
     @Test

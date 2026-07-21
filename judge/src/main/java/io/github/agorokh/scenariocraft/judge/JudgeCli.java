@@ -7,6 +7,8 @@ import java.time.Duration;
 import java.util.Map;
 
 public final class JudgeCli {
+    static final int MAX_TIMEOUT_SECONDS = 600;
+
     private JudgeCli() {}
 
     public static void main(String[] arguments) {
@@ -98,12 +100,21 @@ public final class JudgeCli {
             Map<String, String> environment, String name, int defaultSeconds) {
         String value = environment.getOrDefault(name, Integer.toString(defaultSeconds));
         if (!value.matches("[1-9][0-9]*")) {
-            throw new IllegalArgumentException(name + " must be a positive integer.");
+            throw invalidTimeout(name);
         }
         try {
-            return Duration.ofSeconds(Integer.parseInt(value));
+            int seconds = Integer.parseInt(value);
+            if (seconds > MAX_TIMEOUT_SECONDS) {
+                throw invalidTimeout(name);
+            }
+            return Duration.ofSeconds(seconds);
         } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException(name + " is too large.", exception);
+            throw invalidTimeout(name);
         }
+    }
+
+    private static IllegalArgumentException invalidTimeout(String name) {
+        return new IllegalArgumentException(
+                name + " must be between 1 and " + MAX_TIMEOUT_SECONDS + " seconds.");
     }
 }

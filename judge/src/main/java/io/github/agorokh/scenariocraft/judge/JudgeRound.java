@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
+import io.github.agorokh.scenariocraft.renderer.VoxelPlot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -19,8 +20,6 @@ import java.util.Set;
 record JudgeRound(int schema, String roundId, String task, String world, List<Plot> plots) {
     static final int MAX_MANIFEST_BYTES = 1024 * 1024;
     static final int MAX_PLOTS = 8;
-    private static final int MAX_PLOT_DIMENSION = 256;
-    private static final int MAX_PLOT_VOLUME = 1_000_000;
     private static final int MAX_TASK_LENGTH = 512;
     private static final int MAX_WORLD_LENGTH = 128;
     private static final int MAX_PLAYER_LENGTH = 64;
@@ -189,12 +188,13 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
                 throw new IllegalArgumentException(
                         "manifest plot origin and size must contain three integers");
             }
-            if (size.stream().anyMatch(value -> value < 0 || value > MAX_PLOT_DIMENSION)) {
+            if (size.stream().anyMatch(
+                    value -> value < 0 || value > VoxelPlot.MAX_DIMENSION)) {
                 throw new IllegalArgumentException(
                         "manifest plot size is outside the supported range");
             }
             long volume = (long) size.get(0) * size.get(1) * size.get(2);
-            if (volume > MAX_PLOT_VOLUME) {
+            if (volume > VoxelPlot.MAX_BLOCKS) {
                 throw new IllegalArgumentException("manifest plot volume exceeds the limit");
             }
         }
