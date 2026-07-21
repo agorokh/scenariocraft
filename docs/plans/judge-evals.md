@@ -37,6 +37,7 @@ session.
 | 2026-07-21 | Keep synthetic responses explicitly marked as hand-authored goldens; require family cases and council records to bind round, plot, commit, voxel, and response hashes. | Synthetic fixtures exercise the assertion engine but must never be presented as live family evidence. |
 | 2026-07-21 | Bind family provenance to repository paths whose content is read and hashed from the cited commit, and fetch full history in CI. | Merely proving that a SHA names some commit does not prove the reviewed round artifacts existed in it. |
 | 2026-07-21 | Move PR #40 to ready without the unavailable family-round exports and child-auditor records. | With one hour remaining, the operator explicitly accepted this scope exception so external review and CI could proceed; synthetic fixtures remain labeled honestly and are not presented as family evidence. |
+| 2026-07-21 | Make the default/release runner fail closed and expose the deadline exception only as `--allow-synthetic-only`. | The reviewed synthetic slice can merge without encoding missing family evidence as a silent permanent bypass; PR #40 no longer closes #13. |
 
 ## Surprises & Discoveries
 
@@ -79,9 +80,9 @@ session.
 
 ## Acceptance evidence
 
-- `./evals/run.sh --dry-run` passes all six synthetic seed cases and prints the required table;
+- `./evals/run.sh --dry-run --allow-synthetic-only` passes all six synthetic seed cases and prints the required table;
   score-band, tone, schema, and cross-case ordering assertions are active.
-- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes ten focused runner tests,
+- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes eleven focused runner tests,
   including duplicate-key rejection, aggregate verification, ordering failure, and anonymous
   checksum-bound council-record validation.
 - `OpenAiPersonaJudgeTest.requestUsesSevenImagesSharedRubricAndStrictReasonThenScoresSchema`

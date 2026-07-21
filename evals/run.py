@@ -678,10 +678,15 @@ def run(
     dry_run: bool,
     ground_truth_root: Path | None = None,
     production_validation: bool = True,
+    allow_synthetic_only: bool = False,
 ) -> int:
     specs = load_cases(cases_root)
     if len(specs) < 6:
         raise EvalError("eval suite must contain at least six cases")
+    if ground_truth_root is None and not allow_synthetic_only:
+        raise EvalError(
+            "family-round ground truth is required; --allow-synthetic-only is transitional"
+        )
     if ground_truth_root is not None:
         specs_by_id = {spec.case_id: spec for spec in specs}
         reviewed = validate_ground_truth(ground_truth_root, specs_by_id)
@@ -734,6 +739,11 @@ def run(
 def main(arguments: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run ScenarioCraft judge evals")
     parser.add_argument("--dry-run", action="store_true", help="use recorded responses")
+    parser.add_argument(
+        "--allow-synthetic-only",
+        action="store_true",
+        help="run the transitional synthetic suite without satisfying the release gate",
+    )
     parser.add_argument("--cases", type=Path, help=argparse.SUPPRESS)
     options = parser.parse_args(arguments)
     repo_root = Path(__file__).resolve().parent.parent
@@ -745,6 +755,7 @@ def main(arguments: list[str] | None = None) -> int:
             repo_root,
             options.dry_run,
             ground_truth_root if ground_truth_root.exists() else None,
+            allow_synthetic_only=options.allow_synthetic_only,
         )
     except (EvalError, OSError, subprocess.SubprocessError) as exc:
         print(f"Eval runner failed: {exc}", file=sys.stderr)

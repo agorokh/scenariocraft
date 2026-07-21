@@ -1,4 +1,4 @@
-.PHONY: ci-fast demo demo-dry-run evals-check evals-unit site-check
+.PHONY: ci-fast demo demo-dry-run evals-check evals-release evals-unit site-check
 
 demo:
 	./demo/run-headless.sh
@@ -13,12 +13,15 @@ ci-fast: site-check evals-unit
 		shasum -a 256 --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	fi
 	./gradlew build --no-daemon
-	./evals/run.sh --dry-run
+	./evals/run.sh --dry-run --allow-synthetic-only
 
 evals-unit:
 	python3 -m unittest discover -s evals/tests -p 'test_*.py'
 
 evals-check: evals-unit
+	./evals/run.sh --dry-run --allow-synthetic-only
+
+evals-release: evals-unit
 	./evals/run.sh --dry-run
 
 site-check:

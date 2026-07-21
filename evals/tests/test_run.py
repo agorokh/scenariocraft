@@ -105,6 +105,7 @@ class EvalRunnerTest(unittest.TestCase):
                         RUNNER.parents[1],
                         True,
                         production_validation=False,
+                        allow_synthetic_only=True,
                     ),
                 )
 
@@ -129,7 +130,23 @@ class EvalRunnerTest(unittest.TestCase):
                         RUNNER.parents[1],
                         True,
                         production_validation=False,
+                        allow_synthetic_only=True,
                     ),
+                )
+
+    def test_missing_family_ground_truth_fails_closed_without_transition_flag(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for index in range(6):
+                write_case(root, f"case-{index}", 5)
+            with self.assertRaisesRegex(
+                scenario_evals.EvalError, "family-round ground truth is required"
+            ):
+                scenario_evals.run(
+                    root,
+                    RUNNER.parents[1],
+                    True,
+                    production_validation=False,
                 )
 
     def test_scores_before_reasoning_are_rejected(self):

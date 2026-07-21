@@ -132,8 +132,12 @@ The eval runner requires Python 3.10 or newer. Run the deterministic recorded-re
 used by CI from the repository root:
 
 ```sh
-./evals/run.sh --dry-run
+./evals/run.sh --dry-run --allow-synthetic-only
 ```
+
+`--allow-synthetic-only` is an explicit transitional mode for the committed synthetic suite; it
+does not satisfy issue #13's release evidence. `make evals-release` omits that exception and fails
+closed unless at least two checksum-bound family cases and their council reviews are present.
 
 Each directory under `evals/cases/` contains a schema-v1 `voxels.json`, `task.txt`,
 `recorded-response.json`, and an assertion-based `expected.yml`. Synthetic edge cases identify
@@ -151,7 +155,7 @@ For a live GPT-5.6 pass, provide the API key only through the process environmen
 
 ```sh
 export OPENAI_API_KEY='<your OpenAI API key>'
-./evals/run.sh
+./evals/run.sh --allow-synthetic-only
 ```
 
 Live mode creates an isolated one-plot round for each fixture, uses the production renderer,
