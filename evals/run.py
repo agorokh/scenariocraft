@@ -69,8 +69,16 @@ def _read_bytes(path: Path, maximum: int) -> bytes:
 
 
 def load_json(path: Path, maximum: int = MAX_JSON_BYTES) -> Any:
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise EvalError(f"duplicate key {key!r} in {path}")
+            value[key] = item
+        return value
+
     try:
-        return json.loads(_read_bytes(path, maximum))
+        return json.loads(_read_bytes(path, maximum), object_pairs_hook=unique_object)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise EvalError(f"invalid JSON-compatible YAML/JSON in {path}: {exc}") from exc
 
@@ -192,6 +200,8 @@ def load_cases(cases_root: Path) -> list[CaseSpec]:
     directories = sorted(path for path in cases_root.iterdir() if path.is_dir())
     if not directories:
         raise EvalError("eval suite contains no cases")
+    if len(directories) > 100:
+        raise EvalError("eval suite exceeds the 100-case limit")
     specs: list[CaseSpec] = []
     for directory in directories:
         case_id = directory.name
@@ -210,6 +220,59 @@ def load_cases(cases_root: Path) -> list[CaseSpec]:
             )
         )
     return specs
+
+
+def validate_ground_truth(ground_truth_root: Path, case_ids: set[str]) -> set[str]:
+    if ground_truth_root.is_symlink() or not ground_truth_root.is_dir():
+        raise EvalError(f"ground-truth directory is missing or symbolic: {ground_truth_root}")
+    files = sorted(ground_truth_root.glob("*.yml"))
+    if not files:
+        raise EvalError("ground-truth directory contains no review files")
+    seen_cases: set[str] = set()
+    for path in files:
+        if path.is_symlink() or not CASE_ID.fullmatch(path.stem):
+            raise EvalError(f"unsafe ground-truth file: {path}")
+        root = require_keys(
+            load_json(path, MAX_TEXT_BYTES),
+            {"schema", "case_id", "adult_supervised", "reviews"},
+            path.name,
+        )
+        if root["schema"] != 1 or root["adult_supervised"] is not True:
+            raise EvalError(f"{path.name} must use schema 1 and adult_supervised true")
+        case_id = root["case_id"]
+        if case_id not in case_ids or case_id != path.stem or case_id in seen_cases:
+            raise EvalError(f"{path.name} must identify one unique existing eval case")
+        seen_cases.add(case_id)
+        reviews = root["reviews"]
+        if not isinstance(reviews, list) or len(reviews) != 2:
+            raise EvalError(f"{path.name} must contain exactly the age-7 and age-10 reviews")
+        ages: set[int] = set()
+        for index, raw_review in enumerate(reviews):
+            review = require_keys(
+                raw_review,
+                {"age", "role", "agreement", "reason"},
+                f"{path.name} review {index}",
+            )
+            age = review["age"]
+            if age not in (7, 10) or isinstance(age, bool) or age in ages:
+                raise EvalError(f"{path.name} reviews must contain unique ages 7 and 10")
+            ages.add(age)
+            if review["role"] != "judge auditor":
+                raise EvalError(f"{path.name} review role must be judge auditor")
+            if review["agreement"] not in ("agree", "disagree"):
+                raise EvalError(f"{path.name} agreement must be agree or disagree")
+            reason = review["reason"]
+            if (
+                not isinstance(reason, str)
+                or not reason.strip()
+                or len(reason) > 240
+                or any(character in reason for character in "\r\n")
+                or any(ord(character) < 32 for character in reason)
+            ):
+                raise EvalError(f"{path.name} reason must be safe one-line text")
+        if ages != {7, 10}:
+            raise EvalError(f"{path.name} must contain ages 7 and 10")
+    return seen_cases
 
 
 def validate_results(value: Any, task: str, label: str) -> list[dict[str, Any]]:
@@ -340,8 +403,28 @@ def live_response(spec: CaseSpec, repo_root: Path) -> Any:
         return load_json(round_dir / "results.json")
 
 
-def run(cases_root: Path, repo_root: Path, dry_run: bool) -> int:
+def run(
+    cases_root: Path,
+    repo_root: Path,
+    dry_run: bool,
+    ground_truth_root: Path | None = None,
+) -> int:
     specs = load_cases(cases_root)
+    if len(specs) < 6:
+        raise EvalError("eval suite must contain at least six cases")
+    if ground_truth_root is not None:
+        reviewed = validate_ground_truth(
+            ground_truth_root, {spec.case_id for spec in specs}
+        )
+        family_cases = {
+            spec.case_id
+            for spec in specs
+            if spec.expected["source"]["kind"] == "family-round"
+        }
+        if len(family_cases) < 2:
+            raise EvalError("eval suite must contain at least two family-round cases")
+        if not family_cases.issubset(reviewed):
+            raise EvalError("every family-round case must have design-council ground truth")
     results: dict[str, CaseResult] = {}
     for spec in specs:
         response = (
@@ -372,8 +455,14 @@ def main(arguments: list[str] | None = None) -> int:
     options = parser.parse_args(arguments)
     repo_root = Path(__file__).resolve().parent.parent
     cases_root = options.cases or repo_root / "evals" / "cases"
+    ground_truth_root = repo_root / "evals" / "ground-truth"
     try:
-        return run(cases_root.resolve(), repo_root, options.dry_run)
+        return run(
+            cases_root.resolve(),
+            repo_root,
+            options.dry_run,
+            ground_truth_root if ground_truth_root.exists() else None,
+        )
     except (EvalError, OSError, subprocess.SubprocessError) as exc:
         print(f"Eval runner failed: {exc}", file=sys.stderr)
         return 2

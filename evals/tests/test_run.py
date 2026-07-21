@@ -1,4 +1,6 @@
 import importlib.util
+import contextlib
+import io
 import json
 from pathlib import Path
 import sys
@@ -87,20 +89,32 @@ class EvalRunnerTest(unittest.TestCase):
             root = Path(temporary)
             write_case(root, "empty", 2)
             write_case(root, "detailed", 8, ["empty"])
-            self.assertEqual(0, scenario_evals.run(root, RUNNER.parents[1], True))
+            for index in range(4):
+                write_case(root, f"extra-{index}", 5)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    0,
+                    scenario_evals.run(root, RUNNER.parents[1], True),
+                )
 
     def test_banned_phrase_and_reversed_order_fail(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             write_case(root, "empty", 8)
             write_case(root, "detailed", 2, ["empty"])
+            for index in range(4):
+                write_case(root, f"extra-{index}", 5)
             recorded = root / "detailed" / "recorded-response.json"
             value = json.loads(recorded.read_text(encoding="utf-8"))
             value["contestants"][0]["verdicts"][0]["comment"] = (
                 "Your block design has a clear shape. You failed to add a window."
             )
             recorded.write_text(json.dumps(value), encoding="utf-8")
-            self.assertEqual(1, scenario_evals.run(root, RUNNER.parents[1], True))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(
+                    1,
+                    scenario_evals.run(root, RUNNER.parents[1], True),
+                )
 
     def test_scores_before_reasoning_are_rejected(self):
         verdict = {
@@ -125,6 +139,33 @@ class EvalRunnerTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(scenario_evals.EvalError, "size volume"):
             scenario_evals.validate_voxel(value, "case")
+
+    def test_duplicate_json_keys_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "duplicate.json"
+            path.write_text('{"schema": 1, "schema": 2}', encoding="utf-8")
+            with self.assertRaisesRegex(scenario_evals.EvalError, "duplicate key"):
+                scenario_evals.load_json(path)
+
+    def test_ground_truth_requires_anonymous_age_and_role_only_reviews(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            valid = {
+                "schema": 1,
+                "case_id": "family-case",
+                "adult_supervised": True,
+                "reviews": [
+                    {"age": 7, "role": "judge auditor", "agreement": "agree", "reason": "The scores match the visible detail."},
+                    {"age": 10, "role": "judge auditor", "agreement": "disagree", "reason": "The theme score should be lower."},
+                ],
+            }
+            path = root / "family-case.yml"
+            path.write_text(json.dumps(valid), encoding="utf-8")
+            scenario_evals.validate_ground_truth(root, {"family-case"})
+            valid["reviews"][0]["name"] = "not allowed"
+            path.write_text(json.dumps(valid), encoding="utf-8")
+            with self.assertRaisesRegex(scenario_evals.EvalError, "exactly these keys"):
+                scenario_evals.validate_ground_truth(root, {"family-case"})
 
 
 if __name__ == "__main__":

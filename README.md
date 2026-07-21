@@ -121,6 +121,33 @@ fallback. Players can use `/battle results` to replay the latest result, includi
 round leaves REVEAL. Malformed, oversized, symbolic-link, or raw-JSON input is rejected with a
 friendly message rather than displayed.
 
+## Judge regression evals
+
+Run the deterministic recorded-response suite used by CI from the repository root:
+
+```sh
+./evals/run.sh --dry-run
+```
+
+Each directory under `evals/cases/` contains a schema-v1 `voxels.json`, `task.txt`,
+`recorded-response.json`, and an assertion-based `expected.yml`. The `.yml` files use the
+JSON-compatible subset of YAML so CI needs no extra parser package. Assertions cover score
+bands, cross-case ordering, a genuine concrete positive, banned phrasing, the production result
+schema, and reasoning-before-score field order.
+
+For a live GPT-5.6 pass, build the installed judge, provide the API key only through the process
+environment, and omit `--dry-run`:
+
+```sh
+./gradlew :judge:installDist
+export OPENAI_API_KEY='<your OpenAI API key>'
+./evals/run.sh
+```
+
+Live mode creates an isolated one-plot round for each fixture, uses the production renderer,
+personas, rubric, moderation, and judge, and never overwrites the committed recorded responses.
+The runner prints a pass/fail table and exits non-zero when any assertion fails.
+
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 player-data recovery marker or the plugin-owned registry fails, the console and online
 operators receive a separate persistence alert; keep the player contained and have them
