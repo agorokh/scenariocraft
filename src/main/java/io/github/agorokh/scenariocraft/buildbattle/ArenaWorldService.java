@@ -11,7 +11,7 @@ import org.bukkit.World;
 import org.bukkit.WorldCreator;
 import org.bukkit.WorldType;
 
-/** Creates or loads the fixed Build Battle world and applies its stable world rules. */
+/** Creates or loads the fixed Speed Build world and applies its stable world rules. */
 public final class ArenaWorldService {
     public static final String WORLD_NAME = "battle_world";
     private static final long DAYLIGHT_TICKS = 6_000L;

@@ -1,6 +1,6 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
-/** Geometry and mutation-budget settings for the Build Battle arena. */
+/** Geometry and mutation-budget settings for the Speed Build arena. */
 public record ArenaSettings(
         int plotSize, int wallHeight, int plotSpacing, int maxPlots, int blocksPerTick) {
     public ArenaSettings {

@@ -67,6 +67,21 @@ the round through RCON. Set `SCENARIOCRAFT_RCON_PASSWORD` and optionally
 
 Alternatively, place an untracked `judge.yml` beside `personas.yml` and `rubric.md` with an
 `rcon` mapping containing `host`, `port`, `password`, `connect_timeout_seconds`, and
-`read_timeout_seconds`. Never commit that file. Environment values override matching YAML
-values. If RCON is unavailable, judging still succeeds and the published files remain
-available for automatic plugin polling and `/battle results`.
+`read_timeout_seconds`. The legacy `timeout-seconds` YAML key and
+`SCENARIOCRAFT_RCON_TIMEOUT_SECONDS` environment value set both timeouts. For example:
+
+```yml
+rcon:
+  host: 127.0.0.1
+  port: 25575
+  password: replace-with-the-server-rcon-password
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 5
+```
+
+Never commit that file; keep it outside source control with owner-only permissions.
+Environment values override matching YAML values. RCON is optional: a missing configuration
+skips the network request, while connection, authentication, or command failure is reported
+without the password and does not change judge status or remove the published files. If the
+files are shared with the server, ScenarioCraft's REVEAL poll still announces them;
+`/speedbuild results` replays the latest readable result at any time.

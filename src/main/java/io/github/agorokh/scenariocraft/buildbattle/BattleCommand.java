@@ -7,7 +7,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.RemoteConsoleCommandSender;
 
-/** Bedrock-compatible text command for starting and stopping Build Battle rounds. */
+/** Bedrock-compatible text command for starting and stopping Speed Build rounds. */
 public final class BattleCommand implements CommandExecutor {
     private final BattleSettings settings;
     private final BattleRound round;
