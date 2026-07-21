@@ -69,9 +69,11 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
                 throw new IllegalArgumentException("persona " + index + " must be a mapping");
             }
             requireExactKeys(persona, Set.of("name", "voice"), "persona " + index);
+            String name = requireString(
+                    persona.get("name"), "persona name", MAX_PERSONA_NAME_LENGTH);
+            requireSafeText(name, "persona name");
             personas.add(new Persona(
-                    requireString(
-                            persona.get("name"), "persona name", MAX_PERSONA_NAME_LENGTH),
+                    name,
                     requireString(
                             persona.get("voice"), "persona voice", MAX_PERSONA_VOICE_LENGTH)));
         }
@@ -111,5 +113,19 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
             throw new IOException(path.getFileName() + " exceeds the byte limit");
         }
         return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    private static void requireSafeText(String value, String label) {
+        if (value.codePoints().anyMatch(JudgeConfig::isUnsafeTextCodePoint)) {
+            throw new IllegalArgumentException(label + " contains unsafe control characters");
+        }
+    }
+
+    private static boolean isUnsafeTextCodePoint(int codePoint) {
+        int type = Character.getType(codePoint);
+        return Character.isISOControl(codePoint)
+                || type == Character.FORMAT
+                || type == Character.LINE_SEPARATOR
+                || type == Character.PARAGRAPH_SEPARATOR;
     }
 }

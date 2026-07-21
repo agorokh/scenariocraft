@@ -16,9 +16,16 @@ final class ResultsWriter {
     private ResultsWriter() {}
 
     static void write(Path roundDirectory, RoundResults results) throws IOException {
-        writeAtomically(roundDirectory.resolve("results.json"),
-                JSON.toJson(results) + System.lineSeparator());
-        writeAtomically(roundDirectory.resolve("results.txt"), humanReadable(results));
+        Path json = roundDirectory.resolve("results.json");
+        Path text = roundDirectory.resolve("results.txt");
+        try {
+            writeAtomically(json, JSON.toJson(results) + System.lineSeparator());
+            writeAtomically(text, humanReadable(results));
+        } catch (IOException primaryFailure) {
+            deleteAfterFailedPublication(json, primaryFailure);
+            deleteAfterFailedPublication(text, primaryFailure);
+            throw primaryFailure;
+        }
     }
 
     static String humanReadable(RoundResults results) {
@@ -70,6 +77,14 @@ final class ResultsWriter {
             if (!moved) {
                 Files.deleteIfExists(temporary);
             }
+        }
+    }
+
+    private static void deleteAfterFailedPublication(Path target, IOException primaryFailure) {
+        try {
+            Files.deleteIfExists(target);
+        } catch (IOException cleanupFailure) {
+            primaryFailure.addSuppressed(cleanupFailure);
         }
     }
 }

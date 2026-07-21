@@ -14,6 +14,7 @@ import java.util.zip.CRC32;
 final class JudgeImage {
     static final long MAX_BYTES = 10L * 1024 * 1024;
     static final int MAX_DIMENSION = 4096;
+    static final long MAX_PIXELS = 2048L * 2048L;
 
     private final String fileName;
     private final byte[] bytes;
@@ -168,7 +169,8 @@ final class JudgeImage {
             throw invalidPng(fileName);
         }
         if (width <= 0 || height <= 0
-                || width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                || width > MAX_DIMENSION || height > MAX_DIMENSION
+                || (long) width * height > MAX_PIXELS) {
             throw new IOException("Judge image dimensions are outside the allowed range: "
                     + fileName);
         }

@@ -40,6 +40,9 @@ comments must pass local control/cruelty validation and live OpenAI moderation.
 The `unix:nlink` provenance requirement applies to untrusted round inputs; renderer-generated
 temporary PNGs retain the same bounded/stable/raster checks without depending on temp filesystem
 link-count support. Live Responses envelopes must contain exactly one verdict and no refusal.
+Arena configuration and judge manifests share the same eight-plot maximum. Decoded PNGs are capped
+at 4,194,304 pixels, persona names reject terminal/format controls, and result JSON/text publication
+removes both artifacts if either write fails.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

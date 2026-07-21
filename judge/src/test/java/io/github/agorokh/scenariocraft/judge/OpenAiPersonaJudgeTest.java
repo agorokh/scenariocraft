@@ -222,6 +222,16 @@ class OpenAiPersonaJudgeTest {
     }
 
     @Test
+    void rejectsDecodedPixelCountsAboveTheHeapBudget() throws Exception {
+        Path tooManyPixels = temporaryDirectory.resolve("too-many-pixels.png");
+        Files.write(tooManyPixels, structuralPng(2049, 2049));
+
+        assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(tooManyPixels, temporaryDirectory.toRealPath()));
+    }
+
+    @Test
     void rejectsTruncatedPngHeaderWithoutImageDataOrEndChunk() throws Exception {
         Path truncated = temporaryDirectory.resolve("truncated.png");
         Files.write(truncated, ByteBuffer.allocate(24)

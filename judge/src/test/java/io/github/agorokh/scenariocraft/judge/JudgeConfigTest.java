@@ -81,6 +81,23 @@ class JudgeConfigTest {
                 () -> JudgeConfig.load(personasFixture(), oversized));
     }
 
+    @Test
+    void rejectsUnsafePlayerVisiblePersonaNames() throws Exception {
+        Path personas = temporaryDirectory.resolve("personas.yml");
+        Files.writeString(personas, """
+                min_judges: 2
+                personas:
+                  - name: "Professor\\u001b[2J"
+                    voice: Kind
+                  - name: Helper
+                    voice: Warm
+                """);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> JudgeConfig.load(personas, rubricFixture()));
+    }
+
     private Path personasFixture() {
         return fixtureRoot().resolve("judge/personas.yml");
     }

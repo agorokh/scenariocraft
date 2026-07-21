@@ -89,10 +89,16 @@ final class RoundImages {
             }
         }
         List<JudgeImage> snapshots = new ArrayList<>(images.size());
+        long snapshotBytes = 0;
         for (Path image : images) {
-            snapshots.add(untrustedInputs
+            JudgeImage snapshot = untrustedInputs
                     ? JudgeImage.read(image, allowedRoot)
-                    : JudgeImage.readGenerated(image, allowedRoot));
+                    : JudgeImage.readGenerated(image, allowedRoot);
+            snapshotBytes = Math.addExact(snapshotBytes, snapshot.size());
+            if (snapshotBytes > MAX_TOTAL_IMAGE_BYTES) {
+                throw new IOException("Judge image set exceeds the aggregate byte limit");
+            }
+            snapshots.add(snapshot);
         }
         return List.copyOf(snapshots);
     }

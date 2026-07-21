@@ -27,10 +27,18 @@ class ArenaConfigLoaderTest {
 
     @Test
     void invalidValuesFailBeforeArenaWorkStarts() {
-        YamlConfiguration config = packagedConfig();
-        config.set("blocks-per-tick", 0);
+        YamlConfiguration invalidBudget = packagedConfig();
+        invalidBudget.set("blocks-per-tick", 0);
 
-        assertThrows(IllegalArgumentException.class, () -> ArenaConfigLoader.load(config));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ArenaConfigLoader.load(invalidBudget));
+
+        YamlConfiguration excessivePlots = packagedConfig();
+        excessivePlots.set("max-plots", 9);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ArenaConfigLoader.load(excessivePlots));
     }
 
     @Test
