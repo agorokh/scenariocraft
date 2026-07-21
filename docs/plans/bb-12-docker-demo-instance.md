@@ -14,8 +14,9 @@ renderer/judge process, Docker packaging, bootstrap data, and operator documenta
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
+- [x] Implement with tests.
+- [ ] Capture the issue's acceptance evidence. Dry-run evidence is complete; live-key and
+      one-human evidence remain.
 - [ ] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
 
@@ -36,11 +37,30 @@ session.
 - BB-09 is implemented in PR #34 with green CI but was not merged when this plan started.
   Issue #14 can build its isolated Docker and solo-mode slices on `main`, but final verdict
   announcement evidence depends on that PR reaching the base branch.
+- The first real Compose smoke mounted server data and plugin data as separate named volumes.
+  Paper correctly wrote rounds under the plugin volume, but the judge initially watched the
+  shadowed `server-data/plugins` path. Mounting the plugin volume directly into the judge made
+  the ownership boundary explicit and produced a two-plot verdict on the next watcher start.
+- The host has Docker but no Java runtime and exposes Compose as `docker-compose`, not the
+  newer subcommand. Local CI therefore ran in the pinned Java 21 Gradle image; the documented
+  `docker compose` form was separately copy-paste validated through the installed Compose
+  plugin binary.
 
 ## Acceptance evidence
 
-Pending. Record the exact clean-machine-equivalent quickstart, elapsed time, solo-player
-proof, missing-key failure, headless demo output, and GitHub/local CI results here.
+- `env -u OPENAI_API_KEY docker-compose config` exited 1 with
+  `OPENAI_API_KEY is required; export it before starting ScenarioCraft`.
+- A fresh Docker-volume smoke booted Paper 1.21.11, enabled ScenarioCraft, and logged
+  `SCENARIOCRAFT_DEMO_ARENA_READY` after 27,189 mutations at the configured 6,000-block
+  per-tick budget.
+- Headless RCON `/battle start` entered PREPARING at 06:18:48 UTC, exported two bundled
+  sample plots at 06:20:22 UTC, and the dry-run judge wrote `results.txt` with a winner.
+- The one-player controller regression exports `BuilderKid` as p1 and
+  `ScenarioCraft Sample 2` as p2 through the normal voxel contract.
+- `make ci-fast` passed in the Java 21 Gradle container; draft PR #37's build and real-Paper
+  smoke checks passed for implementation commit `112ce73`.
+- Pending after BB-09 integration: `make demo` live-key timing and
+  `SCENARIOCRAFT_RESULTS_ANNOUNCED` evidence with one human player.
 
 ## Retrospective
 
