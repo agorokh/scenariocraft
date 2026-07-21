@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "synthetic-treehouse",
+  "origin": [0, 64, 0],
+  "size": [2, 2, 2],
+  "palette": ["minecraft:air", "minecraft:oak_log", "minecraft:oak_planks", "minecraft:ladder"],
+  "blocks": [1,0,1,0, 2,2,3,2]
+}

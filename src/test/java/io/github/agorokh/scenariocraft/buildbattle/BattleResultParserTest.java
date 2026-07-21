@@ -210,6 +210,13 @@ class BattleResultParserTest {
         assertEquals(
                 "A positive detail stood out in the roof.",
                 safeSummary.contestants().getFirst().feedback().getFirst().comment());
+        BattleResult oneBlock =
+                parser.parse(
+                        template.formatted(
+                                "Your stone block creates a clear starting point."));
+        assertEquals(
+                "A positive detail stood out in the block.",
+                oneBlock.contestants().getFirst().feedback().getFirst().comment());
     }
 
     @Test
