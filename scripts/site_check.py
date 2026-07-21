@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from html.parser import HTMLParser
 from pathlib import Path
 import re
@@ -41,6 +42,7 @@ class PageParser(HTMLParser):
         self.links: list[str] = []
         self.local_resources: list[str] = []
         self.remote_resources: list[str] = []
+        self.stylesheets: list[str] = []
         self.image_alts: list[str | None] = []
         self.step_count = 0
         self.ingredient_count = 0
@@ -61,6 +63,8 @@ class PageParser(HTMLParser):
         if tag == "img":
             self.image_alts.append(values.get("alt"))
         if href := values.get("href"):
+            if tag == "link" and "stylesheet" in (values.get("rel") or "").split():
+                self.stylesheets.append(href)
             if tag in NAVIGATION_HREF_TAGS:
                 self.links.append(href)
             elif is_remote(href):
@@ -115,6 +119,23 @@ def normalize_text(value: str) -> str:
     return " ".join(value.split())
 
 
+def versioned_asset_href(relative_path: str, asset_path: Path) -> str:
+    digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()[:12]
+    return f"{relative_path}?v={digest}"
+
+
+def stylesheet_version_problem(
+    stylesheet_hrefs: list[str], styles_path: Path = STYLES
+) -> str | None:
+    expected = versioned_asset_href("styles.css", styles_path)
+    if stylesheet_hrefs != [expected]:
+        return (
+            "stylesheet URL must match its content version "
+            f"(expected {expected!r}, found {stylesheet_hrefs!r})"
+        )
+    return None
+
+
 def validate_page() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     html = INDEX.read_text(encoding="utf-8")
@@ -157,6 +178,8 @@ def validate_page() -> tuple[list[str], list[str]]:
             errors.append(f"missing local resource: {resource}")
     if parser.remote_resources:
         errors.append(f"page would request remote resources: {parser.remote_resources}")
+    if problem := stylesheet_version_problem(parser.stylesheets):
+        errors.append(problem)
     if any(not alt or not alt.strip() for alt in parser.image_alts):
         errors.append("every image must have non-empty alt text")
     if re.search(r"@import|url\([^)]*(?:https?:)?//", css, re.IGNORECASE):
