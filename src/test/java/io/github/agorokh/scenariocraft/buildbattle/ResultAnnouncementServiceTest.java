@@ -129,6 +129,7 @@ class ResultAnnouncementServiceTest {
 
         assertTrue(firstChatCount >= 4);
         assertEquals(firstChatCount, playerChat.size());
+        assertTrue(playerChat.contains("§6Winner: Alex!§r"));
         assertEquals(List.of("§6Winner: Alex!"), titles);
         assertEquals(
                 List.of("ScenarioCraft announced the latest judge results."), commandMessages);
