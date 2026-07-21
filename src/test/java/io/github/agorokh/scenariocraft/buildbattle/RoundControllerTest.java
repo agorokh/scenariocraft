@@ -119,9 +119,19 @@ class RoundControllerTest {
 
         assertTrue(interaction.isCancelled());
         assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
-        assertTrue(
-                rig.spectatorMessages.stream()
-                        .anyMatch(message -> message.contains("belongs to BuilderKid")));
+        assertTrue(rig.spectatorMessages.contains(
+                "§eThis secret note belongs to BuilderKid this round. You'll see the idea together soon!§r"));
+        rig.close();
+    }
+
+    @Test
+    void shortCountdownColorsOnlyTheTimePortion() {
+        TestRig rig = new TestRig(new PhaseTimings(11, 1, 1, 1));
+        rig.advanceTo(RoundPhase.GATHERING);
+
+        rig.runTimerTick();
+
+        assertTrue(rig.messages.contains("gathering: §b10 seconds§r left."));
         rig.close();
     }
 
@@ -149,16 +159,16 @@ class RoundControllerTest {
         assertEquals("A dragon treehouse", rig.placedTask.get());
         assertTrue(
                 rig.playerMessages.contains(
-                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+                        "§6BuilderKid§r is the secret-note picker! The chest is waiting at the hub."));
         assertTrue(
                 rig.spectatorMessages.contains(
-                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+                        "§6BuilderKid§r is the secret-note picker! The chest is waiting at the hub."));
         assertTrue(
                 rig.playerTitles.contains(
-                        "BuilderKid has the secret note! | Open the chest at the hub!"));
+                        "§6BuilderKid§r has the secret note! | §aOpen the chest at the hub!"));
         assertTrue(
                 rig.spectatorTitles.contains(
-                        "BuilderKid has the secret note! | They'll reveal the build idea!"));
+                        "§6BuilderKid§r has the secret note! | §7They'll reveal the build idea!"));
 
         rig.controller.onPlayerInteract(interaction);
 
@@ -170,8 +180,8 @@ class RoundControllerTest {
         assertTrue(
                 rig.spectatorMessages.contains(
                         "Your build idea is: A dragon treehouse!"));
-        assertTrue(rig.playerTitles.contains("Build idea! | A dragon treehouse"));
-        assertTrue(rig.spectatorTitles.contains("Build idea! | A dragon treehouse"));
+        assertTrue(rig.playerTitles.contains("Build idea! | §6A dragon treehouse"));
+        assertTrue(rig.spectatorTitles.contains("Build idea! | §6A dragon treehouse"));
         assertEquals(GameMode.CREATIVE, rig.gameMode.get());
         rig.close();
     }
@@ -215,7 +225,7 @@ class RoundControllerTest {
         assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
         assertTrue(
                 rig.playerMessages.contains(
-                        "BuilderKid is the secret-note picker! The chest is waiting at the hub."));
+                        "§6BuilderKid§r is the secret-note picker! The chest is waiting at the hub."));
 
         rig.runTimerTick();
 
@@ -245,7 +255,7 @@ class RoundControllerTest {
                         "Your build idea is: A dragon treehouse!"));
         assertTrue(
                 rig.messages.contains(
-                        "Time is up — the secret note opened itself for everyone!"));
+                        "§6Time is up§r — the secret note opened itself for everyone!"));
         assertEquals(GameMode.CREATIVE, rig.gameMode.get());
         rig.close();
     }

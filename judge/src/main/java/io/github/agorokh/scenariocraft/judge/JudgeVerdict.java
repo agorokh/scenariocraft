@@ -26,7 +26,7 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
                     + "your next step|.{1,60}\\btip is to)\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern BUILD_FEATURE = Pattern.compile(
-            "\\b(?:arch|bridge|build|chimney|color|colour|detail|design|door|doorway|"
+            "\\b(?:arch|block|bridge|build|chimney|color|colour|detail|design|door|doorway|"
                     + "flag|floor|foundation|garden|idea|lighting|outline|palette|path|"
                     + "pattern|proportion|roof|room|shape|silhouette|structure|support|"
                     + "texture|tower|trim|wall|window) s?\\b",

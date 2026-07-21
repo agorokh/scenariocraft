@@ -7,10 +7,10 @@ import java.util.Optional;
 public record RoundTimer(int durationSeconds, int elapsedSeconds) {
     private static final Map<Integer, String> BUILD_WARNINGS =
             Map.of(
-                    600, "10 minutes left — keep those great ideas growing!",
-                    300, "5 minutes left — your build is taking shape!",
-                    60, "1 minute left — add your favorite finishing touches!",
-                    10, "10 seconds left — make them count!");
+                    600, "§b10 minutes§r left — keep those great ideas growing!",
+                    300, "§b5 minutes§r left — your build is taking shape!",
+                    60, "§b1 minute§r left — add your favorite finishing touches!",
+                    10, "§b10 seconds§r left — make them count!");
 
     public RoundTimer {
         if (durationSeconds <= 0) {

@@ -36,8 +36,9 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 
 - The design-system change is ScenarioCraft PR #41 and is already on `main`; the supplied URL
   used the issue route, but GitHub resolves the shared issue/PR number to the pull request.
-- The repository currently has 22 public issues and 19 merged pull requests. Those counts are
-  provisional because three related pull requests remain open while this work proceeds.
+- The repository had 22 public issues and 19 merged pull requests during initial verification.
+  After PRs #47 and #40 merged during the review wait, conflict resolution refreshed the page
+  to the then-current 23 public issues and 21 merged pull requests.
 - The judge config fails closed on unknown persona keys and `OpenAiPersonaJudge` uses one static
   `gpt-5.6` model, so Sol/Terra/Luna cannot be assigned truthfully without a runtime feature.
 - The default desktop shell has no discoverable Java runtime. The required Homebrew Java 21 at
@@ -51,6 +52,9 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
   URL, follow a GitHub redirect to a non-allowlisted host, or accept an existing local resource
   outside `site/`. Explicit scheme/host validation, a redirect guard, containment checks, and
   three standard-library regression tests now close those holes.
+- BB-11's eval tests deliberately read fixtures from `git show HEAD`, so their first run during
+  the uncommitted merge could not see the newly staged eval files. The resolved merge commit is
+  the earliest meaningful full-gate target; rerun `make ci-fast` immediately after committing it.
 
 ## Acceptance evidence
 
@@ -73,8 +77,8 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 - `git diff --check`: clean. The canonical logo has no diff, the full footer block is
   byte-for-byte unchanged, and every honesty label, disclaimer, skip link, and reduced-motion
   rule remains present.
-- Public-history query on July 21, 2026: 22 issues and 19 merged pull requests; first commit
-  July 18, three calendar days before verification.
+- Public-history query refreshed on July 21, 2026 after merging current `main`: 23 issues and
+  21 merged pull requests; first commit July 18, three calendar days before verification.
 - `/review` against `code_review.md`: no P1. The patch changes no judge/export logic, block
   mutation, player-facing runtime output, timing/deck behavior, GUI, or credential handling.
 
@@ -83,8 +87,8 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 The page now tells one coherent story from play through installation to authorship, while the
 README supplies the longer claim trail and submission details. Native `details` elements keep
 the ingredient cards usable by tap and keyboard without JavaScript, while CSS hover labels make
-the desktop recipe quick to scan. The main scope decision held: this branch links to the
-in-flight eval work but does not copy it, does not claim Mineflayer before its PR lands, and does
+the desktop recipe quick to scan. The main scope decision held: this branch attributes the
+independently merged eval work to PR #40, does not claim Mineflayer before its PR lands, and does
 not fabricate tier routing or a video URL. The only remaining submission action is external to
 the repository: record/upload the public YouTube demo and place its URL in the three named
 locations before 5:00 PM PDT.
