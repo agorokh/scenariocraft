@@ -121,6 +121,27 @@ class BattleResultParserTest {
     }
 
     @Test
+    void rejectsMoreFeedbackThanTheJudgePersonaLimit() {
+        String feedback =
+                "  Captain Comet: 2.00 — The bright roof is welcoming.\n"
+                        .repeat(BattleResultParser.MAX_FEEDBACK_PER_CONTESTANT + 1);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        parser.parse(
+                                """
+                                Round: round-20260721-193000
+                                Task: A moon base for cats
+
+                                Alex (p1)
+                                %s
+                                Winner: Alex with 2.00
+                                """
+                                        .formatted(feedback)));
+    }
+
+    @Test
     void missingPersonaVerdictsProduceAnHonestRetryMessage() {
         BattleResult result =
                 parser.parse(

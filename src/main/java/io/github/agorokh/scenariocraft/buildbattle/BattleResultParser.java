@@ -16,6 +16,8 @@ final class BattleResultParser {
     static final int MAX_RESULT_BYTES = 64 * 1024;
     static final int MAX_LINES = 160;
     static final int MAX_SOURCE_LINE_LENGTH = 640;
+    static final int MAX_CONTESTANTS = 8;
+    static final int MAX_FEEDBACK_PER_CONTESTANT = 8;
     private static final Pattern CONTESTANT = Pattern.compile("(.{1,80}) \\((p[1-9][0-9]{0,2})\\)");
     private static final Pattern FEEDBACK =
             Pattern.compile("  (.{1,64}): [0-9]+(?:\\.[0-9]{1,2})? — (.{1,500})");
@@ -78,7 +80,7 @@ final class BattleResultParser {
             Matcher winner = WINNER.matcher(line);
             if (winner.matches()) {
                 if (player != null) {
-                    contestants.add(new BattleResult.Contestant(player, plotId, feedback));
+                    addContestant(contestants, player, plotId, feedback);
                     player = null;
                 }
                 winnerName = displayText(winner.group(1), 80, "winner");
@@ -86,7 +88,7 @@ final class BattleResultParser {
             }
             if (line.startsWith("No winner:")) {
                 if (player != null) {
-                    contestants.add(new BattleResult.Contestant(player, plotId, feedback));
+                    addContestant(contestants, player, plotId, feedback);
                     player = null;
                 }
                 continue;
@@ -94,7 +96,7 @@ final class BattleResultParser {
             Matcher contestant = CONTESTANT.matcher(line);
             if (contestant.matches()) {
                 if (player != null) {
-                    contestants.add(new BattleResult.Contestant(player, plotId, feedback));
+                    addContestant(contestants, player, plotId, feedback);
                 }
                 player = displayText(contestant.group(1), 80, "player");
                 plotId = contestant.group(2);
@@ -103,6 +105,9 @@ final class BattleResultParser {
             }
             Matcher verdict = FEEDBACK.matcher(line);
             if (verdict.matches() && player != null) {
+                if (feedback.size() >= MAX_FEEDBACK_PER_CONTESTANT) {
+                    throw invalid("contains too much feedback for one contestant");
+                }
                 feedback.add(
                         new BattleResult.Feedback(
                                 displayText(verdict.group(1), 64, "persona"),
@@ -112,7 +117,7 @@ final class BattleResultParser {
             throw invalid("contains an unexpected line");
         }
         if (player != null) {
-            contestants.add(new BattleResult.Contestant(player, plotId, feedback));
+            addContestant(contestants, player, plotId, feedback);
         }
         if (contestants.isEmpty()) {
             throw invalid("contains no contestants");
@@ -128,6 +133,17 @@ final class BattleResultParser {
             winner = Optional.of(new BattleResult.Winner(winningContestant.player(), winningContestant.plotId()));
         }
         return new BattleResult(roundId, task, contestants, winner);
+    }
+
+    private static void addContestant(
+            List<BattleResult.Contestant> contestants,
+            String player,
+            String plotId,
+            List<BattleResult.Feedback> feedback) {
+        if (contestants.size() >= MAX_CONTESTANTS) {
+            throw invalid("contains too many contestants");
+        }
+        contestants.add(new BattleResult.Contestant(player, plotId, feedback));
     }
 
     private static String prefixed(String line, String prefix, String label) {

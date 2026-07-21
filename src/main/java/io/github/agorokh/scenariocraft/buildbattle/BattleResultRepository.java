@@ -10,8 +10,8 @@ import java.util.Optional;
 import java.util.PriorityQueue;
 
 /** Bounded discovery of judge results below the plugin's rounds directory. */
-final class BattleResultRepository {
-    private static final int MAX_ROUND_DIRECTORIES = 256;
+final class BattleResultRepository implements BattleResultReader {
+    private static final int MAX_RESULT_CANDIDATES = 256;
     private final Path roundsDirectory;
     private final BattleResultParser parser;
 
@@ -24,7 +24,8 @@ final class BattleResultRepository {
         this.parser = java.util.Objects.requireNonNull(parser, "parser");
     }
 
-    Optional<BattleResult> latest() throws IOException {
+    @Override
+    public Optional<BattleResult> latest() throws IOException {
         if (!Files.isDirectory(roundsDirectory, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(roundsDirectory)) {
             return Optional.empty();
@@ -36,10 +37,14 @@ final class BattleResultRepository {
                     .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
                     .filter(path -> !Files.isSymbolicLink(path))
                     .filter(path -> path.getFileName().toString().matches("round-[0-9]{8}-[0-9]{6}"))
+                    .filter(
+                            path ->
+                                    Files.isRegularFile(
+                                            path.resolve("results.txt"), LinkOption.NOFOLLOW_LINKS))
                     .forEach(
                             path -> {
                                 recent.add(path);
-                                if (recent.size() > MAX_ROUND_DIRECTORIES) {
+                                if (recent.size() > MAX_RESULT_CANDIDATES) {
                                     recent.remove();
                                 }
                             });
@@ -53,9 +58,6 @@ final class BattleResultRepository {
                         .toList();
         for (Path round : rounds) {
             Path result = round.resolve("results.txt");
-            if (!Files.exists(result, LinkOption.NOFOLLOW_LINKS)) {
-                continue;
-            }
             try {
                 BattleResult parsed = parser.read(result);
                 if (!parsed.roundId().equals(round.getFileName().toString())) {
@@ -69,7 +71,8 @@ final class BattleResultRepository {
         return Optional.empty();
     }
 
-    Optional<BattleResult> round(String roundId) throws IOException {
+    @Override
+    public Optional<BattleResult> round(String roundId) throws IOException {
         if (!roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
             throw new IllegalArgumentException("round id must match round-<yyyymmdd>-<hhmmss>");
         }

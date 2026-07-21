@@ -3,12 +3,15 @@ package io.github.agorokh.scenariocraft.buildbattle;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Logger;
 import org.bukkit.Server;
@@ -99,6 +102,39 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void uncheckedReadFailureClearsTheGateForTheNextRequest() {
+        AtomicInteger reads = new AtomicInteger();
+        BattleResultReader reader =
+                new BattleResultReader() {
+                    @Override
+                    public Optional<BattleResult> latest() {
+                        if (reads.getAndIncrement() == 0) {
+                            throw new UncheckedIOException(new IOException("directory stream failed"));
+                        }
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Optional<BattleResult> round(String roundId) {
+                        return Optional.empty();
+                    }
+                };
+        ServiceRig rig = new ServiceRig(reader, RoundPhase.IDLE, "round-20260721-193000");
+        List<String> senderMessages = new ArrayList<>();
+        CommandSender sender = sender(senderMessages);
+
+        rig.service.showLatest(sender);
+        rig.service.showLatest(sender);
+
+        assertEquals(2, reads.get());
+        assertTrue(senderMessages.getFirst().contains("could not be read safely"));
+        assertEquals(
+                "No judging results are ready yet — check back after the reveal!",
+                senderMessages.getLast());
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();
@@ -110,6 +146,10 @@ class BattleResultServiceTest {
         }
 
         private ServiceRig(Path rounds, RoundPhase phase, String resultRoundId) {
+            this(new BattleResultRepository(rounds), phase, resultRoundId);
+        }
+
+        private ServiceRig(BattleResultReader reader, RoundPhase phase, String resultRoundId) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             BukkitScheduler scheduler =
                     proxy(
@@ -153,7 +193,7 @@ class BattleResultServiceTest {
             service =
                     new BattleResultService(
                             plugin,
-                            rounds,
+                            reader,
                             new ResultAnnouncementSettings(2, 3, 10),
                             () -> phase,
                             () -> Optional.of(resultRoundId),

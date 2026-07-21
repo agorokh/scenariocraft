@@ -41,6 +41,21 @@ class BattleResultRepositoryTest {
     }
 
     @Test
+    void unjudgedRecentRoundsDoNotHideAnOlderCompletedResult() throws Exception {
+        Path rounds = temporaryDirectory.resolve("delayed-results");
+        Path completed = Files.createDirectories(rounds.resolve("round-20260720-235959"));
+        Files.writeString(
+                completed.resolve("results.txt"), validResult("round-20260720-235959"));
+        for (int second = 0; second < 257; second++) {
+            Files.createDirectories(rounds.resolve("round-20260721-" + String.format("%06d", second)));
+        }
+
+        assertEquals(
+                "round-20260720-235959",
+                new BattleResultRepository(rounds).latest().orElseThrow().roundId());
+    }
+
+    @Test
     void requestedRoundRejectsAMismatchedResultHeader() throws Exception {
         Path rounds = temporaryDirectory.resolve("mismatch");
         Path round = Files.createDirectories(rounds.resolve("round-20260721-193000"));

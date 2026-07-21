@@ -25,7 +25,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
 
     private final Plugin plugin;
     private final Server server;
-    private final BattleResultRepository repository;
+    private final BattleResultReader repository;
     private final BattleResultFormatter formatter = new BattleResultFormatter();
     private final ResultAnnouncementSettings settings;
     private final Supplier<RoundPhase> phase;
@@ -47,9 +47,27 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             Supplier<Optional<String>> resultRoundId,
             Function<String, Optional<Location>> winnerLocation,
             Logger logger) {
+        this(
+                plugin,
+                new BattleResultRepository(roundsDirectory),
+                settings,
+                phase,
+                resultRoundId,
+                winnerLocation,
+                logger);
+    }
+
+    BattleResultService(
+            Plugin plugin,
+            BattleResultReader repository,
+            ResultAnnouncementSettings settings,
+            Supplier<RoundPhase> phase,
+            Supplier<Optional<String>> resultRoundId,
+            Function<String, Optional<Location>> winnerLocation,
+            Logger logger) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
-        this.repository = new BattleResultRepository(roundsDirectory);
+        this.repository = Objects.requireNonNull(repository, "repository");
         this.settings = Objects.requireNonNull(settings, "settings");
         this.phase = Objects.requireNonNull(phase, "phase");
         this.resultRoundId = Objects.requireNonNull(resultRoundId, "resultRoundId");
@@ -203,6 +221,11 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                                     result = read.read();
                                 } catch (IOException exception) {
                                     failure = exception;
+                                } catch (RuntimeException exception) {
+                                    failure =
+                                            new IOException(
+                                                    "Unexpected failure while reading judge results",
+                                                    exception);
                                 }
                                 Optional<BattleResult> completedResult = result;
                                 IOException completedFailure = failure;

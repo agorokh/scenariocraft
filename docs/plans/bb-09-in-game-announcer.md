@@ -42,6 +42,7 @@ session.
 | 2026-07-21 | Apply the judge's cruel-language denylist again at the plugin file boundary and require RCON round IDs to match the active REVEAL export. | Copied files are untrusted even when structurally valid, and a delayed authenticated command for an older round must not announce or celebrate inside a newer round. |
 | 2026-07-21 | Broaden copied-text rejection to self-harm/threat vocabulary, ignore `judge.yml` everywhere, and treat invalid optional RCON configuration as announcement failure rather than judging failure. | Player safety, credential containment, and durable publication must each fail independently at their own boundary. |
 | 2026-07-21 | Reject common profanity and Minecraft formatting markers at the copied-result boundary, and describe missing verdicts truthfully instead of inventing praise. | Untrusted judge artifacts must not gain presentation capabilities or expose children to abusive text, while a provider failure cannot be represented as feedback the judge never supplied. |
+| 2026-07-21 | Bound completed-result candidates rather than round directories, recover the async read gate from unchecked filesystem failures, and enforce the judge's eight-plot/eight-persona presentation limits in the plugin parser. | Delayed judging and filesystem stream failures must not permanently disable replay, while copied artifacts must not amplify into an unbounded main-thread chat broadcast. |
 
 ## Surprises & Discoveries
 
@@ -77,11 +78,15 @@ session.
   sign formatting codes. Both need explicit validation at the last player-facing trust
   boundary, and an all-failed verdict set needs an honest fallback rather than synthetic
   encouragement.
+- A directory-count cap is not a completed-result cap: 256 newer unjudged exports can hide
+  an older usable result. Also, `Files.list` can surface iteration failures as unchecked
+  exceptions, so the off-thread read gate must recover from both checked and runtime
+  filesystem paths.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 251 tests, judge 74 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 254 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -105,6 +110,9 @@ session.
 - Copied-result regressions also reject common profanity and section-sign formatting codes;
   when every persona verdict fails, the formatter reports that feedback could not be
   completed and uses a neutral no-winner status instead of fabricating praise.
+- Replay regressions keep an older completed result visible behind 257 unjudged exports,
+  async-read regression proves an unchecked filesystem failure releases the next request,
+  and the parser rejects feedback beyond the eight-persona judging limit.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.
