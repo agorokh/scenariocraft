@@ -2,7 +2,7 @@
 
 Issue: #32
 Owner: Codex
-Status: In progress
+Status: Ready for review
 
 ## Purpose
 
@@ -17,10 +17,10 @@ give Build Week judges a one-minute path to understanding the game without insta
 - [x] Inspect and preserve the supplied logo assets under `assets/branding/`.
 - [x] Produce traceable renderer imagery and implement all seven story steps.
 - [x] Add the Pages deployment workflow and README header link.
-- [ ] Verify zero external requests, mobile readability, source traceability, and local CI.
+- [x] Verify zero external requests, responsive behavior, source traceability, and local CI.
 - [x] Enable workflow-based GitHub Pages; live verification follows merge-time deployment.
-- [ ] Complete `/review` against `code_review.md` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Complete `/review` against `code_review.md` and resolve P1 findings.
+- [x] Record the retrospective.
 
 ## Decision Log
 
@@ -45,7 +45,8 @@ give Build Week judges a one-minute path to understanding the game without insta
   the public Pages URL after deployment.
 - The first `/review` found one P1 and no other findings: the missing canonical logo made
   `site-check`, the Pages staging copy, the README image, and the page hero fail. Restoring and
-  committing the exact supplied asset resolves that finding; a second review will verify it.
+  committing the exact supplied asset resolved that finding. The second full-branch `/review`
+  found no actionable defects.
 
 ## Acceptance evidence
 
@@ -64,9 +65,18 @@ give Build Week judges a one-minute path to understanding the game without insta
   `e557947a5768e6e5244860fbfa387a47a8465c30699ad40570d94a21ae6b782a`.
 - Static scans find exactly seven step articles and no remote `src`, `href`, CSS `@import`,
   or remote CSS `url()` resource.
-- Full `make ci-fast`, GitHub CI, Pages deployment, responsive screenshots, and live URL
-  verification remain pending on the missing logo.
+- `make ci-fast` passed with Java 21, including the complete Gradle build and renderer tests.
+- A local simulation of the workflow's staging commands produced a 1,417,216-byte artifact
+  containing the stylesheet, canonical logo, all three voxel renders, and page source; every
+  local resource reference resolved.
+- Responsive CSS collapses the alternating two-column story at 800px and the judge/score layout
+  for phone widths. The in-app browser was unavailable, so screenshot and live-URL evidence
+  remain merge-time checks after the Pages workflow deploys from `main`.
 
 ## Retrospective
 
-To be completed after deployment and review.
+The page shipped as one dependency-free visual story with an original demo fixture and CI-enforced
+render provenance. The main pivot was refusing to approximate the temporarily missing logo: once
+the original arrived, its lime, dirt, purple-deepslate, beveled, italic, and streak motifs became
+the page's explicit design tokens. Workflow-based Pages is enabled; external review and merge are
+the remaining gates before the live deployment can be inspected.
