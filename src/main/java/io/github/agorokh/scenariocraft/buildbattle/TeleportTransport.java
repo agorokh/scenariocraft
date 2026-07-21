@@ -32,11 +32,6 @@ public final class TeleportTransport {
                 server.getConsoleSender(), command(player, destination));
     }
 
-    /** Exercises the production command path without changing the player's location. */
-    public boolean probe(Player player) {
-        return isAvailable() && dispatch(player, player.getLocation());
-    }
-
     public static boolean commandsAvailable(CommandMap commandMap) {
         return commandMap != null
                 && commandMap.getCommand("minecraft:execute") != null

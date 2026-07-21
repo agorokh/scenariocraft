@@ -34,8 +34,9 @@ session.
 | 2026-07-20 | Preserve the current plot border during plot-to-safe-destination confirmation and keep pending recovery protected in IDLE. | Containment must cover the full dispatch window and must not disappear merely because round state was cleared before hub arrival was confirmed and persisted. |
 | 2026-07-20 | Exercise the production `minecraft:execute ... run minecraft:tp` path in the pinned real-Paper smoke job. | Plugin enable and unit command-map checks do not prove that the exact console dispatch path parses and executes on the supported Paper build. |
 | 2026-07-20 | Prioritize pending durable recovery before active-round re-entry on join. | A contestant who disconnected during a failed relocation must reach the hub before the controller may reapply the current phase. |
-| 2026-07-20 | Settle an owned teleport as successful during close when the player has already reached its authoritative destination. | A move can arrive after dispatch but before its delayed confirmation; shutdown must not convert that real success into a false recovery failure. |
+| 2026-07-20 | Settle an already-arrived teleport during close without running its success callback. | A move can arrive after dispatch but before its delayed confirmation, but callback side effects such as entering BUILDING are no longer valid once shutdown begins; normal round restoration owns the remaining hub cleanup. |
 | 2026-07-20 | Isolate the real-Paper teleport probe from generated terrain and document inspection without a force-clear control. | The smoke should test the command path rather than block geometry, while manual registry deletion would violate the requirement to clear only after authoritative hub arrival and player-data persistence. |
+| 2026-07-20 | Keep round-start transport checks side-effect free and supervise an externally requested hub rescue as an owned delayed attempt. | Command registration is enough to fail a round before mutation, while every real relocation validates and dispatches the exact command; a pending player may reach only the hub and must still pass the normal confirmation and persistence boundary. |
 
 ## Surprises & Discoveries
 
@@ -64,6 +65,12 @@ session.
   at Y=100. The probe now clears a bounded air pocket and gives the marker no gravity before
   dispatch; the operator runbook also names the durable registry and makes its safe automatic
   clear boundary explicit.
+- A second current-head review correctly identified shutdown callback and preflight side
+  effects, plus the no-attempt hub-rescue gap. It also reported three inapplicable findings:
+  the workflow opens fd 3 before the wait loop, the constructor already retries online
+  persisted players, and a non-atomic move fallback would contradict the issue's durability
+  requirement. The applicable paths now have focused regression tests; the inapplicable ones
+  are documented and receive visible evidence replies.
 
 ## Acceptance evidence
 

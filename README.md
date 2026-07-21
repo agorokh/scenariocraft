@@ -58,9 +58,11 @@ reduction.
 
 Controller-owned moves use explicit-world console teleports and verify the result on the
 server, including bounded confirmation after 1, 5, and 20 total ticks for chunk-loading or
-lifecycle delays. Startup, round start, every relocation, and a rejected-command retry check
-the vanilla `minecraft:execute` and `minecraft:tp` command path used by production dispatch.
-Keep both exact namespaced commands available in server command configuration. A failed
+lifecycle delays. Startup and round start check that the exact `minecraft:execute` and
+`minecraft:tp` registrations remain available without teleporting players as a health probe;
+every relocation checks again before production dispatch, and CI executes the full command
+path on real Paper. Keep both exact namespaced commands available in server configuration.
+A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
 `/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
@@ -74,7 +76,11 @@ To inspect the durable queue, read
 line. Do not manually remove an entry: reconnect that player and let ScenarioCraft clear the
 entry only after it confirms the hub arrival and saves the player data. If the entry remains,
 keep the player contained and use the persistence alert's exception in the server log to fix
-the underlying storage problem before reconnecting them again.
+the underlying storage problem before reconnecting them again. The registry requires a data
+folder filesystem that supports same-directory atomic moves; unsupported storage fails closed
+and emits `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE` rather than weakening the atomic-write
+guarantee. An operator command may move a pending player only to the configured hub; the
+controller supervises that arrival and performs the same saved, atomic clear sequence.
 
 Alerts are also sent to the server console and to online players with the
 `scenariocraft.alerts` permission, which defaults to operators.

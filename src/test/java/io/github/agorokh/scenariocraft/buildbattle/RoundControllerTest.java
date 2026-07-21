@@ -1611,6 +1611,18 @@ class RoundControllerTest {
     }
 
     @Test
+    void roundStartDoesNotAddAHealthProbeBeyondTheRequiredHubMove() {
+        TestRig rig = new TestRig();
+        int commandsBefore = rig.consoleCommands.size();
+
+        rig.controller.start(rig.player);
+
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
+        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        rig.close();
+    }
+
+    @Test
     void commandPathLossBeforePlotRelocationAbortsSafely() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -1779,6 +1791,60 @@ class RoundControllerTest {
         assertEquals(alertsBefore, alertsAfter);
         assertNull(rig.playerWorldBorder.get());
         assertFalse(rig.recoveryStore.contains(rig.playerId));
+        rig.close();
+    }
+
+    @Test
+    void closeDoesNotRunPlotArrivalCallbacksDuringShutdown() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.NOTE_PICK);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, -2.5));
+
+        rig.controller.close();
+
+        assertTrue(
+                rig.messages.stream()
+                        .noneMatch(message -> message.contains("Build time!")));
+        assertEquals(0, rig.bossbarPlayers.get());
+        rig.ignoreTeleportCommand.set(false);
+        rig.close();
+    }
+
+    @Test
+    void pendingRecoveryAcceptsHubRescueWithoutAnExistingAttempt() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.stop(rig.player);
+        rig.runDelayedTasks();
+        rig.failTeleportDispatch.set(false);
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        PlayerTeleportEvent unrelated =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        new Location(rig.world, 20.5, 1.0, 20.5),
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(unrelated);
+        assertTrue(unrelated.isCancelled());
+
+        Location hub = new Location(rig.world, 0.5, 1.0, 0.5);
+        PlayerTeleportEvent hubRescue =
+                new PlayerTeleportEvent(
+                        rig.player,
+                        rig.lastTeleport.get().clone(),
+                        hub,
+                        PlayerTeleportEvent.TeleportCause.COMMAND);
+        rig.controller.onContestantTeleport(hubRescue);
+
+        assertFalse(hubRescue.isCancelled());
+        rig.lastTeleport.set(hub.clone());
+        rig.runDelayedTasks();
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertNull(rig.playerWorldBorder.get());
         rig.close();
     }
 

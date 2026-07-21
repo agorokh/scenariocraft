@@ -323,8 +323,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             }
             return;
         }
-        if (!teleportTransport.isAvailable()
-                || players.stream().anyMatch(player -> !probeTeleportTransport(player))) {
+        if (!teleportTransport.isAvailable()) {
             reportTransportUnavailable(
                     sender,
                     "round start requires minecraft:execute and minecraft:tp");
@@ -852,9 +851,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         if (hasPendingTeleportRecovery(event.getPlayer())) {
-            if (!matchesExpectedTeleport(event.getPlayer(), destination)) {
-                event.setCancelled(true);
+            if (matchesExpectedTeleport(event.getPlayer(), destination)) {
+                return;
             }
+            if (!sameDestination(hubLocation(), destination)) {
+                event.setCancelled(true);
+                return;
+            }
+            retryStrandedExit(event.getPlayer(), 1L);
             return;
         }
         boolean plotContainmentActive =
@@ -1678,13 +1682,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             Player player, Location destination) {
         TeleportAttempt attempt = teleportAttempts.get(player.getUniqueId());
         Location expected = attempt == null ? null : attempt.destination();
-        return expected != null
-                && expected.getWorld() == destination.getWorld()
-                && Math.abs(expected.getX() - destination.getX())
+        return expected != null && sameDestination(expected, destination);
+    }
+
+    private static boolean sameDestination(Location expected, Location actual) {
+        return expected.getWorld() == actual.getWorld()
+                && Math.abs(expected.getX() - actual.getX())
                         <= TELEPORT_CONFIRMATION_EPSILON
-                && Math.abs(expected.getY() - destination.getY())
+                && Math.abs(expected.getY() - actual.getY())
                         <= TELEPORT_CONFIRMATION_EPSILON
-                && Math.abs(expected.getZ() - destination.getZ())
+                && Math.abs(expected.getZ() - actual.getZ())
                         <= TELEPORT_CONFIRMATION_EPSILON;
     }
 
@@ -1940,7 +1947,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void failAllTeleportAttempts() {
         for (TeleportAttempt attempt : List.copyOf(teleportAttempts.values())) {
             if (playerReached(attempt.player(), attempt.destination())) {
-                finishTeleportSuccess(attempt);
+                completeAttempt(attempt);
             } else {
                 reportTeleportFailure(
                         attempt, "controller closed before relocation confirmation", null);
@@ -1986,6 +1993,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void retryStrandedExit(Player player) {
+        retryStrandedExit(player, 0L);
+    }
+
+    private void retryStrandedExit(Player player, long delayTicks) {
         GameMode recoveredGameMode =
                 recoveryGameModes.getOrDefault(
                         player.getUniqueId(), player.getGameMode());
@@ -2006,25 +2017,28 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         persistTeleportRecovery(player);
-        teleport(
-                player,
-                destination,
-                () -> {
-                    finishHubRecovery(
-                            player,
-                            () -> {
-                                resetPersonalBorder(player);
-                                player.setGameMode(recoveredGameMode);
-                                logger.info(
-                                        "Confirmed recovered hub return for "
-                                                + player.getName()
-                                                + ".");
-                            });
-                },
+        Runnable onSuccess =
+                () ->
+                        finishHubRecovery(
+                                player,
+                                () -> {
+                                    resetPersonalBorder(player);
+                                    player.setGameMode(recoveredGameMode);
+                                    logger.info(
+                                            "Confirmed recovered hub return for "
+                                                    + player.getName()
+                                                    + ".");
+                                });
+        Runnable onFailure =
                 () -> {
                     player.setGameMode(GameMode.ADVENTURE);
                     markStrandedForRecovery(player);
-                });
+                };
+        if (delayTicks > 0L) {
+            teleportAfter(player, destination, onSuccess, onFailure, delayTicks);
+        } else {
+            teleport(player, destination, onSuccess, onFailure);
+        }
     }
 
     private static boolean playerReached(Player player, Location destination) {
@@ -2036,18 +2050,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         <= TELEPORT_CONFIRMATION_EPSILON
                 && Math.abs(actual.getZ() - destination.getZ())
                         <= TELEPORT_CONFIRMATION_EPSILON;
-    }
-
-    private boolean probeTeleportTransport(Player player) {
-        try {
-            return teleportTransport.probe(player);
-        } catch (RuntimeException failure) {
-            logger.log(
-                    Level.SEVERE,
-                    "SCENARIOCRAFT_TELEPORT_FAILURE namespaced console transport probe failed",
-                    failure);
-            return false;
-        }
     }
 
     private void reportTransportUnavailable(CommandSender sender, String operation) {
