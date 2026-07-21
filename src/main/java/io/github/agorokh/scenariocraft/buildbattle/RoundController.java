@@ -33,49 +33,20 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.ArmorStand;
-import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Event.Result;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockBurnEvent;
-import org.bukkit.event.block.BlockDispenseEvent;
-import org.bukkit.event.block.BlockExplodeEvent;
-import org.bukkit.event.block.BlockFadeEvent;
-import org.bukkit.event.block.BlockFertilizeEvent;
-import org.bukkit.event.block.BlockFormEvent;
-import org.bukkit.event.block.BlockFromToEvent;
-import org.bukkit.event.block.BlockIgniteEvent;
-import org.bukkit.event.block.BlockMultiPlaceEvent;
-import org.bukkit.event.block.BlockPistonExtendEvent;
-import org.bukkit.event.block.BlockPistonRetractEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.block.BlockSpreadEvent;
-import org.bukkit.event.block.EntityBlockFormEvent;
-import org.bukkit.event.block.LeavesDecayEvent;
-import org.bukkit.event.entity.EntityChangeBlockEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
-import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
-import org.bukkit.event.entity.EntityExplodeEvent;
-import org.bukkit.event.hanging.HangingBreakByEntityEvent;
-import org.bukkit.event.hanging.HangingBreakEvent;
-import org.bukkit.event.hanging.HangingPlaceEvent;
-import org.bukkit.event.player.PlayerBucketEmptyEvent;
-import org.bukkit.event.player.PlayerBucketFillEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
-import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -110,6 +81,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
     private final DemoSampleBuild demoSampleBuild;
+    private final ActiveArenaMutationPolicy mutationPolicy;
+    private final ActiveArenaMutationListener mutationListener;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
@@ -317,7 +290,23 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 server.createBossBar(
                         "Build time", BarColor.BLUE, BarStyle.SOLID);
         buildBossBar.setVisible(false);
+        this.mutationPolicy =
+                new ActiveArenaMutationPolicy(
+                        arena.world(),
+                        this::phase,
+                        this::isArenaProtected,
+                        playerId -> {
+                            Contestant contestant = contestants.get(playerId);
+                            return contestant == null ? null : contestant.boundary();
+                        },
+                        () ->
+                                contestants.values().stream()
+                                        .map(Contestant::boundary)
+                                        .toList(),
+                        strandedArenaPlayers::contains);
+        this.mutationListener = new ActiveArenaMutationListener(mutationPolicy);
         server.getPluginManager().registerEvents(this, plugin);
+        server.getPluginManager().registerEvents(mutationListener, plugin);
         this.timerTask =
                 server.getScheduler().runTaskTimer(plugin, this::tick, 20L, 20L);
         strandedArenaPlayers.addAll(recoveryStore.pendingPlayers());
@@ -352,6 +341,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @Override
     public RoundPhase phase() {
         return state.phase();
+    }
+
+    ActiveArenaMutationListener mutationListener() {
+        return mutationListener;
     }
 
     @Override
@@ -778,159 +771,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantBlockBreak(BlockBreakEvent event) {
-        if (isSecretChest(event.getBlock())) {
-            return;
-        }
-        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantBlockPlace(BlockPlaceEvent event) {
-        boolean mayPlace =
-                event instanceof BlockMultiPlaceEvent multiPlace
-                        ? multiPlace.getReplacedBlockStates().stream()
-                                .map(org.bukkit.block.BlockState::getBlock)
-                                .allMatch(block -> mayContestantEdit(event.getPlayer(), block))
-                        : mayContestantEdit(event.getPlayer(), event.getBlockPlaced());
-        if (!mayPlace) {
-            event.setCancelled(true);
-            event.setBuild(false);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockDispense(BlockDispenseEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockSpread(BlockSpreadEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockBurn(BlockBurnEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockIgnite(BlockIgniteEvent event) {
-        Player player = event.getPlayer();
-        if (player == null
-                ? isActiveArenaBlock(event.getBlock())
-                : !mayContestantEdit(player, event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockFertilize(BlockFertilizeEvent event) {
-        Player player = event.getPlayer();
-        if (event.getBlocks().stream()
-                .map(org.bukkit.block.BlockState::getBlock)
-                .anyMatch(
-                        block ->
-                                player == null
-                                        ? isActiveArenaBlock(block)
-                                        : !mayContestantEdit(player, block))) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaStructureGrow(StructureGrowEvent event) {
-        Player player = event.getPlayer();
-        if (event.getBlocks().stream()
-                .map(org.bukkit.block.BlockState::getBlock)
-                .anyMatch(
-                        block ->
-                                player == null
-                                        ? isActiveArenaBlock(block)
-                                        : !mayContestantEdit(player, block))) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantHangingPlace(HangingPlaceEvent event) {
-        Player player = event.getPlayer();
-        Block placedBlock =
-                event.getBlock().getRelative(event.getBlockFace());
-        if (player == null
-                ? isActiveArenaBlock(placedBlock)
-                : !mayContestantEdit(player, placedBlock)) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaHangingBreak(HangingBreakEvent event) {
-        Block occupiedBlock = event.getEntity().getLocation().getBlock();
-        if (event instanceof HangingBreakByEntityEvent byEntity
-                && byEntity.getRemover() instanceof Player player
-                ? !mayContestantEdit(player, occupiedBlock)
-                : isActiveArenaBlock(occupiedBlock)) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onProtectedEntityInteract(PlayerInteractEntityEvent event) {
-        if (!mayContestantEdit(
-                event.getPlayer(),
-                event.getRightClicked().getLocation().getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onProtectedArmorStandDamage(EntityDamageByEntityEvent event) {
-        if (!(event.getEntity() instanceof ArmorStand)) {
-            return;
-        }
-        Block occupiedBlock = event.getEntity().getLocation().getBlock();
-        Player responsiblePlayer = responsiblePlayer(event.getDamager());
-        if (responsiblePlayer == null
-                ? isActiveArenaBlock(occupiedBlock)
-                : !mayContestantEdit(responsiblePlayer, occupiedBlock)) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantEntityPlace(EntityPlaceEvent event) {
-        Player player = event.getPlayer();
-        BlockFace face = event.getBlockFace();
-        Block placedBlock =
-                face == null ? event.getBlock() : event.getBlock().getRelative(face);
-        if (player == null
-                ? isActiveArenaBlock(placedBlock)
-                : !mayContestantEdit(player, placedBlock)) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaEntityChangeBlock(EntityChangeBlockEvent event) {
-        if (isActiveArenaBlock(event.getBlock())
-                && (!(event.getEntity() instanceof FallingBlock fallingBlock)
-                        || !isSameEditablePlot(
-                                fallingBlock.getSourceLoc(),
-                                event.getBlock()))) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onContestantTeleport(PlayerTeleportEvent event) {
         Contestant contestant = contestants.get(event.getPlayer().getUniqueId());
         Location destination = event.getTo();
@@ -971,87 +811,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 destination.getBlockX(),
                                 destination.getBlockY(),
                                 destination.getBlockZ())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockForm(BlockFormEvent event) {
-        if (isActiveArenaBlock(event.getBlock())
-                && !isEditableByAnyContestant(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaEntityBlockForm(EntityBlockFormEvent event) {
-        if (event.getEntity() instanceof Player player
-                ? !mayContestantEdit(player, event.getBlock())
-                : isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaLeavesDecay(LeavesDecayEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockFade(BlockFadeEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantBucketEmpty(PlayerBucketEmptyEvent event) {
-        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onContestantBucketFill(PlayerBucketFillEvent event) {
-        if (!mayContestantEdit(event.getPlayer(), event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaFluidFlow(BlockFromToEvent event) {
-        if (isActiveArenaBlock(event.getBlock())
-                && !mayFluidFlow(event.getBlock(), event.getToBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaBlockExplode(BlockExplodeEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaEntityExplode(EntityExplodeEvent event) {
-        if (isArenaProtected() && event.getLocation().getWorld() == arena.world()) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaPistonExtend(BlockPistonExtendEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onArenaPistonRetract(BlockPistonRetractEvent event) {
-        if (isActiveArenaBlock(event.getBlock())) {
             event.setCancelled(true);
         }
     }
@@ -1709,86 +1468,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return block.getWorld() == arena.world() && secretChest().matches(block);
     }
 
-    private boolean isActiveArenaBlock(Block block) {
-        return isArenaProtected() && block.getWorld() == arena.world();
-    }
-
     private boolean isArenaProtected() {
         return phase() != RoundPhase.IDLE || roundExporter.isReadingArena();
     }
 
     private boolean mayContestantEdit(Player player, Block block) {
-        Contestant contestant = contestants.get(player.getUniqueId());
-        if (contestant != null) {
-            if (block.getWorld() != arena.world()) {
-                return false;
-            }
-            return PlotEditPolicy.mayEdit(
-                    phase(),
-                    contestant.boundary(),
-                    block.getX(),
-                    block.getY(),
-                    block.getZ());
-        }
-        if (strandedArenaPlayers.contains(player.getUniqueId())
-                && block.getWorld() == arena.world()) {
-            return false;
-        }
-        return !isActiveArenaBlock(block);
-    }
-
-    private boolean mayFluidFlow(Block source, Block destination) {
-        if (phase() != RoundPhase.BUILDING
-                || source.getWorld() != arena.world()
-                || destination.getWorld() != arena.world()) {
-            return false;
-        }
-        for (Contestant contestant : contestants.values()) {
-            PlotBoundary boundary = contestant.boundary();
-            if (boundary.containsEditableBlock(
-                            source.getX(), source.getY(), source.getZ())
-                    && boundary.containsEditableBlock(
-                            destination.getX(), destination.getY(), destination.getZ())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean isSameEditablePlot(Location source, Block target) {
-        if (phase() != RoundPhase.BUILDING
-                || source == null
-                || source.getWorld() != arena.world()
-                || target.getWorld() != arena.world()) {
-            return false;
-        }
-        return contestants.values().stream()
-                .map(Contestant::boundary)
-                .anyMatch(
-                        boundary ->
-                                boundary.containsEditableBlock(
-                                                source.getBlockX(),
-                                                source.getBlockY(),
-                                                source.getBlockZ())
-                                        && boundary.containsEditableBlock(
-                                                target.getX(),
-                                                target.getY(),
-                                                target.getZ()));
-    }
-
-    private boolean isEditableByAnyContestant(Block block) {
-        if (phase() != RoundPhase.BUILDING
-                || block.getWorld() != arena.world()) {
-            return false;
-        }
-        return contestants.values().stream()
-                .map(Contestant::boundary)
-                .anyMatch(
-                        boundary ->
-                                boundary.containsEditableBlock(
-                                        block.getX(),
-                                        block.getY(),
-                                        block.getZ()));
+        ActiveArenaMutationPolicy.Position position =
+                new ActiveArenaMutationPolicy.Position(
+                        block.getWorld(), block.getX(), block.getY(), block.getZ());
+        return mutationPolicy.allows(
+                ActiveArenaMutationPolicy.Family.PLAYER_INTERACTION,
+                player.getUniqueId(),
+                position,
+                List.of(position));
     }
 
     private boolean isInsidePrivatePlot(Location destination) {
@@ -1805,17 +1497,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                         && x <= plot.maxX()
                                         && z >= plot.minZ()
                                         && z <= plot.maxZ());
-    }
-
-    private static Player responsiblePlayer(org.bukkit.entity.Entity entity) {
-        if (entity instanceof Player player) {
-            return player;
-        }
-        if (entity instanceof Projectile projectile
-                && projectile.getShooter() instanceof Player player) {
-            return player;
-        }
-        return null;
     }
 
     private boolean matchesExpectedTeleport(

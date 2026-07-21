@@ -43,6 +43,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.FallingBlock;
 import org.bukkit.entity.Hanging;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -53,20 +54,30 @@ import org.bukkit.event.block.BlockFadeEvent;
 import org.bukkit.event.block.BlockFertilizeEvent;
 import org.bukkit.event.block.BlockFormEvent;
 import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockGrowEvent;
 import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockMultiPlaceEvent;
+import org.bukkit.event.block.BlockPhysicsEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
+import org.bukkit.event.block.CauldronLevelChangeEvent;
 import org.bukkit.event.block.EntityBlockFormEvent;
+import org.bukkit.event.block.FluidLevelChangeEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
+import org.bukkit.event.block.MoistureChangeEvent;
+import org.bukkit.event.block.SignChangeEvent;
+import org.bukkit.event.block.SpongeAbsorbEvent;
+import org.bukkit.event.block.TNTPrimeEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityCreatePortalEvent;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.EntityInteractEvent;
 import org.bukkit.event.hanging.HangingBreakByEntityEvent;
 import org.bukkit.event.hanging.HangingPlaceEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
@@ -83,6 +94,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
@@ -354,12 +366,12 @@ class RoundControllerTest {
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
 
         BlockBreakEvent duringSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(duringSnapshot);
+        rig.mutations.onContestantBlockBreak(duringSnapshot);
         assertTrue(duringSnapshot.isCancelled());
 
         rig.exportReading.set(false);
         BlockBreakEvent afterSnapshot = new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(afterSnapshot);
+        rig.mutations.onContestantBlockBreak(afterSnapshot);
         assertFalse(afterSnapshot.isCancelled());
         rig.close();
     }
@@ -468,7 +480,7 @@ class RoundControllerTest {
         assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
         BlockBreakEvent strandedBreak =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(strandedBreak);
+        rig.mutations.onContestantBlockBreak(strandedBreak);
         assertTrue(strandedBreak.isCancelled());
         PlayerInteractEvent strandedPhysical =
                 new PlayerInteractEvent(
@@ -485,7 +497,7 @@ class RoundControllerTest {
                         rig.blockAt(0, 1, -3),
                         BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
                         rig.player);
-        rig.controller.onArenaBlockIgnite(strandedIgnite);
+        rig.mutations.onArenaBlockIgnite(strandedIgnite);
         assertTrue(strandedIgnite.isCancelled());
         BlockState strandedState =
                 proxy(
@@ -497,7 +509,7 @@ class RoundControllerTest {
                         rig.player,
                         rig.blockAt(0, 1, -3),
                         strandedState);
-        rig.controller.onArenaEntityBlockForm(strandedForm);
+        rig.mutations.onArenaEntityBlockForm(strandedForm);
         assertTrue(strandedForm.isCancelled());
         rig.controller.onPlayerQuit(
                 new PlayerQuitEvent(
@@ -510,7 +522,7 @@ class RoundControllerTest {
                         rig.player, net.kyori.adventure.text.Component.empty()));
         BlockBreakEvent afterDisconnect =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(afterDisconnect);
+        rig.mutations.onContestantBlockBreak(afterDisconnect);
         assertFalse(afterDisconnect.isCancelled());
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         rig.close();
@@ -1122,7 +1134,7 @@ class RoundControllerTest {
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         BlockBreakEvent beforeConfirmation =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(beforeConfirmation);
+        rig.mutations.onContestantBlockBreak(beforeConfirmation);
         assertTrue(beforeConfirmation.isCancelled());
         rig.controller.onPlayerQuit(
                 new PlayerQuitEvent(
@@ -1144,7 +1156,7 @@ class RoundControllerTest {
                                                 "ScenarioCraft recovery alert")));
         BlockBreakEvent afterConfirmedRecovery =
                 new BlockBreakEvent(rig.blockAt(0, 1, -3), rig.player);
-        rig.controller.onContestantBlockBreak(afterConfirmedRecovery);
+        rig.mutations.onContestantBlockBreak(afterConfirmedRecovery);
         assertFalse(afterConfirmedRecovery.isCancelled());
         assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         rig.close();
@@ -1170,7 +1182,7 @@ class RoundControllerTest {
 
         rig.controller.start(rig.player);
         BlockBreakEvent preparingBreak = new BlockBreakEvent(insidePlot, rig.player);
-        rig.controller.onContestantBlockBreak(preparingBreak);
+        rig.mutations.onContestantBlockBreak(preparingBreak);
         assertTrue(preparingBreak.isCancelled());
 
         rig.runBlockTick();
@@ -1179,7 +1191,7 @@ class RoundControllerTest {
         assertEquals(RoundPhase.BUILDING, rig.controller.phase());
 
         BlockBreakEvent insideBreak = new BlockBreakEvent(insidePlot, rig.player);
-        rig.controller.onContestantBlockBreak(insideBreak);
+        rig.mutations.onContestantBlockBreak(insideBreak);
         assertFalse(insideBreak.isCancelled());
 
         Location plotLocation = rig.lastTeleport.get().clone();
@@ -1221,12 +1233,12 @@ class RoundControllerTest {
 
         Block outsidePlot = rig.blockAt(1, 1, -3);
         BlockBreakEvent outsideBreak = new BlockBreakEvent(outsidePlot, rig.player);
-        rig.controller.onContestantBlockBreak(outsideBreak);
+        rig.mutations.onContestantBlockBreak(outsideBreak);
         assertTrue(outsideBreak.isCancelled());
 
         Block cap = rig.blockAt(0, 2, -3);
         BlockBreakEvent capBreak = new BlockBreakEvent(cap, rig.player);
-        rig.controller.onContestantBlockBreak(capBreak);
+        rig.mutations.onContestantBlockBreak(capBreak);
         assertTrue(capBreak.isCancelled());
 
         BlockState replacedState =
@@ -1242,7 +1254,7 @@ class RoundControllerTest {
                         rig.player,
                         true,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantBlockPlace(outsidePlace);
+        rig.mutations.onContestantBlockPlace(outsidePlace);
         assertTrue(outsidePlace.isCancelled());
         assertFalse(outsidePlace.canBuild());
 
@@ -1268,7 +1280,7 @@ class RoundControllerTest {
                         rig.player,
                         true,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantBlockPlace(crossingMultiPlace);
+        rig.mutations.onContestantBlockPlace(crossingMultiPlace);
         assertTrue(crossingMultiPlace.isCancelled());
         assertFalse(crossingMultiPlace.canBuild());
         rig.close();
@@ -1282,7 +1294,7 @@ class RoundControllerTest {
 
         BlockBreakEvent activeBreak =
                 new BlockBreakEvent(arenaBlock, rig.spectator);
-        rig.controller.onContestantBlockBreak(activeBreak);
+        rig.mutations.onContestantBlockBreak(activeBreak);
         assertTrue(activeBreak.isCancelled());
 
         PlayerInteractEvent activeInteraction =
@@ -1310,7 +1322,7 @@ class RoundControllerTest {
         rig.controller.stop(rig.player);
         BlockBreakEvent idleBreak =
                 new BlockBreakEvent(arenaBlock, rig.spectator);
-        rig.controller.onContestantBlockBreak(idleBreak);
+        rig.mutations.onContestantBlockBreak(idleBreak);
         assertFalse(idleBreak.isCancelled());
         rig.close();
     }
@@ -1356,7 +1368,7 @@ class RoundControllerTest {
                         Material.WATER_BUCKET,
                         null,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantBucketEmpty(outsideEmpty);
+        rig.mutations.onContestantBucketEmpty(outsideEmpty);
         assertTrue(outsideEmpty.isCancelled());
 
         PlayerBucketFillEvent insideFill =
@@ -1368,15 +1380,15 @@ class RoundControllerTest {
                         Material.WATER_BUCKET,
                         null,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantBucketFill(insideFill);
+        rig.mutations.onContestantBucketFill(insideFill);
         assertFalse(insideFill.isCancelled());
 
         BlockFromToEvent crossingFlow = new BlockFromToEvent(insidePlot, outsidePlot);
-        rig.controller.onArenaFluidFlow(crossingFlow);
+        rig.mutations.onArenaFluidFlow(crossingFlow);
         assertTrue(crossingFlow.isCancelled());
 
         BlockFromToEvent insideFlow = new BlockFromToEvent(insidePlot, insidePlot);
-        rig.controller.onArenaFluidFlow(insideFlow);
+        rig.mutations.onArenaFluidFlow(insideFlow);
         assertFalse(insideFlow.isCancelled());
         rig.close();
     }
@@ -1398,7 +1410,7 @@ class RoundControllerTest {
         BlockFertilizeEvent fertilize =
                 new BlockFertilizeEvent(
                         insidePlot, rig.player, List.of(outsideState));
-        rig.controller.onArenaBlockFertilize(fertilize);
+        rig.mutations.onArenaBlockFertilize(fertilize);
         assertTrue(fertilize.isCancelled());
 
         StructureGrowEvent grow =
@@ -1408,7 +1420,7 @@ class RoundControllerTest {
                         true,
                         rig.player,
                         List.of(outsideState));
-        rig.controller.onArenaStructureGrow(grow);
+        rig.mutations.onArenaStructureGrow(grow);
         assertTrue(grow.isCancelled());
         rig.close();
     }
@@ -1422,7 +1434,7 @@ class RoundControllerTest {
         BlockDispenseEvent dispense =
                 new BlockDispenseEvent(
                         insidePlot, new EmptyItemStack(), new Vector());
-        rig.controller.onArenaBlockDispense(dispense);
+        rig.mutations.onArenaBlockDispense(dispense);
         assertTrue(dispense.isCancelled());
 
         Hanging hanging =
@@ -1437,7 +1449,7 @@ class RoundControllerTest {
                         insidePlot,
                         BlockFace.EAST,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantHangingPlace(hangingPlace);
+        rig.mutations.onContestantHangingPlace(hangingPlace);
         assertTrue(hangingPlace.isCancelled());
         HangingPlaceEvent automatedHangingPlace =
                 new HangingPlaceEvent(
@@ -1446,7 +1458,7 @@ class RoundControllerTest {
                         insidePlot,
                         BlockFace.EAST,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantHangingPlace(automatedHangingPlace);
+        rig.mutations.onContestantHangingPlace(automatedHangingPlace);
         assertTrue(automatedHangingPlace.isCancelled());
 
         Hanging protectedHanging =
@@ -1459,13 +1471,13 @@ class RoundControllerTest {
         HangingBreakByEntityEvent hangingBreak =
                 new HangingBreakByEntityEvent(
                         protectedHanging, rig.spectator);
-        rig.controller.onArenaHangingBreak(hangingBreak);
+        rig.mutations.onArenaHangingBreak(hangingBreak);
         assertTrue(hangingBreak.isCancelled());
 
         PlayerInteractEntityEvent entityInteraction =
                 new PlayerInteractEntityEvent(
                         rig.spectator, protectedHanging);
-        rig.controller.onProtectedEntityInteract(entityInteraction);
+        rig.mutations.onProtectedEntityInteract(entityInteraction);
         assertTrue(entityInteraction.isCancelled());
 
         ArmorStand protectedArmorStand =
@@ -1485,7 +1497,7 @@ class RoundControllerTest {
                                 (ignored, method, arguments) ->
                                         defaultValue(method.getReturnType())),
                         1.0);
-        rig.controller.onProtectedArmorStandDamage(armorStandAttack);
+        rig.mutations.onProtectedArmorStandDamage(armorStandAttack);
         assertTrue(armorStandAttack.isCancelled());
 
         Entity entity =
@@ -1500,7 +1512,7 @@ class RoundControllerTest {
                         insidePlot,
                         BlockFace.EAST,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantEntityPlace(entityPlace);
+        rig.mutations.onContestantEntityPlace(entityPlace);
         assertTrue(entityPlace.isCancelled());
         EntityPlaceEvent automatedEntityPlace =
                 new EntityPlaceEvent(
@@ -1509,7 +1521,7 @@ class RoundControllerTest {
                         insidePlot,
                         BlockFace.EAST,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantEntityPlace(automatedEntityPlace);
+        rig.mutations.onContestantEntityPlace(automatedEntityPlace);
         assertTrue(automatedEntityPlace.isCancelled());
         EntityPlaceEvent nullFaceEntityPlace =
                 new EntityPlaceEvent(
@@ -1518,7 +1530,7 @@ class RoundControllerTest {
                         insidePlot,
                         null,
                         EquipmentSlot.HAND);
-        rig.controller.onContestantEntityPlace(nullFaceEntityPlace);
+        rig.mutations.onContestantEntityPlace(nullFaceEntityPlace);
         assertTrue(nullFaceEntityPlace.isCancelled());
         rig.close();
     }
@@ -1544,7 +1556,7 @@ class RoundControllerTest {
                         List.of(arenaBlock),
                         1.0F,
                         ExplosionResult.DESTROY);
-        rig.controller.onArenaBlockExplode(blockExplosion);
+        rig.mutations.onArenaBlockExplode(blockExplosion);
         assertTrue(blockExplosion.isCancelled());
 
         EntityExplodeEvent entityExplosion =
@@ -1554,28 +1566,28 @@ class RoundControllerTest {
                         List.of(arenaBlock),
                         1.0F,
                         ExplosionResult.DESTROY);
-        rig.controller.onArenaEntityExplode(entityExplosion);
+        rig.mutations.onArenaEntityExplode(entityExplosion);
         assertTrue(entityExplosion.isCancelled());
 
         BlockPistonExtendEvent extend =
                 new BlockPistonExtendEvent(
                         arenaBlock, List.of(arenaBlock), BlockFace.EAST);
-        rig.controller.onArenaPistonExtend(extend);
+        rig.mutations.onArenaPistonExtend(extend);
         assertTrue(extend.isCancelled());
 
         BlockPistonRetractEvent retract =
                 new BlockPistonRetractEvent(
                         arenaBlock, List.of(arenaBlock), BlockFace.WEST);
-        rig.controller.onArenaPistonRetract(retract);
+        rig.mutations.onArenaPistonRetract(retract);
         assertTrue(retract.isCancelled());
 
         BlockSpreadEvent spread =
                 new BlockSpreadEvent(arenaBlock, arenaBlock, blockState);
-        rig.controller.onArenaBlockSpread(spread);
+        rig.mutations.onArenaBlockSpread(spread);
         assertTrue(spread.isCancelled());
 
         BlockBurnEvent burn = new BlockBurnEvent(arenaBlock, arenaBlock);
-        rig.controller.onArenaBlockBurn(burn);
+        rig.mutations.onArenaBlockBurn(burn);
         assertTrue(burn.isCancelled());
 
         BlockIgniteEvent ignite =
@@ -1583,7 +1595,7 @@ class RoundControllerTest {
                         arenaBlock,
                         BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
                         rig.player);
-        rig.controller.onArenaBlockIgnite(ignite);
+        rig.mutations.onArenaBlockIgnite(ignite);
         assertFalse(ignite.isCancelled());
 
         BlockIgniteEvent spectatorIgnite =
@@ -1591,12 +1603,12 @@ class RoundControllerTest {
                         arenaBlock,
                         BlockIgniteEvent.IgniteCause.FLINT_AND_STEEL,
                         rig.spectator);
-        rig.controller.onArenaBlockIgnite(spectatorIgnite);
+        rig.mutations.onArenaBlockIgnite(spectatorIgnite);
         assertTrue(spectatorIgnite.isCancelled());
 
         EntityChangeBlockEvent entityChange =
                 new EntityChangeBlockEvent(entity, arenaBlock, null);
-        rig.controller.onArenaEntityChangeBlock(entityChange);
+        rig.mutations.onArenaEntityChangeBlock(entityChange);
         assertTrue(entityChange.isCancelled());
 
         FallingBlock fallingBlock =
@@ -1609,48 +1621,244 @@ class RoundControllerTest {
         EntityChangeBlockEvent inPlotFallingChange =
                 new EntityChangeBlockEvent(
                         fallingBlock, arenaBlock, null);
-        rig.controller.onArenaEntityChangeBlock(inPlotFallingChange);
+        rig.mutations.onArenaEntityChangeBlock(inPlotFallingChange);
         assertFalse(inPlotFallingChange.isCancelled());
 
         EntityChangeBlockEvent outsideEntityChange =
                 new EntityChangeBlockEvent(
                         entity, rig.blockAt(1, 1, -3), null);
-        rig.controller.onArenaEntityChangeBlock(outsideEntityChange);
+        rig.mutations.onArenaEntityChangeBlock(outsideEntityChange);
         assertTrue(outsideEntityChange.isCancelled());
 
         BlockFormEvent blockForm = new BlockFormEvent(arenaBlock, blockState);
-        rig.controller.onArenaBlockForm(blockForm);
+        rig.mutations.onArenaBlockForm(blockForm);
         assertFalse(blockForm.isCancelled());
 
         EntityBlockFormEvent entityBlockForm =
                 new EntityBlockFormEvent(entity, arenaBlock, blockState);
-        rig.controller.onArenaEntityBlockForm(entityBlockForm);
+        rig.mutations.onArenaEntityBlockForm(entityBlockForm);
         assertTrue(entityBlockForm.isCancelled());
 
         EntityBlockFormEvent contestantBlockForm =
                 new EntityBlockFormEvent(rig.player, arenaBlock, blockState);
-        rig.controller.onArenaEntityBlockForm(contestantBlockForm);
+        rig.mutations.onArenaEntityBlockForm(contestantBlockForm);
         assertFalse(contestantBlockForm.isCancelled());
 
         BlockFormEvent outsideBlockForm =
                 new BlockFormEvent(rig.blockAt(1, 1, -3), blockState);
-        rig.controller.onArenaBlockForm(outsideBlockForm);
+        rig.mutations.onArenaBlockForm(outsideBlockForm);
         assertTrue(outsideBlockForm.isCancelled());
 
         LeavesDecayEvent leavesDecay = new LeavesDecayEvent(arenaBlock);
-        rig.controller.onArenaLeavesDecay(leavesDecay);
+        rig.mutations.onArenaLeavesDecay(leavesDecay);
         assertTrue(leavesDecay.isCancelled());
 
         BlockFadeEvent blockFade = new BlockFadeEvent(arenaBlock, blockState);
-        rig.controller.onArenaBlockFade(blockFade);
+        rig.mutations.onArenaBlockFade(blockFade);
         assertTrue(blockFade.isCancelled());
 
         rig.controller.stop(rig.player);
         BlockPistonExtendEvent idleExtend =
                 new BlockPistonExtendEvent(
                         arenaBlock, List.of(arenaBlock), BlockFace.EAST);
-        rig.controller.onArenaPistonExtend(idleExtend);
+        rig.mutations.onArenaPistonExtend(idleExtend);
         assertFalse(idleExtend.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void activeArenaCancelsPistonHeadExtensionAboveBuildHeight() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockPistonExtendEvent extend =
+                new BlockPistonExtendEvent(
+                        rig.blockAt(0, 2, -3), List.of(), BlockFace.UP);
+
+        rig.mutations.onArenaPistonExtend(extend);
+
+        assertTrue(extend.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void activeArenaAllowsPistonRetractionTowardThePiston() {
+        TestRig rig = new TestRig(new ArenaSettings(3, 2, 5, 2, 1_000));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockPistonRetractEvent retract =
+                new BlockPistonRetractEvent(
+                        rig.blockAt(0, 1, -5),
+                        List.of(rig.blockAt(1, 1, -5)),
+                        BlockFace.EAST);
+
+        rig.mutations.onArenaPistonRetract(retract);
+
+        assertFalse(retract.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void auditedEnvironmentalFamiliesUseNarrowArenaGuards() {
+        TestRig rig = new TestRig();
+        Block inside = rig.blockAt(0, 1, -3);
+        Block outside = rig.blockAt(1, 1, -3);
+        BlockState insideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? inside
+                                        : defaultValue(method.getReturnType()));
+        BlockState outsideState =
+                proxy(
+                        BlockState.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getBlock")
+                                        ? outside
+                                        : defaultValue(method.getReturnType()));
+        BlockData blockData =
+                proxy(
+                        BlockData.class,
+                        (ignored, method, arguments) -> defaultValue(method.getReturnType()));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        SpongeAbsorbEvent crossingSponge =
+                new SpongeAbsorbEvent(inside, List.of(insideState, outsideState));
+        rig.mutations.onArenaSpongeAbsorb(crossingSponge);
+        assertTrue(crossingSponge.isCancelled());
+
+        SpongeAbsorbEvent inPlotSponge =
+                new SpongeAbsorbEvent(inside, List.of(insideState));
+        rig.mutations.onArenaSpongeAbsorb(inPlotSponge);
+        assertFalse(inPlotSponge.isCancelled());
+
+        BlockGrowEvent outsideGrowth = new BlockGrowEvent(outside, outsideState);
+        rig.mutations.onArenaBlockGrow(outsideGrowth);
+        assertTrue(outsideGrowth.isCancelled());
+        BlockGrowEvent insideGrowth = new BlockGrowEvent(inside, insideState);
+        rig.mutations.onArenaBlockGrow(insideGrowth);
+        assertFalse(insideGrowth.isCancelled());
+
+        FluidLevelChangeEvent outsideFluid =
+                new FluidLevelChangeEvent(outside, blockData);
+        rig.mutations.onArenaFluidLevelChange(outsideFluid);
+        assertTrue(outsideFluid.isCancelled());
+        FluidLevelChangeEvent insideFluid =
+                new FluidLevelChangeEvent(inside, blockData);
+        rig.mutations.onArenaFluidLevelChange(insideFluid);
+        assertFalse(insideFluid.isCancelled());
+
+        MoistureChangeEvent outsideMoisture =
+                new MoistureChangeEvent(outside, outsideState);
+        rig.mutations.onArenaMoistureChange(outsideMoisture);
+        assertTrue(outsideMoisture.isCancelled());
+        MoistureChangeEvent insideMoisture =
+                new MoistureChangeEvent(inside, insideState);
+        rig.mutations.onArenaMoistureChange(insideMoisture);
+        assertFalse(insideMoisture.isCancelled());
+
+        CauldronLevelChangeEvent ownerCauldron =
+                new CauldronLevelChangeEvent(
+                        inside,
+                        rig.player,
+                        CauldronLevelChangeEvent.ChangeReason.BUCKET_EMPTY,
+                        insideState);
+        rig.mutations.onArenaCauldronLevelChange(ownerCauldron);
+        assertFalse(ownerCauldron.isCancelled());
+        CauldronLevelChangeEvent nonOwnerCauldron =
+                new CauldronLevelChangeEvent(
+                        inside,
+                        rig.spectator,
+                        CauldronLevelChangeEvent.ChangeReason.BUCKET_EMPTY,
+                        insideState);
+        rig.mutations.onArenaCauldronLevelChange(nonOwnerCauldron);
+        assertTrue(nonOwnerCauldron.isCancelled());
+
+        SignChangeEvent ownerSign =
+                new SignChangeEvent(
+                        inside,
+                        rig.player,
+                        List.of(
+                                net.kyori.adventure.text.Component.text("Hi"),
+                                net.kyori.adventure.text.Component.empty(),
+                                net.kyori.adventure.text.Component.empty(),
+                                net.kyori.adventure.text.Component.empty()),
+                        org.bukkit.block.sign.Side.FRONT);
+        rig.mutations.onArenaSignChange(ownerSign);
+        assertFalse(ownerSign.isCancelled());
+        SignChangeEvent nonOwnerSign =
+                new SignChangeEvent(
+                        inside,
+                        rig.spectator,
+                        List.of(
+                                net.kyori.adventure.text.Component.text("No"),
+                                net.kyori.adventure.text.Component.empty(),
+                                net.kyori.adventure.text.Component.empty(),
+                                net.kyori.adventure.text.Component.empty()),
+                        org.bukkit.block.sign.Side.FRONT);
+        rig.mutations.onArenaSignChange(nonOwnerSign);
+        assertTrue(nonOwnerSign.isCancelled());
+
+        TNTPrimeEvent tntPrime =
+                new TNTPrimeEvent(inside, TNTPrimeEvent.PrimeCause.PLAYER, rig.player, inside);
+        rig.mutations.onArenaTntPrime(tntPrime);
+        assertTrue(tntPrime.isCancelled());
+
+        Entity environmentalEntity =
+                proxy(
+                        Entity.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityInteractEvent entityTrample =
+                new EntityInteractEvent(environmentalEntity, inside);
+        rig.mutations.onArenaEntityInteract(entityTrample);
+        assertTrue(entityTrample.isCancelled());
+
+        LivingEntity portalEntity =
+                proxy(
+                        LivingEntity.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityCreatePortalEvent portal =
+                new EntityCreatePortalEvent(
+                        portalEntity, List.of(insideState), org.bukkit.PortalType.NETHER);
+        rig.mutations.onArenaEntityCreatePortal(portal);
+        assertTrue(portal.isCancelled());
+
+        BlockPhysicsEvent physics = new BlockPhysicsEvent(inside, blockData, outside);
+        rig.mutations.onArenaBlockPhysics(physics);
+        assertFalse(physics.isCancelled());
+        rig.close();
+    }
+
+    @Test
+    void emptyDestinationListsFallBackToTheArenaSource() {
+        TestRig rig = new TestRig();
+        Block inside = rig.blockAt(0, 1, -3);
+        rig.advanceTo(RoundPhase.PREPARING);
+
+        SpongeAbsorbEvent sponge = new SpongeAbsorbEvent(inside, List.of());
+        rig.mutations.onArenaSpongeAbsorb(sponge);
+
+        LivingEntity portalEntity =
+                proxy(
+                        LivingEntity.class,
+                        (ignored, method, arguments) ->
+                                method.getName().equals("getLocation")
+                                        ? new Location(rig.world, 0, 1, -3)
+                                        : defaultValue(method.getReturnType()));
+        EntityCreatePortalEvent portal =
+                new EntityCreatePortalEvent(
+                        portalEntity, List.of(), org.bukkit.PortalType.NETHER);
+        rig.mutations.onArenaEntityCreatePortal(portal);
+
+        assertTrue(sponge.isCancelled());
+        assertTrue(portal.isCancelled());
         rig.close();
     }
 
@@ -2188,6 +2396,7 @@ class RoundControllerTest {
         private final BatchedBlockEditor editor;
         private final TeleportRecoveryStore recoveryStore;
         private final RoundController controller;
+        private final ActiveArenaMutationListener mutations;
 
         private TestRig() {
             this(
@@ -2203,6 +2412,16 @@ class RoundControllerTest {
                     new PhaseTimings(1, 1, 1, 1),
                     0,
                     recoveryStore,
+                    false,
+                    DemoSampleBuild.empty());
+        }
+
+        private TestRig(ArenaSettings arenaSettings) {
+            this(
+                    new PhaseTimings(1, 1, 1, 1),
+                    0,
+                    TeleportRecoveryStore.inMemory(),
+                    arenaSettings,
                     false,
                     DemoSampleBuild.empty());
         }
@@ -2238,13 +2457,35 @@ class RoundControllerTest {
                 PhaseTimings timings,
                 int floorY,
                 TeleportRecoveryStore recoveryStore) {
-            this(timings, floorY, recoveryStore, false, DemoSampleBuild.empty());
+            this(
+                    timings,
+                    floorY,
+                    recoveryStore,
+                    new ArenaSettings(1, 1, 3, 2, 1_000),
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(
                 PhaseTimings timings,
                 int floorY,
                 TeleportRecoveryStore recoveryStore,
+                boolean demoMode,
+                DemoSampleBuild demoSampleBuild) {
+            this(
+                    timings,
+                    floorY,
+                    recoveryStore,
+                    new ArenaSettings(1, 1, 3, 2, 1_000),
+                    demoMode,
+                    demoSampleBuild);
+        }
+
+        private TestRig(
+                PhaseTimings timings,
+                int floorY,
+                TeleportRecoveryStore recoveryStore,
+                ArenaSettings arenaSettings,
                 boolean demoMode,
                 DemoSampleBuild demoSampleBuild) {
             BukkitTask task =
@@ -2548,7 +2789,7 @@ class RoundControllerTest {
                                     });
             settings =
                     new BattleSettings(
-                            new ArenaSettings(1, 1, 3, 2, 1_000),
+                            arenaSettings,
                             timings,
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
@@ -2601,6 +2842,7 @@ class RoundControllerTest {
                             new TeleportTransport(server),
                             recoveryStore,
                             demoSampleBuild);
+            mutations = controller.mutationListener();
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
         }

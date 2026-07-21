@@ -54,6 +54,10 @@ session.
   after three configured cycles. The dependency resolver recorded escalation comment
   `#5031442899`; BB-12 cannot capture integrated chat evidence through the normal base path
   until that gate is restored and BB-09 merges.
+- While that review was pending, `main` merged the active-arena mutation policy in PR #36 and
+  refactored the controller paths touched by demo mode. The merge retained both the policy's
+  dedicated listener and the bundled sample placement/export behavior; the combined Java 21
+  `make ci-fast` gate passed before the conflict resolution was committed.
 
 ## Acceptance evidence
 
@@ -75,6 +79,8 @@ session.
 - `/review` against `code_review.md` found no P1: the sample build is placed through the
   configured batched editor, export changes have regressions, player text is kid-appropriate,
   and the Compose/images contain no committed credential.
+- After merging current `main`, the combined active-arena policy and demo-mode controller/test
+  suite passed `make ci-fast` under Java 21.
 - Pending after BB-09 integration: `make demo` must also observe
   `SCENARIOCRAFT_RESULTS_ANNOUNCED`, followed by the literal one-human-player chat check.
 
