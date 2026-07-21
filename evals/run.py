@@ -13,7 +13,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
@@ -28,16 +28,18 @@ CRITERIA = ("theme_fit", "creativity", "effort", "detail")
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BLOCK_ID = re.compile(r"^[a-z0-9._-]+:[a-z0-9/._-]+$")
 POSITIVE = re.compile(
-    r"\b(?:beautiful|bold|bright|charming|clear|clever|colorful|colourful|cozy|"
-    r"creative|delightful|detailed|excellent|fantastic|good|great|impressive|"
-    r"inviting|lovely|neat|recognizable|solid|strong|sturdy|tidy|warm|welcoming|"
-    r"works?)\b",
+    r"\b(?:anchors?|balanced|beautiful|bold|bright|charming|clear|clever|colorful|"
+    r"colourful|cozy|creative|creates?|delightful|detailed|draws?|excellent|"
+    r"fantastic|fits?|frames?|gives?|good|great|impressive|inviting|leads?|lovely|"
+    r"makes?|neat|recognizable|solid|stands? out|strong|sturdy|supports?|tidy|warm|"
+    r"welcoming|works?)\b",
     re.IGNORECASE,
 )
 FEATURE = re.compile(
     r"\b(?:arch|block|bridge|build|chimney|color|colour|detail|design|door|"
-    r"floor|garden|idea|interior|lighting|outline|palette|path|pattern|roof|room|"
-    r"shape|silhouette|structure|texture|tower|trim|wall|window)s?\b",
+    r"doorway|flag|floor|foundation|garden|idea|interior|lighting|outline|palette|"
+    r"path|pattern|proportion|roof|room|shape|silhouette|structure|support|texture|"
+    r"tower|trim|wall|window)s?\b",
     re.IGNORECASE,
 )
 MAX_JSON_BYTES = 16 * 1024 * 1024
@@ -134,6 +136,15 @@ def require_integer(value: Any, label: str, minimum: int, maximum: int) -> int:
     return value
 
 
+def validate_repository_path(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value or len(value) > 512 or "\\" in value:
+        raise EvalError(f"{label} must be a bounded repository-relative path")
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or str(path) != value:
+        raise EvalError(f"{label} must be a bounded repository-relative path")
+    return value
+
+
 def validate_voxel(value: Any, label: str) -> dict[str, Any]:
     voxel = require_keys(
         value, {"schema", "plot_id", "origin", "size", "palette", "blocks"}, label
@@ -211,6 +222,8 @@ def validate_expected(value: Any, label: str) -> dict[str, Any]:
                 "round_id",
                 "plot_id",
                 "artifact_commit",
+                "voxel_artifact_path",
+                "response_artifact_path",
                 "voxel_sha256",
                 "response_sha256",
                 "response_origin",
@@ -231,6 +244,12 @@ def validate_expected(value: Any, label: str) -> dict[str, Any]:
         for field, pattern in patterns.items():
             if not re.fullmatch(pattern, str(source[field])):
                 raise EvalError(f"{label} family {field} is invalid")
+        validate_repository_path(
+            source["voxel_artifact_path"], f"{label} family voxel_artifact_path"
+        )
+        validate_repository_path(
+            source["response_artifact_path"], f"{label} family response_artifact_path"
+        )
     scores = require_keys(expected["scores"], set(CRITERIA), f"{label} scores")
     for criterion in CRITERIA:
         band = require_keys(scores[criterion], {"min", "max"}, f"{label} {criterion}")
@@ -303,7 +322,16 @@ def validate_ground_truth(
 ) -> set[str]:
     if ground_truth_root.is_symlink() or not ground_truth_root.is_dir():
         raise EvalError(f"ground-truth directory is missing or symbolic: {ground_truth_root}")
-    files = sorted(ground_truth_root.glob("*.yml"))
+    entries = sorted(ground_truth_root.iterdir())
+    if any(
+        path.is_symlink()
+        or not path.is_file()
+        or path.suffix != ".yml"
+        or not CASE_ID.fullmatch(path.stem)
+        for path in entries
+    ):
+        raise EvalError("ground-truth directory contains an unexpected entry")
+    files = entries
     if not files:
         raise EvalError("ground-truth directory contains no review files")
     seen_cases: set[str] = set()
@@ -318,6 +346,8 @@ def validate_ground_truth(
                 "round_id",
                 "plot_id",
                 "artifact_commit",
+                "voxel_artifact_path",
+                "response_artifact_path",
                 "voxel_sha256",
                 "response_sha256",
                 "adult_supervised",
@@ -342,6 +372,8 @@ def validate_ground_truth(
             root["round_id"] != source["round_id"]
             or root["plot_id"] != source["plot_id"]
             or root["artifact_commit"] != source["artifact_commit"]
+            or root["voxel_artifact_path"] != source["voxel_artifact_path"]
+            or root["response_artifact_path"] != source["response_artifact_path"]
             or root["voxel_sha256"] != source["voxel_sha256"]
             or root["response_sha256"] != source["response_sha256"]
             or root["voxel_sha256"] != voxel_hash
@@ -402,6 +434,38 @@ def verify_family_commits(specs: list[CaseSpec], repo_root: Path) -> None:
             raise EvalError(
                 f"{spec.case_id} artifact_commit does not resolve in this repository"
             )
+        artifacts = (
+            ("voxel", source["voxel_artifact_path"], source["voxel_sha256"]),
+            ("response", source["response_artifact_path"], source["response_sha256"]),
+        )
+        for kind, artifact_path, expected_hash in artifacts:
+            object_name = f"{source['artifact_commit']}:{artifact_path}"
+            size = subprocess.run(
+                ["git", "cat-file", "-s", object_name],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if size.returncode != 0 or not size.stdout.strip().isdigit():
+                raise EvalError(
+                    f"{spec.case_id} {kind} artifact is absent from artifact_commit"
+                )
+            if not 0 < int(size.stdout.strip()) <= MAX_JSON_BYTES:
+                raise EvalError(
+                    f"{spec.case_id} {kind} artifact has an invalid committed size"
+                )
+            content = subprocess.run(
+                ["git", "show", object_name],
+                cwd=repo_root,
+                capture_output=True,
+                check=False,
+            )
+            actual_hash = hashlib.sha256(content.stdout).hexdigest()
+            if content.returncode != 0 or actual_hash != expected_hash:
+                raise EvalError(
+                    f"{spec.case_id} {kind} artifact does not match artifact_commit"
+                )
 
 
 def validate_results(

@@ -7,7 +7,7 @@
     "effort": {"min": 7, "max": 9},
     "detail": {"min": 6, "max": 9}
   },
-  "ordering": {"higher_than": ["empty-plot", "single-block"], "lower_than": ["on-theme-detailed", "interior-only"]},
+  "ordering": {"higher_than": ["empty-plot", "single-block", "interior-only"], "lower_than": ["on-theme-detailed"]},
   "tone": {"genuine_positive": true, "banned_phrases": ["awful", "wrong", "pointless", "you failed"]},
   "structure": {"valid_schema": true, "reason_precedes_score": true}
 }

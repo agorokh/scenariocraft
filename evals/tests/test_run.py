@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -188,6 +189,8 @@ class EvalRunnerTest(unittest.TestCase):
                 "round_id": "round-20260721-123456",
                 "plot_id": "p1",
                 "artifact_commit": "a" * 40,
+                "voxel_artifact_path": "family/round/voxels.json",
+                "response_artifact_path": "family/round/response.json",
                 "voxel_sha256": voxel_hash,
                 "response_sha256": response_hash,
                 "response_origin": "live-recording",
@@ -205,6 +208,8 @@ class EvalRunnerTest(unittest.TestCase):
                 "round_id": source["round_id"],
                 "plot_id": source["plot_id"],
                 "artifact_commit": source["artifact_commit"],
+                "voxel_artifact_path": source["voxel_artifact_path"],
+                "response_artifact_path": source["response_artifact_path"],
                 "voxel_sha256": voxel_hash,
                 "response_sha256": response_hash,
                 "adult_supervised": True,
@@ -216,6 +221,11 @@ class EvalRunnerTest(unittest.TestCase):
             path = root / "family-case.yml"
             path.write_text(json.dumps(valid), encoding="utf-8")
             scenario_evals.validate_ground_truth(root, {"family-case": spec})
+            unexpected = root / "notes.txt"
+            unexpected.write_text("not part of the anonymous schema", encoding="utf-8")
+            with self.assertRaisesRegex(scenario_evals.EvalError, "unexpected entry"):
+                scenario_evals.validate_ground_truth(root, {"family-case": spec})
+            unexpected.unlink()
             spec.voxel["plot_id"] = "p7"
             with self.assertRaisesRegex(scenario_evals.EvalError, "exact reviewed artifacts"):
                 scenario_evals.validate_ground_truth(root, {"family-case": spec})
@@ -235,11 +245,47 @@ class EvalRunnerTest(unittest.TestCase):
                 "source": {
                     "kind": "family-round",
                     "artifact_commit": "a" * 40,
+                    "voxel_artifact_path": "family/round/voxels.json",
+                    "response_artifact_path": "family/round/response.json",
+                    "voxel_sha256": "b" * 64,
+                    "response_sha256": "c" * 64,
                 }
             },
         )
         with self.assertRaisesRegex(scenario_evals.EvalError, "does not resolve"):
             scenario_evals.verify_family_commits([spec], RUNNER.parents[1])
+
+    def test_family_artifacts_must_exist_in_and_match_the_commit(self):
+        repo_root = RUNNER.parents[1]
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        voxel_path = "evals/cases/empty-plot/voxels.json"
+        response_path = "evals/cases/empty-plot/recorded-response.json"
+        source = {
+            "kind": "family-round",
+            "artifact_commit": commit,
+            "voxel_artifact_path": voxel_path,
+            "response_artifact_path": response_path,
+            "voxel_sha256": scenario_evals.file_sha256(repo_root / voxel_path),
+            "response_sha256": scenario_evals.file_sha256(repo_root / response_path),
+        }
+        spec = scenario_evals.CaseSpec(
+            "family-case", RUNNER.parent, "Task", {}, {"source": source}
+        )
+        scenario_evals.verify_family_commits([spec], repo_root)
+        source["voxel_sha256"] = "0" * 64
+        with self.assertRaisesRegex(scenario_evals.EvalError, "does not match"):
+            scenario_evals.verify_family_commits([spec], repo_root)
+
+    def test_python_tone_vocabularies_accept_production_terms(self):
+        comment = "Your doorway creates a focal point. Add roof texture next."
+        self.assertIsNotNone(scenario_evals.FEATURE.search(comment))
+        self.assertIsNotNone(scenario_evals.POSITIVE.search(comment))
 
 
 if __name__ == "__main__":

@@ -132,7 +132,8 @@ Run the deterministic recorded-response suite used by CI from the repository roo
 Each directory under `evals/cases/` contains a schema-v1 `voxels.json`, `task.txt`,
 `recorded-response.json`, and an assertion-based `expected.yml`. Synthetic edge cases identify
 their responses as hand-authored production-schema goldens; family-round cases must identify an
-exact live recording by round, plot, artifact commit, and SHA-256. The `.yml` files use the
+exact live recording by round, plot, artifact commit, repository artifact paths, and SHA-256.
+The runner reads both artifacts from the cited commit and verifies their hashes. The `.yml` files use the
 JSON-compatible subset of YAML so CI needs no extra parser package. Assertions cover score bands,
 cross-case ordering, a genuine concrete positive, banned phrasing, the production result schema,
 configured persona panel, calculated mean, and reasoning-before-score field order.

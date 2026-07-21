@@ -34,6 +34,7 @@ session.
 | 2026-07-21 | Use the interior-only case to inspect the pre-fix multimodal request contract, then make the smallest production prompt correction needed to make cutaway evidence identifiable. | The required real fix must be traceable to an observed eval boundary failure rather than invented after implementation. |
 | 2026-07-21 | Label all seven canonical views in the GPT request and explicitly identify the plan and center cross-sections as interior evidence. | The interior-only seed exposed that filenames were retained locally but discarded at the model boundary, so the judge could not distinguish a cutaway from an exterior view. |
 | 2026-07-21 | Keep synthetic responses explicitly marked as hand-authored goldens; require family cases and council records to bind round, plot, commit, voxel, and response hashes. | Synthetic fixtures exercise the assertion engine but must never be presented as live family evidence. |
+| 2026-07-21 | Bind family provenance to repository paths whose content is read and hashed from the cited commit, and fetch full history in CI. | Merely proving that a SHA names some commit does not prove the reviewed round artifacts existed in it. |
 
 ## Surprises & Discoveries
 
@@ -59,12 +60,22 @@ session.
   rejected honest praise for the required single-block edge case. Adding that concrete feature
   and `JudgeVerdictTest.acceptsOneBlockAsTheConcreteStrengthInAnEdgeCase` turned the same eval
   green without weakening sentence, cruelty, or constructive-guidance checks.
+- Final co-review rejected the original synthetic calibration for three cases: a sparse sealed
+  cabin was praised as richly furnished, a six-block treehouse received above-anchor creativity,
+  and a compact ship was described as layered and complete. The score bands, ordering assertions,
+  verdicts, and aggregate means now describe the actual committed geometry.
+- Provenance co-review found that resolving `artifact_commit` alone accepted an unrelated commit.
+  Family metadata now names the voxel and response paths, verifies both hashes from the cited
+  commit, rejects unexpected ground-truth files, and uses full Git history in the CI build job.
+- Judge-parity co-review found that the Python tone vocabulary lagged the production Java
+  contract. Both feature and positive-effect terms are now synchronized for doorway/create-style
+  comments, with a focused parity regression test.
 
 ## Acceptance evidence
 
 - `./evals/run.sh --dry-run` passes all six synthetic seed cases and prints the required table;
   score-band, tone, schema, and cross-case ordering assertions are active.
-- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes eight focused runner tests,
+- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes ten focused runner tests,
   including duplicate-key rejection, aggregate verification, ordering failure, and anonymous
   checksum-bound council-record validation.
 - `OpenAiPersonaJudgeTest.requestUsesSevenImagesSharedRubricAndStrictReasonThenScoresSchema`

@@ -2,12 +2,12 @@
   "schema": 1,
   "source": {"kind": "synthetic", "reference": "Issue #13 cutaway-view regression case", "response_origin": "hand-authored-golden"},
   "scores": {
-    "theme_fit": {"min": 6, "max": 9},
-    "creativity": {"min": 6, "max": 9},
-    "effort": {"min": 6, "max": 9},
-    "detail": {"min": 6, "max": 8}
+    "theme_fit": {"min": 4, "max": 7},
+    "creativity": {"min": 3, "max": 5},
+    "effort": {"min": 4, "max": 6},
+    "detail": {"min": 3, "max": 5}
   },
-  "ordering": {"higher_than": ["empty-plot", "single-block", "off-theme-elaborate"], "lower_than": ["on-theme-detailed"]},
-  "tone": {"genuine_positive": true, "banned_phrases": ["empty", "nothing inside", "plain box", "you failed"]},
+  "ordering": {"higher_than": ["empty-plot", "single-block"], "lower_than": ["off-theme-elaborate", "on-theme-detailed"]},
+  "tone": {"genuine_positive": true, "banned_phrases": ["awful", "lazy", "you failed"]},
   "structure": {"valid_schema": true, "reason_precedes_score": true}
 }
