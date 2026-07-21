@@ -29,7 +29,9 @@ final class BattleResultParser {
                             + "worthless|worst)\\b|\\b(?:no|without) talent\\b|"
                             + "\\black(?:s|ing)? talent\\b|"
                             + "\\b(?:dead|death|die|harm|hurt|kill|murder|self-harm|suicide)\\b|"
-                            + "\\b(?:better off dead|go die|hurt yourself|kill yourself)\\b",
+                            + "\\b(?:better off dead|go die|hurt yourself|kill yourself)\\b|"
+                            + "\\b(?:arsehole|asshole|bastard|bitch|bullshit|crap|cunt|damn|"
+                            + "dick|douche|fuck(?:ed|er|ing)?|motherfucker|piss|prick|shit(?:ty)?)\\b",
                     Pattern.CASE_INSENSITIVE);
 
     BattleResult read(Path path) throws IOException {
@@ -140,7 +142,8 @@ final class BattleResultParser {
         if (normalized.isBlank() || normalized.length() > maximumLength) {
             throw invalid(label + " has an invalid length");
         }
-        if (normalized.codePoints().anyMatch(BattleResultParser::unsafeCodePoint)) {
+        if (normalized.indexOf('§') >= 0
+                || normalized.codePoints().anyMatch(BattleResultParser::unsafeCodePoint)) {
             throw invalid(label + " contains unsafe characters");
         }
         if (UNSAFE_LANGUAGE.matcher(normalized).find()) {

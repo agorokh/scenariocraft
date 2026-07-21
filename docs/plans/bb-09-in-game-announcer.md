@@ -41,6 +41,7 @@ session.
 | 2026-07-21 | Keep only the newest 256 round paths in a bounded priority queue while scanning history, and require every parsed header to match its directory name. | Historical accumulation must not permanently disable replay, while copied/misplaced results must never impersonate the active round. |
 | 2026-07-21 | Apply the judge's cruel-language denylist again at the plugin file boundary and require RCON round IDs to match the active REVEAL export. | Copied files are untrusted even when structurally valid, and a delayed authenticated command for an older round must not announce or celebrate inside a newer round. |
 | 2026-07-21 | Broaden copied-text rejection to self-harm/threat vocabulary, ignore `judge.yml` everywhere, and treat invalid optional RCON configuration as announcement failure rather than judging failure. | Player safety, credential containment, and durable publication must each fail independently at their own boundary. |
+| 2026-07-21 | Reject common profanity and Minecraft formatting markers at the copied-result boundary, and describe missing verdicts truthfully instead of inventing praise. | Untrusted judge artifacts must not gain presentation capabilities or expose children to abusive text, while a provider failure cannot be represented as feedback the judge never supplied. |
 
 ## Surprises & Discoveries
 
@@ -72,11 +73,15 @@ session.
 - “Optional announcement” applies to malformed configuration as well as network failure. A
   typo in an RCON port must not prevent the fallback artifact from being produced, and a
   credential-bearing file must be ignored mechanically rather than only by documentation.
+- A general “cruel language” filter did not cover ordinary profanity or Minecraft's section-
+  sign formatting codes. Both need explicit validation at the last player-facing trust
+  boundary, and an all-failed verdict set needs an honest fallback rather than synthetic
+  encouragement.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 249 tests, judge 74 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 251 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -97,6 +102,9 @@ session.
 - Additional regressions reject self-harm language and verify malformed optional RCON
   settings still reach the durable judging attempt. Root `.gitignore` rejects `judge.yml`
   regardless of the configured content-directory depth.
+- Copied-result regressions also reject common profanity and section-sign formatting codes;
+  when every persona verdict fails, the formatter reports that feedback could not be
+  completed instead of fabricating praise.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

@@ -13,7 +13,12 @@ final class BattleResultFormatter {
         lines.add(clamp("Build Battle results: " + safe(result.task()), MAX_CHAT_LENGTH));
         for (BattleResult.Contestant contestant : result.contestants()) {
             if (contestant.feedback().isEmpty()) {
-                lines.add(clamp("The judges are still cheering for " + safe(contestant.player()) + ".", MAX_CHAT_LENGTH));
+                lines.add(
+                        clamp(
+                                "The judges couldn't finish feedback for "
+                                        + safe(contestant.player())
+                                        + " this time.",
+                                MAX_CHAT_LENGTH));
                 continue;
             }
             for (BattleResult.Feedback feedback : contestant.feedback()) {

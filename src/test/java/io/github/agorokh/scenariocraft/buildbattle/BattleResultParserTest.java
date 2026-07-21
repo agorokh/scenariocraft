@@ -98,4 +98,44 @@ class BattleResultParserTest {
 
         assertThrows(IllegalArgumentException.class, () -> parser.parse(unsafe));
     }
+
+    @Test
+    void rejectsProfanityAndMinecraftFormattingCodes() {
+        String template =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Alex (p1)
+                  Captain Comet: 2.00 — %s
+
+                Winner: Alex with 2.00
+                """;
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("You are full of shit.")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("The §kobfuscated roof is clever.")));
+    }
+
+    @Test
+    void missingPersonaVerdictsProduceAnHonestRetryMessage() {
+        BattleResult result =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: A moon base for cats
+
+                        Alex (p1)
+                          Failed: provider timeout
+
+                        No winner: not enough verdicts
+                        """);
+
+        String feedback = formatter.chatLines(result).get(1);
+        assertTrue(feedback.contains("couldn't finish feedback"));
+        assertFalse(feedback.contains("cheering"));
+    }
 }
