@@ -27,6 +27,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
     private static final URI MODERATIONS_ENDPOINT =
             URI.create("https://api.openai.com/v1/moderations");
     private static final String MODERATION_MODEL = "omni-moderation-latest";
+    private static final int MODERATION_ATTEMPTS = 2;
     static final int MAX_RESPONSE_BYTES = 1024 * 1024;
     private static final Gson JSON = new Gson();
     private static final Set<String> VERDICT_KEYS =
@@ -124,10 +125,32 @@ final class OpenAiPersonaJudge implements PersonaJudge {
     private void requireSafeVerdictText(JudgeVerdict verdict)
             throws IOException, InterruptedException, JudgeException {
         String text = verdict.reasoning() + "\n" + verdict.comment();
-        String responseBody = send(moderationEndpoint, moderationRequestBody(text));
-        if (parseModerationFlag(responseBody)) {
-            throw new JudgeException("OpenAI moderation rejected the judge comment");
+        moderateText(text, body -> send(moderationEndpoint, body));
+    }
+
+    static void moderateText(String text, ModerationSender sender)
+            throws IOException, InterruptedException, JudgeException {
+        for (int attempt = 1; attempt <= MODERATION_ATTEMPTS; attempt++) {
+            try {
+                String responseBody = sender.send(moderationRequestBody(text));
+                if (parseModerationFlag(responseBody)) {
+                    throw new JudgeException(
+                            "OpenAI moderation rejected the judge comment", null, false);
+                }
+                return;
+            } catch (IOException | JudgeException exception) {
+                if (attempt == MODERATION_ATTEMPTS
+                        || exception instanceof JudgeException judgeException
+                                && !judgeException.retryable()) {
+                    throw exception;
+                }
+            }
         }
+    }
+
+    @FunctionalInterface
+    interface ModerationSender {
+        String send(String body) throws IOException, InterruptedException, JudgeException;
     }
 
     static String moderationRequestBody(String comment) {

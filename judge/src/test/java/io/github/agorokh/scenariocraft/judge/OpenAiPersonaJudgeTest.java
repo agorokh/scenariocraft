@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -195,6 +196,35 @@ class OpenAiPersonaJudgeTest {
                 JudgeException.class,
                 () -> OpenAiPersonaJudge.parseModerationFlag(
                         "{\"results\":[{\"categories\":{}}]}"));
+    }
+
+    @Test
+    void retriesModerationWithoutRegeneratingTheVerdict() throws Exception {
+        AtomicInteger moderationCalls = new AtomicInteger();
+
+        OpenAiPersonaJudge.moderateText("safe verdict", body -> {
+            if (moderationCalls.incrementAndGet() == 1) {
+                throw new JudgeException("temporary moderation failure");
+            }
+            return "{\"results\":[{\"flagged\":false}]}";
+        });
+
+        assertEquals(2, moderationCalls.get());
+    }
+
+    @Test
+    void doesNotRetryAFlaggedVerdict() {
+        AtomicInteger moderationCalls = new AtomicInteger();
+
+        JudgeException exception = assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.moderateText("unsafe verdict", body -> {
+                    moderationCalls.incrementAndGet();
+                    return "{\"results\":[{\"flagged\":true}]}";
+                }));
+
+        assertFalse(exception.retryable());
+        assertEquals(1, moderationCalls.get());
     }
 
     @Test
