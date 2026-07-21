@@ -42,7 +42,16 @@ final class ResultAnnouncementFormatter {
     private static String clean(String value) {
         StringBuilder cleaned = new StringBuilder(value.length());
         boolean previousWhitespace = false;
+        boolean skipLegacyFormatCode = false;
         for (int codePoint : value.codePoints().toArray()) {
+            if (skipLegacyFormatCode) {
+                skipLegacyFormatCode = false;
+                continue;
+            }
+            if (codePoint == '§') {
+                skipLegacyFormatCode = true;
+                continue;
+            }
             boolean whitespace = Character.isWhitespace(codePoint);
             if (whitespace) {
                 if (!previousWhitespace) {

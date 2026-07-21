@@ -88,7 +88,7 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         ReadResult result;
         try {
             result = new ReadResult(reader.latest(), null);
-        } catch (IOException | IllegalArgumentException failure) {
+        } catch (IOException | RuntimeException failure) {
             result = new ReadResult(Optional.empty(), failure);
         }
         ReadResult completed = result;
@@ -125,20 +125,55 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
                     "Judge results are safe on disk; the in-game celebration only plays during REVEAL.");
             return;
         }
+        if (closed.get()) {
+            return;
+        }
         try {
-            Optional<BattleResultsReader.LatestResult> latest = reader.latestRound();
-            if (latest.isEmpty()) {
-                sender.sendMessage(NO_RESULTS_MESSAGE);
-                return;
-            }
-            if (announce(latest.get())) {
-                sender.sendMessage("ScenarioCraft announced the latest judge results.");
-            } else {
-                sender.sendMessage("ScenarioCraft already announced these judge results.");
-            }
-        } catch (IOException | IllegalArgumentException failure) {
+            server.getScheduler()
+                    .runTaskAsynchronously(plugin, () -> readLatestForAnnouncement(sender));
+        } catch (RuntimeException failure) {
             logReadFailure(failure);
             sender.sendMessage(READ_FAILURE_MESSAGE);
+        }
+    }
+
+    private void readLatestForAnnouncement(CommandSender sender) {
+        ReadResult result;
+        try {
+            result = new ReadResult(reader.latestRound(), null);
+        } catch (IOException | RuntimeException failure) {
+            result = new ReadResult(Optional.empty(), failure);
+        }
+        ReadResult completed = result;
+        try {
+            server.getScheduler().runTask(plugin, () -> completeAnnouncement(sender, completed));
+        } catch (RuntimeException failure) {
+            logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
+        }
+    }
+
+    private void completeAnnouncement(CommandSender sender, ReadResult result) {
+        if (closed.get()) {
+            return;
+        }
+        if (round.phase() != RoundPhase.REVEAL) {
+            sender.sendMessage(
+                    "Judge results are safe on disk; the in-game celebration only plays during REVEAL.");
+            return;
+        }
+        if (result.failure() != null) {
+            logReadFailure(result.failure());
+            sender.sendMessage(READ_FAILURE_MESSAGE);
+            return;
+        }
+        if (result.latest().isEmpty()) {
+            sender.sendMessage(NO_RESULTS_MESSAGE);
+            return;
+        }
+        if (announce(result.latest().get())) {
+            sender.sendMessage("ScenarioCraft announced the latest judge results.");
+        } else {
+            sender.sendMessage("ScenarioCraft already announced these judge results.");
         }
     }
 
@@ -160,7 +195,7 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         ReadResult result;
         try {
             result = new ReadResult(reader.latestRound(), null);
-        } catch (IOException | IllegalArgumentException failure) {
+        } catch (IOException | RuntimeException failure) {
             result = new ReadResult(Optional.empty(), failure);
         }
         ReadResult completed = result;

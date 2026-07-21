@@ -50,4 +50,20 @@ class ResultAnnouncementFormatterTest {
         assertFalse(announcement.chatLines().stream()
                 .anyMatch(line -> line.contains("successful verdict") || line.contains("Failed:")));
     }
+
+    @Test
+    void stripsLegacyMinecraftFormattingCodesFromJudgeText() {
+        BattleResultSummary result = BattleResultsReader.parse(
+                BattleResultsReaderTest.winningResults().replace(
+                        "The leafy wings are a genuine detail worth celebrating.",
+                        "§kHidden castle details are worth celebrating."));
+
+        ResultAnnouncementFormatter.Announcement announcement =
+                ResultAnnouncementFormatter.format(result);
+
+        assertTrue(announcement.chatLines().stream()
+                .anyMatch(line -> line.contains("Hidden castle details are worth celebrating.")));
+        assertFalse(announcement.chatLines().stream()
+                .anyMatch(line -> line.contains("§") || line.contains("kHidden")));
+    }
 }

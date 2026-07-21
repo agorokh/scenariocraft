@@ -27,13 +27,14 @@ class ResultAnnouncementServiceTest {
     Path temporaryDirectory;
 
     @Test
-    void revealPollReadsOffThreadAndAnnouncesOnceOnServerThread() throws Exception {
+    void rconAnnouncementAndRevealPollReadOffThreadAndAnnounceOnce() throws Exception {
         Path round = temporaryDirectory.resolve("rounds/round-20260721-193000");
         Files.createDirectories(round);
         Files.writeString(
                 round.resolve("results.txt"), BattleResultsReaderTest.winningResults());
         List<String> playerChat = new ArrayList<>();
         List<String> titles = new ArrayList<>();
+        List<String> commandMessages = new ArrayList<>();
         AtomicInteger particles = new AtomicInteger();
         AtomicInteger cancellations = new AtomicInteger();
         List<Runnable> asynchronousTasks = new ArrayList<>();
@@ -98,6 +99,14 @@ class ResultAnnouncementServiceTest {
                             default -> defaultValue(method.getReturnType());
                         });
         BattleRound reveal = new FixedPhaseRound(RoundPhase.REVEAL);
+        CommandSender commandSender = proxy(
+                CommandSender.class,
+                (ignored, method, arguments) -> {
+                    if (method.getName().equals("sendMessage")) {
+                        commandMessages.add(String.valueOf(arguments[0]));
+                    }
+                    return defaultValue(method.getReturnType());
+                });
         ResultAnnouncementService service = new ResultAnnouncementService(
                 plugin,
                 reveal,
@@ -105,7 +114,7 @@ class ResultAnnouncementServiceTest {
                 ignored -> new Location(world, 1.5, 80, 2.5),
                 20L);
 
-        service.poll();
+        service.announceLatest(commandSender);
         assertTrue(playerChat.isEmpty());
         asynchronousTasks.removeFirst().run();
         assertTrue(playerChat.isEmpty());
@@ -119,6 +128,8 @@ class ResultAnnouncementServiceTest {
         assertTrue(firstChatCount >= 4);
         assertEquals(firstChatCount, playerChat.size());
         assertEquals(List.of("§6Winner: Alex!"), titles);
+        assertEquals(
+                List.of("ScenarioCraft announced the latest judge results."), commandMessages);
         assertEquals(1, particles.get());
         assertEquals(1, cancellations.get());
     }

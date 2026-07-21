@@ -37,6 +37,7 @@ session.
 | 2026-07-21 | Treat a missing `results-poll-ticks` as the packaged default, while still rejecting an explicitly invalid value. | Existing generated configs do not gain newly added keys during upgrade, so a mandatory lookup would prevent the plugin from enabling. |
 | 2026-07-21 | Read player-requested result replays asynchronously too, and replace machine-oriented no-winner reasons with a fixed warm message. | Players may issue the replay command repeatedly against shared storage, and operational quorum diagnostics are not appropriate judge feedback for children. |
 | 2026-07-21 | Skip `judge.yml` entirely when the environment supplies the complete RCON trio. | Environment overrides must remain usable when an optional local configuration file is stale, malformed, or inaccessible. |
+| 2026-07-21 | Use the async read/main-thread delivery boundary for RCON-triggered announcements as well as polling and player replay. | Every path reads the same potentially shared results directory; the transport that initiates a read does not make synchronous filesystem work safe on Paper's main thread. |
 
 ## Surprises & Discoveries
 
@@ -68,11 +69,15 @@ session.
   irrelevant stale `judge.yml`. It also caught that machine-oriented quorum diagnostics could
   reach children; the formatter now keeps those details on disk and displays a warm neutral
   no-winner message in game.
+- The next current-head review completed the boundary audit: RCON-triggered reads now use the
+  same async handoff, unchecked reader failures are converted into completed read failures so
+  the single-flight poll gate always reopens, and legacy Minecraft section-sign formatting is
+  stripped before any judge text reaches chat or titles.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 137 plugin tests, 78 judge tests, and 14 renderer tests
-  (229 total), zero failures after the replacement-head review fixes.
+- `make ci-fast` passed on Java 21 with 138 plugin tests, 78 judge tests, and 14 renderer tests
+  (230 total), zero failures after the final boundary-hardening review fixes.
 - `BattleResultsReaderTest`, `ResultAnnouncementFormatterTest`, and
   `ResultAnnouncementServiceTest` cover the friendly no-results path, strict bounded text
   parsing, raw-JSON rejection/cleaning, 120-code-point chat lines, 64-code-point titles,
