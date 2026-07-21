@@ -23,9 +23,11 @@
       <a class="start-button" href="#step-1">See the seven steps <span aria-hidden="true">↓</span></a>
     </div>
     <div class="hero-stats" aria-label="Round at a glance">
+<!-- proof:hero:start -->
       <span><b>7</b> steps</span>
-      <span><b>1</b> secret</span>
-      <span><b>3</b> AI judges</span>
+      <span><b>3</b> robot builders</span>
+      <span><b>161s</b> played-for-real proof</span>
+<!-- proof:hero:end -->
     </div>
     <div class="speed-lines speed-lines-right" aria-hidden="true"></div>
   </header>
@@ -77,17 +79,25 @@
             <span class="step-number">02</span>
             <p class="step-kicker">The lucky click</p>
             <h2>One player is chosen to open it</h2>
-            <p>A random builder gets the big announcement. Only they can open the chest.
-              Everyone else gets a cheerful <q>No way! Blocky is opening the Secret Chest!</q></p>
+<!-- proof:picker:start -->
+            <p>The real transcript chose <strong>Pixel</strong>.
+              Blocky tried first and the gate answered
+              <q>This secret note belongs to Pixel this round. You&#39;ll see the idea together soon!</q></p>
+            <p class="evidence-line"><q>Pixel is the secret-note picker! The chest is waiting at the hub.</q></p>
+<!-- proof:picker:end -->
           </div>
           <figure class="pixel-scene scene-picker">
             <svg viewBox="0 0 640 400" role="img" aria-labelledby="picker-title picker-desc">
-              <title id="picker-title">Blocky is selected to open the chest</title>
-              <desc id="picker-desc">A green block character is spotlighted by yellow pixel rays.</desc>
+<!-- proof:picker-art:start -->
+              <title id="picker-title">Pixel is selected to open the chest</title>
+              <desc id="picker-desc">An invented block character is spotlighted by yellow pixel rays.</desc>
+<!-- proof:picker-art:end -->
               <g class="rays"><path d="M304 20h32v72h-32zM304 308h32v72h-32zM70 184h86v32H70zM484 184h86v32h-86zM129 57l23-23 61 61-23 23zM427 282l23-23 61 61-23 23zM488 57l23 23-61 61-23-23zM190 282l23 23-61 61-23-23z"/></g>
               <path class="spotlight" d="M320 88 456 330H184z"/>
               <g class="big-builder" transform="translate(244 140)"><path class="head-top" d="m0 38 76-38 76 38-76 38z"/><path class="head-front" d="m0 38 76 38v96L0 134z"/><path class="head-side" d="m152 38-76 38v96l76-38z"/><path class="eye" d="m30 82 15 7v20l-15-7zM60 97l15 7v20l-15-7z"/></g>
-              <text x="320" y="365" text-anchor="middle">BLOCKY, YOU'RE UP!</text>
+<!-- proof:picker-label:start -->
+              <text x="320" y="365" text-anchor="middle">PIXEL, YOU'RE UP!</text>
+<!-- proof:picker-label:end -->
             </svg>
             <figcaption>Builder names are invented for this public tour.</figcaption>
           </figure>
@@ -100,17 +110,19 @@
             <span class="step-number">03</span>
             <p class="step-kicker">The big reveal</p>
             <h2>The secret challenge is revealed</h2>
-            <p>A title fills the screen, chat repeats it for everyone, and the clock starts.
-              Tonight's challenge: <strong>a candy volcano!</strong></p>
+<!-- proof:challenge:start -->
+            <p>A title filled every robot player's screen and chat recorded the same prompt:
+              <strong>A moon base for cats.</strong></p>
           </div>
           <figure class="pixel-scene scene-reveal">
-            <div class="reveal-card" role="img" aria-label="BUILD: a candy volcano! 20 minutes">
-              <span class="reveal-label">Secret challenge</span>
+            <div class="reveal-card" role="img" aria-label="Build A moon base for cats">
+              <span class="reveal-label">Real round challenge</span>
               <strong>BUILD:</strong>
-              <b>a candy volcano!</b>
-              <span class="pixel-clock">20:00</span>
+              <b>A moon base for cats</b>
+              <span class="pixel-clock">ROUND 214219</span>
             </div>
-            <figcaption>The title and chat tell the same story on Java and Bedrock clients.</figcaption>
+            <figcaption>Verbatim task parsed from the played round's chat transcript.</figcaption>
+<!-- proof:challenge:end -->
           </figure>
         </article>
       </li>
@@ -123,15 +135,19 @@
             <h2>Everyone builds behind giant walls</h2>
             <p>Each builder gets a private walled plot with an anti-peek roof. A bossbar keeps
               the countdown visible while blocks turn into ideas.</p>
-            <div class="bossbar" aria-label="Build timer: 12 minutes 43 seconds remaining"><span style="width:64%"></span><b>BUILD! 12:43</b></div>
+<!-- proof:timer:start -->
+            <div class="bossbar" aria-label="Observed build window: 1:29"><span style="width:100%"></span><b>BUILD! 1:29</b></div>
+<!-- proof:timer:end -->
           </div>
+<!-- proof:isometric:start -->
           <figure class="render-scene framed-render">
             <span class="wall wall-left" aria-hidden="true"></span>
-            <img src="assets/scenes/candy-volcano-iso.png" width="1024" height="1024"
-                 alt="Isometric voxel render of a bright candy volcano on a square grass plot">
+            <img src="assets/rounds/round-20260721-214219/p1-iso-ne.png" width="1024" height="1024"
+                 alt="Isometric voxel render of Blocky&#39;s real Speed Build plot">
             <span class="wall wall-right" aria-hidden="true"></span>
-            <figcaption>Real output from the ScenarioCraft voxel renderer: a block-by-block view from the northeast corner.</figcaption>
+            <figcaption>Blocky placed 6 blocks; this is the renderer&#39;s isometric northeast view.</figcaption>
           </figure>
+<!-- proof:isometric:end -->
         </article>
       </li>
 
@@ -144,12 +160,14 @@
             <p>We can slice through the block-by-block voxel export to show a build in
               progress. Players can never see this view during the round. Nice try, peekers.</p>
           </div>
+<!-- proof:cutaway:start -->
           <figure class="render-scene cutaway">
             <span class="camera-tag">camera only</span>
-            <img src="assets/scenes/candy-volcano-cutaway.png" width="1024" height="1024"
-                 alt="Front cutaway voxel render showing the inside profile of the candy volcano">
-            <figcaption>Real renderer output from the same saved block plan, sliced from the front.</figcaption>
+            <img src="assets/rounds/round-20260721-214219/p2-cut-z.png" width="1024" height="1024"
+                 alt="Cutaway voxel render of Crafty&#39;s real Speed Build plot">
+            <figcaption>Crafty placed 11 blocks; this cut-Z image comes from that exact voxel export.</figcaption>
           </figure>
+<!-- proof:cutaway:end -->
         </article>
       </li>
 
@@ -162,13 +180,15 @@
             <p>Block edits stop, the dividers dissolve, and everybody tours the gallery.
               This is the admire-first part: every build made it from a blank plot.</p>
           </div>
+<!-- proof:plan:start -->
           <figure class="render-scene gallery-plan">
             <div class="confetti" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            <img src="assets/scenes/candy-volcano-plan.png" width="1024" height="1024"
-                 alt="Top-down voxel render of the finished candy volcano with a colorful lava path">
-            <div class="gallery-labels" aria-hidden="true"><span>Builder One</span><span>Blocky</span><span>Builder Three</span></div>
-            <figcaption>Real renderer output from the same saved block plan, looking straight down.</figcaption>
+            <img src="assets/rounds/round-20260721-214219/p3-plan.png" width="1024" height="1024"
+                 alt="Top-down voxel render of Pixel's real Speed Build plot">
+            <div class="gallery-labels" aria-hidden="true"><span>Blocky</span><span>Crafty</span><span>Pixel</span></div>
+            <figcaption>Pixel placed 18 blocks; every gallery label comes from the frozen game manifest.</figcaption>
           </figure>
+<!-- proof:plan:end -->
         </article>
       </li>
 
@@ -182,42 +202,47 @@
               and detail. The winner gets a celebration. Every builder gets one genuine
               strength and one useful tip.</p>
           </div>
+<!-- proof:verdicts:start -->
           <figure class="judge-stage">
             <div class="judge-grid">
               <div class="judge judge-brickworth">
                 <div class="pixel-face" aria-hidden="true"><i></i><i></i><b></b></div>
                 <h3>Professor<br>Brickworth</h3>
-                <p><span>Sample commentary</span> “That bright candy plume gives the whole volcano a joyful silhouette.”</p>
+                <p><span>Real verdict · Pixel</span> “The symmetrical yellow posts give your tiny structure a neat, balanced silhouette. Try adding two pointed cat-ear shapes above one wall so the cat theme becomes easy to recognize.”</p>
               </div>
               <div class="judge judge-sparkle">
                 <div class="pixel-face" aria-hidden="true"><i></i><i></i><b></b></div>
                 <h3>Captain<br>Sparkle</h3>
-                <p><span>Sample commentary</span> “The lava trail zooms straight at us. Maximum snack-speed drama!”</p>
+                <p><span>Real verdict · Pixel</span> “That bright golden color and symmetrical ear-like shape create a bold little centerpiece with real game-show sparkle! Try adding a gray moon floor and one glass room with a cat bed so the moon base story becomes clear.”</p>
               </div>
               <div class="judge judge-redstone">
                 <div class="pixel-face" aria-hidden="true"><i></i><i></i><b></b></div>
                 <h3>Granny<br>Redstone</h3>
-                <p><span>Sample commentary</span> “Lovely color rhythm. Next time, tuck one candy surprise inside.”</p>
+                <p><span>Real verdict · Pixel</span> “The bright yellow color and neat symmetrical shape make your little structure easy to spot in the darkness. Try adding a gray crater floor with one cat bed inside the base so the moon-and-cats theme reads clearly.”</p>
               </div>
             </div>
-            <div class="scoreboard"><span>Theme <b>9</b></span><span>Creativity <b>9</b></span><span>Effort <b>8</b></span><span>Detail <b>8</b></span><strong>8.5</strong></div>
-            <figcaption>Clearly marked sample commentary in the three committed persona voices.</figcaption>
+            <div class="scoreboard"><span>Theme avg <b>2.0</b></span><span>Creativity avg <b>3.0</b></span><span>Effort avg <b>2.0</b></span><span>Detail avg <b>1.7</b></span><strong>2.2</strong></div>
+            <figcaption>Unedited AI verdicts from <code>round-20260721-214219</code>; Pixel won this played round.</figcaption>
           </figure>
+<!-- proof:verdicts:end -->
         </article>
       </li>
     </ol>
 
     <section class="provenance" aria-labelledby="made-here-heading">
+<!-- proof:provenance:start -->
       <div>
         <p class="kicker">Made here, block by block</p>
-        <h2 id="made-here-heading">Every image has a trail home</h2>
+        <h2 id="made-here-heading">This walkthrough is a passing test</h2>
       </div>
       <ul>
-        <li><b>Logo</b><span><code>site/assets/branding/speed-build-logo.png</code></span></li>
-        <li><b>Voxel source</b><span><code>src/test/resources/fixtures/speed-build-candy-volcano.voxels.json</code></span></li>
-        <li><b>Renders</b><span>Generated by <code>renderer/</code>; no game-client captures</span></li>
-        <li><b>Story art</b><span>Original inline SVG and CSS made for this page</span></li>
+        <li><b>Round</b><span><code>round-20260721-214219</code> · 2026-07-21 UTC</span></li>
+        <li><b>Contestants</b><span>the contestants were open-source robot players (Mineflayer)</span></li>
+        <li><b>Images</b><span>every image is rendered from the blocks they actually placed; displayed colors use explicit entries for their exported materials</span></li>
+        <li><b>Verdicts</b><span>verdicts are unedited AI output; the live panel and displayed images used the same explicit material colors</span></li>
+        <li><b>Source</b><span><code>site/data/rounds/round-20260721-214219/</code></span></li>
       </ul>
+<!-- proof:provenance:end -->
     </section>
   </main>
 

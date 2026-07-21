@@ -70,6 +70,29 @@ services:
       - rounds:/plugins/ScenarioCraft/rounds
       - demo-secrets:/run/scenariocraft:ro
 
+  round-driver:
+    profiles:
+      - proof
+    build:
+      context: .
+      target: proof-runner
+    user: "${SCENARIOCRAFT_PROOF_UID:-1000}:${SCENARIOCRAFT_PROOF_GID:-1000}"
+    depends_on:
+      paper:
+        condition: service_healthy
+      judge:
+        condition: service_started
+    environment:
+      SCENARIOCRAFT_SERVER_HOST: paper
+      SCENARIOCRAFT_SERVER_PORT: "25565"
+      SCENARIOCRAFT_ROUNDS_DIR: /rounds
+      SCENARIOCRAFT_PROOF_DIR: /proof
+      SCENARIOCRAFT_START_COMMAND: /speedbuild start
+    volumes:
+      - rounds:/rounds:ro
+      - ./build/proof-round:/proof
+      - ./site:/site
+
 volumes:
   demo-secrets:
   plugins:

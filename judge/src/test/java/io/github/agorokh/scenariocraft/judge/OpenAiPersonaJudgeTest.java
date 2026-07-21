@@ -55,6 +55,7 @@ class OpenAiPersonaJudgeTest {
         String sharedInstructions = input.get(0).getAsJsonObject().getAsJsonArray("content")
                 .get(0).getAsJsonObject().get("text").getAsString();
         assertTrue(sharedInstructions.contains("Name one genuine strength"));
+        assertTrue(sharedInstructions.contains("Start sentence two with Try, Next, or Consider"));
         assertEquals(RUBRIC, input.get(0).getAsJsonObject().getAsJsonArray("content")
                 .get(1).getAsJsonObject().get("text").getAsString());
         assertEquals(8, input.get(1).getAsJsonObject().getAsJsonArray("content").size());
@@ -63,6 +64,13 @@ class OpenAiPersonaJudgeTest {
         List<String> propertyOrder = new ArrayList<>(format.getAsJsonObject("schema")
                 .getAsJsonObject("properties").keySet());
         assertEquals(List.of("persona", "reasoning", "scores", "comment"), propertyOrder);
+        assertTrue(
+                format.getAsJsonObject("schema")
+                        .getAsJsonObject("properties")
+                        .getAsJsonObject("comment")
+                        .get("description")
+                        .getAsString()
+                        .contains("visible build feature"));
         assertTrue(body.indexOf("\"reasoning\"") < body.indexOf("\"scores\""));
     }
 

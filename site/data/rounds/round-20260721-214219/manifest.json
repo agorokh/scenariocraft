@@ -1,0 +1,445 @@
+{
+  "schema": 1,
+  "round_id": "round-20260721-214219",
+  "date": "2026-07-21",
+  "task": "A moon base for cats",
+  "started_at": "2026-07-21T21:40:44.123Z",
+  "completed_at": "2026-07-21T21:43:24.689Z",
+  "duration_seconds": 161,
+  "judge_render_palette": "explicit-proof-materials-v1",
+  "picker": "Pixel",
+  "rejected_bot": "Blocky",
+  "phase_timeline": [
+    {
+      "phase": "PREPARING",
+      "at": "2026-07-21T21:40:44.144Z"
+    },
+    {
+      "phase": "GATHERING",
+      "at": "2026-07-21T21:40:44.476Z"
+    },
+    {
+      "phase": "NOTE_PICK",
+      "at": "2026-07-21T21:40:48.759Z"
+    },
+    {
+      "phase": "BUILDING",
+      "at": "2026-07-21T21:40:50.302Z"
+    },
+    {
+      "phase": "REVEAL",
+      "at": "2026-07-21T21:42:19.744Z"
+    },
+    {
+      "phase": "RESULTS",
+      "at": "2026-07-21T21:43:24.684Z"
+    }
+  ],
+  "chat_transcript": [
+    {
+      "at": "2026-07-21T21:40:44.144Z",
+      "recipient": "Blocky",
+      "message": "Starting Speed Build for 3 builders!"
+    },
+    {
+      "at": "2026-07-21T21:40:44.144Z",
+      "recipient": "Blocky",
+      "message": "Speed Build is getting the arena ready in safe little batches!"
+    },
+    {
+      "at": "2026-07-21T21:40:44.144Z",
+      "recipient": "Crafty",
+      "message": "Speed Build is getting the arena ready in safe little batches!"
+    },
+    {
+      "at": "2026-07-21T21:40:44.145Z",
+      "recipient": "Pixel",
+      "message": "Speed Build is getting the arena ready in safe little batches!"
+    },
+    {
+      "at": "2026-07-21T21:40:44.476Z",
+      "recipient": "Crafty",
+      "message": "Gather at the hub! Your build idea arrives in 5 seconds."
+    },
+    {
+      "at": "2026-07-21T21:40:44.482Z",
+      "recipient": "Blocky",
+      "message": "Gather at the hub! Your build idea arrives in 5 seconds."
+    },
+    {
+      "at": "2026-07-21T21:40:44.486Z",
+      "recipient": "Pixel",
+      "message": "Gather at the hub! Your build idea arrives in 5 seconds."
+    },
+    {
+      "at": "2026-07-21T21:40:44.731Z",
+      "recipient": "Blocky",
+      "message": "gathering: 4 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:44.732Z",
+      "recipient": "Crafty",
+      "message": "gathering: 4 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:44.733Z",
+      "recipient": "Pixel",
+      "message": "gathering: 4 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:45.730Z",
+      "recipient": "Crafty",
+      "message": "gathering: 3 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:45.730Z",
+      "recipient": "Blocky",
+      "message": "gathering: 3 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:45.731Z",
+      "recipient": "Pixel",
+      "message": "gathering: 3 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:46.721Z",
+      "recipient": "Blocky",
+      "message": "gathering: 2 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:46.722Z",
+      "recipient": "Crafty",
+      "message": "gathering: 2 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:46.722Z",
+      "recipient": "Pixel",
+      "message": "gathering: 2 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:47.726Z",
+      "recipient": "Blocky",
+      "message": "gathering: 1 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:47.729Z",
+      "recipient": "Crafty",
+      "message": "gathering: 1 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:47.729Z",
+      "recipient": "Pixel",
+      "message": "gathering: 1 seconds left."
+    },
+    {
+      "at": "2026-07-21T21:40:48.759Z",
+      "recipient": "Blocky",
+      "message": "Pixel is the secret-note picker! The chest is waiting at the hub."
+    },
+    {
+      "at": "2026-07-21T21:40:48.764Z",
+      "recipient": "Crafty",
+      "message": "Pixel is the secret-note picker! The chest is waiting at the hub."
+    },
+    {
+      "at": "2026-07-21T21:40:48.764Z",
+      "recipient": "Pixel",
+      "message": "Pixel is the secret-note picker! The chest is waiting at the hub."
+    },
+    {
+      "at": "2026-07-21T21:40:49.263Z",
+      "recipient": "Blocky",
+      "message": "This secret note belongs to Pixel this round. You'll see the idea together soon!"
+    },
+    {
+      "at": "2026-07-21T21:40:50.254Z",
+      "recipient": "Blocky",
+      "message": "Your build idea is: A moon base for cats!"
+    },
+    {
+      "at": "2026-07-21T21:40:50.255Z",
+      "recipient": "Crafty",
+      "message": "Your build idea is: A moon base for cats!"
+    },
+    {
+      "at": "2026-07-21T21:40:50.256Z",
+      "recipient": "Pixel",
+      "message": "Your build idea is: A moon base for cats!"
+    },
+    {
+      "at": "2026-07-21T21:40:50.302Z",
+      "recipient": "Blocky",
+      "message": "Build time! Have fun making something only you could imagine."
+    },
+    {
+      "at": "2026-07-21T21:40:50.304Z",
+      "recipient": "Crafty",
+      "message": "Build time! Have fun making something only you could imagine."
+    },
+    {
+      "at": "2026-07-21T21:40:50.306Z",
+      "recipient": "Pixel",
+      "message": "Build time! Have fun making something only you could imagine."
+    },
+    {
+      "at": "2026-07-21T21:41:19.722Z",
+      "recipient": "Blocky",
+      "message": "1 minute left — add your favorite finishing touches!"
+    },
+    {
+      "at": "2026-07-21T21:41:19.723Z",
+      "recipient": "Crafty",
+      "message": "1 minute left — add your favorite finishing touches!"
+    },
+    {
+      "at": "2026-07-21T21:41:19.725Z",
+      "recipient": "Pixel",
+      "message": "1 minute left — add your favorite finishing touches!"
+    },
+    {
+      "at": "2026-07-21T21:42:09.721Z",
+      "recipient": "Blocky",
+      "message": "10 seconds left — make them count!"
+    },
+    {
+      "at": "2026-07-21T21:42:09.722Z",
+      "recipient": "Crafty",
+      "message": "10 seconds left — make them count!"
+    },
+    {
+      "at": "2026-07-21T21:42:09.722Z",
+      "recipient": "Pixel",
+      "message": "10 seconds left — make them count!"
+    },
+    {
+      "at": "2026-07-21T21:42:19.744Z",
+      "recipient": "Blocky",
+      "message": "Time to reveal the builds! The walls are coming down safely."
+    },
+    {
+      "at": "2026-07-21T21:42:19.745Z",
+      "recipient": "Crafty",
+      "message": "Time to reveal the builds! The walls are coming down safely."
+    },
+    {
+      "at": "2026-07-21T21:42:19.746Z",
+      "recipient": "Pixel",
+      "message": "Time to reveal the builds! The walls are coming down safely."
+    },
+    {
+      "at": "2026-07-21T21:42:19.832Z",
+      "recipient": "Pixel",
+      "message": "The walls are down! Enjoy the build tour for 900 seconds."
+    },
+    {
+      "at": "2026-07-21T21:42:19.835Z",
+      "recipient": "Blocky",
+      "message": "The walls are down! Enjoy the build tour for 900 seconds."
+    },
+    {
+      "at": "2026-07-21T21:42:19.837Z",
+      "recipient": "Crafty",
+      "message": "The walls are down! Enjoy the build tour for 900 seconds."
+    },
+    {
+      "at": "2026-07-21T21:43:24.684Z",
+      "recipient": "Blocky",
+      "message": "Speed Build results — A moon base for cats"
+    },
+    {
+      "at": "2026-07-21T21:43:24.684Z",
+      "recipient": "Blocky",
+      "message": "Blocky — Professor Brickworth: 1.25 — The crisp L-shaped structure has a clear base and upright section, giving this ti…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.685Z",
+      "recipient": "Blocky",
+      "message": "Blocky — Captain Sparkle: 1.25 — That bold lime-green L-shaped structure pops dramatically against the dark scene, givi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Blocky — Granny Redstone: 1.00 — The bright green L-shaped structure stands out clearly against the dark background, gi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Crafty — Professor Brickworth: 1.50 — The crisp magenta L-shaped structure gives this tiny build a clear, balanced silh…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Crafty — Captain Sparkle: 1.25 — That dazzling magenta color pops against the dark background and gives your platform a…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Crafty — Granny Redstone: 1.25 — The bright magenta color gives your little platform a clear, cheerful silhouette again…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Pixel — Professor Brickworth: 2.25 — The symmetrical yellow posts give your tiny structure a neat, balanced silhouette.…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Pixel — Captain Sparkle: 2.25 — That bright golden color and symmetrical ear-like shape create a bold little centerpiec…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Pixel — Granny Redstone: 2.00 — The bright yellow color and neat symmetrical shape make your little structure easy to s…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Blocky",
+      "message": "Winner: Pixel!"
+    },
+    {
+      "at": "2026-07-21T21:43:24.686Z",
+      "recipient": "Crafty",
+      "message": "Speed Build results — A moon base for cats"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Blocky — Professor Brickworth: 1.25 — The crisp L-shaped structure has a clear base and upright section, giving this ti…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Blocky — Captain Sparkle: 1.25 — That bold lime-green L-shaped structure pops dramatically against the dark scene, givi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Blocky — Granny Redstone: 1.00 — The bright green L-shaped structure stands out clearly against the dark background, gi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Crafty — Professor Brickworth: 1.50 — The crisp magenta L-shaped structure gives this tiny build a clear, balanced silh…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Crafty — Captain Sparkle: 1.25 — That dazzling magenta color pops against the dark background and gives your platform a…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Crafty — Granny Redstone: 1.25 — The bright magenta color gives your little platform a clear, cheerful silhouette again…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Pixel — Professor Brickworth: 2.25 — The symmetrical yellow posts give your tiny structure a neat, balanced silhouette.…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Pixel — Captain Sparkle: 2.25 — That bright golden color and symmetrical ear-like shape create a bold little centerpiec…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Pixel — Granny Redstone: 2.00 — The bright yellow color and neat symmetrical shape make your little structure easy to s…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.687Z",
+      "recipient": "Crafty",
+      "message": "Winner: Pixel!"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Speed Build results — A moon base for cats"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Blocky — Professor Brickworth: 1.25 — The crisp L-shaped structure has a clear base and upright section, giving this ti…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Blocky — Captain Sparkle: 1.25 — That bold lime-green L-shaped structure pops dramatically against the dark scene, givi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Blocky — Granny Redstone: 1.00 — The bright green L-shaped structure stands out clearly against the dark background, gi…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Crafty — Professor Brickworth: 1.50 — The crisp magenta L-shaped structure gives this tiny build a clear, balanced silh…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Crafty — Captain Sparkle: 1.25 — That dazzling magenta color pops against the dark background and gives your platform a…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Crafty — Granny Redstone: 1.25 — The bright magenta color gives your little platform a clear, cheerful silhouette again…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Pixel — Professor Brickworth: 2.25 — The symmetrical yellow posts give your tiny structure a neat, balanced silhouette.…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Pixel — Captain Sparkle: 2.25 — That bright golden color and symmetrical ear-like shape create a bold little centerpiec…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Pixel — Granny Redstone: 2.00 — The bright yellow color and neat symmetrical shape make your little structure easy to s…"
+    },
+    {
+      "at": "2026-07-21T21:43:24.688Z",
+      "recipient": "Pixel",
+      "message": "Winner: Pixel!"
+    }
+  ],
+  "plots": [
+    {
+      "plot_id": "p1",
+      "player": "Blocky",
+      "block_count": 6,
+      "voxel_file": "p1.voxels.json",
+      "renders": {
+        "isometric": "p1-iso-ne.png",
+        "plan": "p1-plan.png",
+        "cutaway": "p1-cut-z.png"
+      }
+    },
+    {
+      "plot_id": "p2",
+      "player": "Crafty",
+      "block_count": 11,
+      "voxel_file": "p2.voxels.json",
+      "renders": {
+        "isometric": "p2-iso-ne.png",
+        "plan": "p2-plan.png",
+        "cutaway": "p2-cut-z.png"
+      }
+    },
+    {
+      "plot_id": "p3",
+      "player": "Pixel",
+      "block_count": 18,
+      "voxel_file": "p3.voxels.json",
+      "renders": {
+        "isometric": "p3-iso-ne.png",
+        "plan": "p3-plan.png",
+        "cutaway": "p3-cut-z.png"
+      }
+    }
+  ]
+}

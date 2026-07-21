@@ -4,4 +4,5 @@ build
 judge/build
 renderer/build
 demo/evidence
+**/node_modules
 **/.DS_Store
