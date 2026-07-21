@@ -18,16 +18,25 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 OPENAI_API_KEY=bedrock-compose-contract-only \
+SCENARIOCRAFT_BEDROCK_PORT=19132 \
     docker compose -f docker-compose.yml -f docker-compose.bedrock.yml \
     config --format json >"${contract_dir}/compose.json"
 
 jq -e '
+    def floodgate_url:
+      "https://download.geysermc.org/v2/projects/floodgate/versions/2.2.5/builds/138/downloads/spigot";
+    def floodgate_sha256:
+      "44bdb908e2fb4ff1b974d5313d048a625a21555a9844cfb86256a98e8e1c6bd1";
     .services.paper.environment.MODRINTH_PROJECTS == "geyser,viaversion" and
     .services.paper.environment.MODRINTH_ALLOWED_VERSION_TYPE == "beta" and
     .services.paper.environment.MODRINTH_DEFAULT_VERSION_TYPE == "beta" and
     .services.paper.environment.MOTD == "ScenarioCraft Speed Build demo" and
-    .services.paper.environment.PLUGINS ==
-      "https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot" and
+    (.services.paper.environment.PLUGINS == null) and
+    .services["bedrock-plugins"].image == "alpine:3.23" and
+    (.services["bedrock-plugins"].command | tostring | contains(floodgate_url)) and
+    (.services["bedrock-plugins"].command | tostring | contains(floodgate_sha256)) and
+    .services.paper.depends_on["bedrock-plugins"].condition ==
+      "service_completed_successfully" and
     any(
       .services.paper.ports[];
       .target == 19132 and .published == "19132" and .protocol == "udp"

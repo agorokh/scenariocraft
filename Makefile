@@ -6,7 +6,7 @@ demo:
 demo-dry-run:
 	SCENARIOCRAFT_DEMO_DRY_RUN=true ./demo/run-headless.sh
 
-ci-fast: site-check bedrock-compose-check
+ci-fast: site-check
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		sha256sum --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	else \

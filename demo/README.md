@@ -27,9 +27,10 @@ judge path.
 
 ## One household, every device
 
-Different kids can bring an Xbox, iPad, Windows Bedrock client, or Java PC to one kid-safe
-server that still feels like a real online game. The same secret prompt, timers, and warm AI
-panel judge every build the same way, whatever device its builder uses.
+Different kids can bring an iPad, Windows Bedrock client, or Java PC to one kid-safe server
+that still feels like a real online game. The same secret prompt, timers, and warm AI panel
+judge every build the same way, whatever device its builder uses. Consoles need a separate
+LAN discovery or redirect setup, as documented below.
 
 ## Bedrock on Linux
 
@@ -68,17 +69,22 @@ Bedrock UDP port without changing the Java-only base demo. On a Linux Docker hos
    `127.0.0.1` with that host's LAN address. Keep UDP 19132 open only to the trusted LAN.
 
 The beta version settings are intentional: Geyser currently publishes beta-type Modrinth
-builds. Floodgate is installed from GeyserMC's download endpoint because its Modrinth files
-do not match the Paper and Minecraft version tags used by this demo. ViaVersion bridges the
-newer Java protocol expected by current Geyser builds to Paper 1.21.11.
+builds. The `bedrock-plugins` setup service downloads Floodgate 2.2.5 build 138 from
+GeyserMC's versioned endpoint and verifies its committed SHA-256 checksum before placing the
+jar in the shared plugin volume; a changed artifact stops startup. Floodgate's Modrinth
+files do not match the Paper and Minecraft version tags used by this demo. ViaVersion
+bridges the newer Java protocol expected by current Geyser builds to Paper 1.21.11.
 
 ### How players join
 
 - A Java PC connects to the Docker host on port `25565`.
 - iPad, Android, and Windows Bedrock players add the Docker host as a server on UDP port
   `19132`.
-- Xbox and PlayStation players on the same Wi-Fi use **Friends > LAN Games** when the Geyser
-  server appears.
+- Xbox and PlayStation do not expose the same direct custom-server entry flow. Docker bridge
+  networking also does not relay Geyser's LAN broadcast to the physical LAN, so this overlay
+  does **not** make the server appear under **Friends > LAN Games**. Console play requires a
+  separately supported LAN broadcast relay, DNS redirect, or host-networked Geyser setup;
+  none is bundled or claimed by this demo.
 
 After a Bedrock client joins, run `/speedbuild start` and complete a round. A RakNet pong
 proves discovery and the MOTD, not gameplay; the client round is separate acceptance

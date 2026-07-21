@@ -29,8 +29,10 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 | Date | Decision | Why |
 | --- | --- | --- |
 | 2026-07-21 | Keep Bedrock support in `docker-compose.bedrock.yml` and leave the base demo unchanged. | The issue explicitly makes the bridge opt-in, and Java-only smoke coverage must remain stable. |
-| 2026-07-21 | Add a Compose-render regression check to `make ci-fast` and keep the live RakNet probe operator-run. | CI can prove the overlay parses and retains the required plugin and UDP contract without pretending that a client joined a real server. |
+| 2026-07-21 | Keep the Compose-render regression as an explicit CI step and separate `make bedrock-compose-check`; leave `make ci-fast` usable without Docker. | The repository's fast local gate must work in a Java-only checkout, while hosted CI can still freeze the overlay contract. |
 | 2026-07-21 | Document Docker Desktop on macOS as unsupported for the overlay's UDP host path and provide a host-run Geyser Standalone fallback. | The issue requires the platform limitation to remain visible rather than overstating support. |
+| 2026-07-21 | Install Floodgate 2.2.5 build 138 through a one-shot Compose service and verify SHA-256 before publishing it to the plugin volume. | A floating `latest` plugin URL executes mutable remote code at every start; a versioned URL plus committed digest fails closed. |
+| 2026-07-21 | State that the Docker bridge overlay does not provide console LAN discovery. | Published UDP accepts direct Bedrock connections but does not relay Geyser's broadcast from the container bridge to the physical LAN. |
 
 ## Surprises & Discoveries
 
@@ -47,15 +49,21 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 - Floodgate generated `key.pem` in the named plugin volume as UID/GID 1000. The runbook keeps
   that writable volume intact and restricts the standalone copy to mode 600 without exposing
   the key's contents.
+- Exact-head review found that an inherited `SCENARIOCRAFT_BEDROCK_PORT` could pollute the
+  default-port contract, Docker had accidentally become mandatory for `make ci-fast`, the
+  mutable Floodgate URL lacked integrity verification, and console discovery was overstated.
+  The review fix pins the render environment, restores the Java-only fast gate, verifies the
+  Floodgate digest, and narrows the console claim.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed: `SCENARIOCRAFT_BEDROCK_COMPOSE_OK`, Gradle build, plugin tests, judge tests, renderer
-  tests, jar assembly, and the existing page checks all completed successfully.
+  passed: Gradle build, plugin tests, judge tests, renderer tests, jar assembly, and the
+  existing page checks all completed successfully.
 - `demo/test-bedrock-compose.sh` rendered the combined Compose model as JSON and asserted the
-  default published `19132/udp`, `geyser,viaversion`, both beta version settings, the exact
-  Floodgate download URL, and `ScenarioCraft Speed Build demo` MOTD.
+  default published `19132/udp` under a polluted caller environment, `geyser,viaversion`,
+  both beta version settings, the versioned Floodgate URL and SHA-256, the Paper dependency
+  on the verified installer, and `ScenarioCraft Speed Build demo` MOTD.
 - `demo/check-bedrock.sh` parsed a protocol-valid local RakNet pong fixture and printed
   `SCENARIOCRAFT_BEDROCK_OK` with the fixture's Speed Build MOTD.
 - A fresh isolated Compose-volume smoke downloaded Geyser 2.11.0-b1200, ViaVersion

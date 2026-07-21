@@ -36,6 +36,9 @@ jobs:
       - name: Build and test
         run: make ci-fast
 
+      - name: Verify Bedrock Compose contract
+        run: make bedrock-compose-check
+
       - name: Run judge fixture offline
         shell: bash
         run: |

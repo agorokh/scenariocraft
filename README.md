@@ -59,10 +59,11 @@ is passed from the shell environment and is never stored in the Compose file or 
 
 ## One household, every device
 
-Different kids can bring an Xbox, iPad, Windows Bedrock client, or Java PC to one kid-safe
-Speed Build server that still feels like a real online game. The same secret prompt, timers,
-and warm AI panel judge every build the same way, whatever device its builder uses. See the
-[demo runbook](demo/README.md#bedrock-on-linux) for the opt-in Bedrock bridge and its honest
+Different kids can bring an iPad, Windows Bedrock client, or Java PC to one kid-safe Speed
+Build server that still feels like a real online game. The same secret prompt, timers, and
+warm AI panel judge every build the same way, whatever device its builder uses. Consoles
+need an operator-supplied LAN discovery or redirect setup; see the [demo
+runbook](demo/README.md#bedrock-on-linux) for the opt-in Bedrock bridge and its honest
 platform limits.
 
 ## Publishing the How to Play page
