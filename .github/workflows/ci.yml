@@ -15,6 +15,7 @@ env:
   PAPER_SHA256: '5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba'
   PAPER_BOOT_TIMEOUT_SECONDS: ${{ vars.PAPER_BOOT_TIMEOUT_SECONDS || '300' }}
   BATTLE_QUEUE_TIMEOUT_SECONDS: ${{ vars.BATTLE_QUEUE_TIMEOUT_SECONDS || '30' }}
+  RCON_SMOKE_PORT: ${{ vars.RCON_SMOKE_PORT || '25575' }}
 
 jobs:
   build:
@@ -47,7 +48,7 @@ jobs:
               --round "${RUNNER_TEMP}/judge-runtime/rounds/round-20260721-193000" \
               --dry-run
 
-      - name: Stage tested plugin jar
+      - name: Stage tested plugin and judge
         shell: bash
         run: |
           set -euo pipefail
@@ -58,12 +59,14 @@ jobs:
           test "${#plugin_jars[@]}" -eq 1
           mkdir -p "${RUNNER_TEMP}/plugin-artifact"
           cp "${plugin_jars[0]}" "${RUNNER_TEMP}/plugin-artifact/ScenarioCraft.jar"
+          cp -R judge/build/install/judge \
+            "${RUNNER_TEMP}/plugin-artifact/judge"
 
-      - name: Upload tested plugin jar
+      - name: Upload tested runtime
         uses: actions/upload-artifact@v6
         with:
           name: scenariocraft-plugin
-          path: ${{ runner.temp }}/plugin-artifact/ScenarioCraft.jar
+          path: ${{ runner.temp }}/plugin-artifact
           if-no-files-found: error
 
   smoke:
@@ -81,7 +84,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Download tested plugin jar
+      - name: Download tested runtime
         uses: actions/download-artifact@v6
         with:
           name: scenariocraft-plugin
@@ -140,24 +143,50 @@ jobs:
             "${url}"
           echo "${PAPER_SHA256}  ${paper_jar}" | sha256sum --check -
 
-      - name: Boot Paper and stop after startup
+      - name: Boot Paper and exercise results over RCON
         id: paper-smoke
         shell: bash
         run: |
           set -euo pipefail
           server_dir="${RUNNER_TEMP}/paper-smoke"
           echo "server_dir=${server_dir}" >>"${GITHUB_OUTPUT}"
-          mkdir -p "${server_dir}/plugins"
+          [[ "${RCON_SMOKE_PORT}" =~ ^[1-9][0-9]*$ ]] &&
+            test "${RCON_SMOKE_PORT}" -le 65535 || {
+              printf 'RCON_SMOKE_PORT must be between 1 and 65535.\n' >&2
+              exit 1
+            }
+          mkdir -p "${server_dir}/plugins/ScenarioCraft/rounds"
           cp ".paper-cache/paper-${PAPER_VERSION}-${PAPER_BUILD}.jar" \
             "${server_dir}/paper.jar"
           cp "${RUNNER_TEMP}/plugin-artifact/ScenarioCraft.jar" \
             "${server_dir}/plugins/ScenarioCraft.jar"
+          chmod +x "${RUNNER_TEMP}/plugin-artifact/judge/bin/judge"
+          cp src/main/resources/config.yml \
+            "${server_dir}/plugins/ScenarioCraft/config.yml"
+          sed -i.bak \
+            -e 's/^gather-seconds: .*/gather-seconds: 1/' \
+            -e 's/^note-seconds: .*/note-seconds: 1/' \
+            -e 's/^build-seconds: .*/build-seconds: 1/' \
+            -e 's/^reveal-linger-seconds: .*/reveal-linger-seconds: 60/' \
+            -e 's/^results-poll-ticks: .*/results-poll-ticks: 1/' \
+            "${server_dir}/plugins/ScenarioCraft/config.yml"
+          rm "${server_dir}/plugins/ScenarioCraft/config.yml.bak"
+          fixture_round="${server_dir}/plugins/ScenarioCraft/rounds/round-20991231-235959"
+          cp -R \
+            judge/src/test/resources/fixtures/runtime/rounds/round-20260721-193000 \
+            "${fixture_round}"
+          jq '.round_id = "round-20991231-235959"' \
+            "${fixture_round}/manifest.json" >"${fixture_round}/manifest.json.tmp"
+          mv "${fixture_round}/manifest.json.tmp" "${fixture_round}/manifest.json"
           printf 'eula=true\n' >"${server_dir}/eula.txt"
           printf '%s\n' \
             'allow-nether=false' \
             'generate-structures=false' \
+            'enable-rcon=true' \
             'level-type=minecraft:flat' \
             'online-mode=false' \
+            "rcon.port=${RCON_SMOKE_PORT}" \
+            'rcon.password=scenariocraft-ci-rcon' \
             'simulation-distance=2' \
             'spawn-monsters=false' \
             'view-distance=2' >"${server_dir}/server.properties"
@@ -286,7 +315,6 @@ jobs:
               )
               if grep -q "Arena build complete: 2 plots in battle_world" \
                 <<<"${new_battle_log}"; then
-                printf "stop\n" >&3
                 break
               fi
               if grep -Fq \
@@ -297,8 +325,105 @@ jobs:
               fi
               sleep 1
             done
+
+            reveal_seen=0
+            for ((attempt = 0; attempt < 60; attempt++)); do
+              if grep -q "Round phase changed: BUILDING -> REVEAL" logs/latest.log; then
+                reveal_seen=1
+                break
+              fi
+              kill -0 "${server_pid}" 2>/dev/null || break
+              sleep 1
+            done
+            if test "${reveal_seen}" -ne 1; then
+              printf "Build Battle did not reach REVEAL for judge announcement.\n" >&2
+              tail -n 100 logs/latest.log >&2 || true
+              exit 1
+            fi
+
+            judge_round="$1/plugins/ScenarioCraft/rounds/round-20991231-235959"
+            SCENARIOCRAFT_JUDGE_CONFIG_DIR="$2" \
+              SCENARIOCRAFT_RCON_HOST=127.0.0.1 \
+              SCENARIOCRAFT_RCON_PORT="$4" \
+              SCENARIOCRAFT_RCON_PASSWORD=scenariocraft-ci-rcon \
+              SCENARIOCRAFT_RCON_TIMEOUT_SECONDS=5 \
+              "$3" --round "${judge_round}" --dry-run \
+                >judge-rcon-success.out 2>judge-rcon-success.err
+            if grep -q "RCON announcement failed" judge-rcon-success.err; then
+              printf "Configured RCON announcement failed.\n" >&2
+              cat judge-rcon-success.err >&2
+              exit 1
+            fi
+
+            announcement_seen=0
+            for ((attempt = 0; attempt < 30; attempt++)); do
+              if grep -q \
+                "SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959" \
+                logs/latest.log; then
+                announcement_seen=1
+                break
+              fi
+              kill -0 "${server_pid}" 2>/dev/null || break
+              sleep 1
+            done
+            if test "${announcement_seen}" -ne 1; then
+              printf "Judge verdict was not announced during REVEAL.\n" >&2
+              tail -n 100 logs/latest.log >&2 || true
+              exit 1
+            fi
+
+            set +e
+            SCENARIOCRAFT_JUDGE_CONFIG_DIR="$2" \
+              SCENARIOCRAFT_RCON_HOST=127.0.0.1 \
+              SCENARIOCRAFT_RCON_PORT="$4" \
+              SCENARIOCRAFT_RCON_PASSWORD=intentionally-wrong \
+              SCENARIOCRAFT_RCON_TIMEOUT_SECONDS=5 \
+              "$3" --round "${judge_round}" --dry-run \
+                >judge-rcon-failure.out 2>judge-rcon-failure.err
+            rcon_failure_status=$?
+            set -e
+            if test "${rcon_failure_status}" -ne 0 ||
+              ! grep -q "results remain available on disk" judge-rcon-failure.err ||
+              ! test -s "${judge_round}/results.json" ||
+              ! test -s "${judge_round}/results.txt"; then
+              printf "RCON failure did not preserve successful disk results.\n" >&2
+              cat judge-rcon-failure.err >&2 || true
+              exit 1
+            fi
+
+            replay_log_offset=$(wc -c <logs/latest.log)
+            printf "battle results\n" >&3
+            replay_seen=0
+            for ((attempt = 0; attempt < 10; attempt++)); do
+              replay_log=$(
+                tail -c "+$((replay_log_offset + 1))" logs/latest.log 2>/dev/null ||
+                  true
+              )
+              if grep -q "Winner: Alex!" <<<"${replay_log}"; then
+                replay_seen=1
+                break
+              fi
+              kill -0 "${server_pid}" 2>/dev/null || break
+              sleep 1
+            done
+            if test "${replay_seen}" -ne 1; then
+              printf "/battle results did not replay the winner.\n" >&2
+              tail -n 100 logs/latest.log >&2 || true
+              exit 1
+            fi
+            if test "$(grep -c \
+              "SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959" \
+              logs/latest.log)" -ne 1; then
+              printf "RCON and polling produced duplicate announcements.\n" >&2
+              exit 1
+            fi
+            printf "stop\n" >&3
             wait "${server_pid}"
-          ' bash "${server_dir}"
+          ' bash \
+            "${server_dir}" \
+            "${GITHUB_WORKSPACE}/judge" \
+            "${RUNNER_TEMP}/plugin-artifact/judge/bin/judge" \
+            "${RCON_SMOKE_PORT}"
           server_status=$?
           set -e
           sleep 2
@@ -333,6 +458,19 @@ jobs:
             printf 'The exact namespaced execute-in-world teleport path was not confirmed.\n'
             grep -n -C 4 -E \
               'SCENARIOCRAFT_TELEPORT_TRANSPORT_OK|Unknown or incomplete command|No entity was found' \
+              "${log}" || true
+            failed=1
+          fi
+          if ! grep -q \
+            'SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959' "${log}"; then
+            printf 'The judge result was not announced on the real Paper server.\n'
+            grep -n -C 4 -E 'SCENARIOCRAFT_RESULTS|RCON|Winner|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
+          if ! grep -q 'Winner: Alex!' "${log}"; then
+            printf '/battle results did not replay the durable winner.\n'
+            grep -n -C 4 -E 'Build Battle results|Winner|ERROR|Exception' \
               "${log}" || true
             failed=1
           fi
@@ -405,4 +543,8 @@ jobs:
           path: |
             ${{ steps.paper-smoke.outputs.server_dir }}/logs/latest.log
             ${{ steps.paper-smoke.outputs.server_dir }}/server-console.log
+            ${{ steps.paper-smoke.outputs.server_dir }}/judge-rcon-success.out
+            ${{ steps.paper-smoke.outputs.server_dir }}/judge-rcon-success.err
+            ${{ steps.paper-smoke.outputs.server_dir }}/judge-rcon-failure.out
+            ${{ steps.paper-smoke.outputs.server_dir }}/judge-rcon-failure.err
           if-no-files-found: error

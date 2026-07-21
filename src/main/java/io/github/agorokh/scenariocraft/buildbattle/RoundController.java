@@ -292,6 +292,28 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return state.phase();
     }
 
+    /** Returns the current plot center used for a short winner-particle celebration. */
+    public Location resultCelebrationLocation(String plotId) {
+        if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
+            return null;
+        }
+        int plotNumber;
+        try {
+            plotNumber = Integer.parseInt(plotId.substring(1));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        if (plotNumber > plots.size()) {
+            return null;
+        }
+        PlotBounds plot = plots.get(plotNumber - 1);
+        return new Location(
+                arena.world(),
+                plot.centerX() + 0.5,
+                arena.floorY() + 3.0,
+                plot.centerZ() + 0.5);
+    }
+
     @Override
     public void start(CommandSender sender) {
         Objects.requireNonNull(sender, "sender");

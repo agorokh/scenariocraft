@@ -50,7 +50,40 @@ class BattleCommandTest {
         command.onCommand(operator.sender(), null, "bb", new String[] {"menu"});
 
         assertEquals(1, round.stops);
-        assertEquals("Try /bb start or /bb stop.", operator.messages().getLast());
+        assertEquals(
+                "Try /bb start, /bb stop, or /bb results.",
+                operator.messages().getLast());
+    }
+
+    @Test
+    void resultsReplaysForPlayersAndConsoleAnnouncementHasASeparateGuardedPath() {
+        FakeRound round = new FakeRound();
+        FakeResults results = new FakeResults();
+        BattleCommand command = new BattleCommand(settings(true), round, results);
+        SenderRig player = new SenderRig("BuilderKid", false, true);
+        SenderRig console = new SenderRig("CONSOLE", true);
+
+        command.onCommand(player.sender(), null, "battle", new String[] {"results"});
+        command.onCommand(player.sender(), null, "battle", new String[] {"announce-results"});
+        command.onCommand(console.sender(), null, "battle", new String[] {"announce-results"});
+
+        assertEquals(1, results.replays);
+        assertEquals(1, results.announcements);
+        assertEquals(
+                "Only the server console can announce judge results.",
+                player.messages().getLast());
+    }
+
+    @Test
+    void resultsBeforeTheFirstVerdictUsesFriendlyNoResultsMessage() {
+        BattleCommand command = new BattleCommand(settings(true), new FakeRound());
+        SenderRig sender = new SenderRig("BuilderKid", false);
+
+        command.onCommand(sender.sender(), null, "battle", new String[] {"results"});
+
+        assertEquals(
+                "No judge results yet — check back after the reveal!",
+                sender.messages().getLast());
     }
 
     private static BattleSettings settings(boolean allowAnyStart) {
@@ -59,7 +92,8 @@ class BattleCommandTest {
                 new PhaseTimings(30, 60, 1_200, 900),
                 List.of("A dragon treehouse"),
                 List.of("BuilderKid"),
-                allowAnyStart);
+                allowAnyStart,
+                20);
     }
 
     private static final class FakeRound implements BattleRound {
@@ -82,30 +116,50 @@ class BattleCommandTest {
         }
     }
 
+    private static final class FakeResults implements BattleResultsReporter {
+        private int replays;
+        private int announcements;
+
+        @Override
+        public void replayLatest(CommandSender sender) {
+            replays++;
+        }
+
+        @Override
+        public void announceLatest(CommandSender sender) {
+            announcements++;
+        }
+    }
+
     private record SenderRig(CommandSender sender, List<String> messages) {
         private SenderRig(String name, boolean operator) {
-            this(messages(name, operator));
+            this(name, operator, false);
+        }
+
+        private SenderRig(String name, boolean operator, boolean player) {
+            this(messages(name, operator, player));
         }
 
         private SenderRig(SenderParts parts) {
             this(parts.sender(), parts.messages());
         }
 
-        private static SenderParts messages(String name, boolean operator) {
+        private static SenderParts messages(String name, boolean operator, boolean player) {
             List<String> messages = new ArrayList<>();
-            CommandSender sender =
-                    proxy(
-                            CommandSender.class,
-                            (ignored, method, arguments) ->
-                                    switch (method.getName()) {
-                                        case "getName" -> name;
-                                        case "isOp" -> operator;
-                                        case "sendMessage" -> {
-                                            messages.add(String.valueOf(arguments[0]));
-                                            yield null;
-                                        }
-                                        default -> defaultValue(method.getReturnType());
-                                    });
+            java.lang.reflect.InvocationHandler handler =
+                    (ignored, method, arguments) ->
+                            switch (method.getName()) {
+                                case "getName" -> name;
+                                case "isOp" -> operator;
+                                case "sendMessage" -> {
+                                    messages.add(String.valueOf(arguments[0]));
+                                    yield null;
+                                }
+                                default -> defaultValue(method.getReturnType());
+                            };
+            CommandSender sender = player
+                    ? proxy(org.bukkit.entity.Player.class, handler)
+                    : proxy(CommandSender.class, handler);
             return new SenderParts(sender, messages);
         }
     }

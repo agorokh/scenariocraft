@@ -2,7 +2,7 @@
 
 Issue: #11
 Owner: Codex
-Status: In progress
+Status: Complete
 
 ## Purpose
 
@@ -16,10 +16,10 @@ lifecycle state, and real-server acceptance evidence.
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Implement with tests.
+- [x] Capture the issue's acceptance evidence.
+- [x] Complete `/review` and resolve P1 findings.
+- [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -42,13 +42,51 @@ session.
 - The round exporter writes immutable timestamped directories under the server's `rounds/`
   directory. Polling only while the controller is in REVEAL keeps the happy path simple and
   avoids a filesystem watcher thread crossing Paper lifecycle boundaries.
+- The plugin's production round directory is under its data folder,
+  `plugins/ScenarioCraft/rounds/`, rather than at the server root. Automatic polling must
+  inspect only the newest round directory so a server restart cannot announce an older verdict;
+  the explicit replay command may still find the latest completed result.
+- Paper 1.21.11's RCON reader expects one socket read to contain a whole request packet. Writing
+  a valid packet through several stream writes caused Paper to close the connection after a
+  partial read. Buffering each packet and issuing one socket write fixed the real server path;
+  a regression test pins that behavior.
+- `Server.broadcastMessage` includes command senders in its permission-aware broadcast. While a
+  new Paper RCON sender was initializing, that path dereferenced an unset permission delegate.
+  Sending chat lines directly to online players is both safer and a closer match for the issue.
 
 ## Acceptance evidence
 
-To be completed with focused unit tests, `make ci-fast`, and a pinned local Paper/RCON smoke
-that proves automatic chat output, command replay, winner effect dispatch, and disk fallback
-after an intentional RCON failure.
+- `make ci-fast` passed on Java 21 with 135 plugin tests, 76 judge tests, and 14 renderer tests
+  (225 total), zero failures.
+- `BattleResultsReaderTest`, `ResultAnnouncementFormatterTest`, and
+  `ResultAnnouncementServiceTest` cover the friendly no-results path, strict bounded text
+  parsing, raw-JSON rejection/cleaning, 120-code-point chat lines, 64-code-point titles,
+  per-persona score/comment lines, one-shot deduplication, title delivery, and winner particles.
+- `RconConfigTest`, `RconClientTest`, `RconResultAnnouncerTest`, and
+  `JudgeApplicationTest.rconFailureAfterJudgingKeepsBothResultArtifactsAndSuccessStatus` cover
+  env/`judge.yml` precedence, bounded configuration, one-write Source-RCON packets, real command
+  selection, redacted diagnostics, and post-publication failure semantics.
+- The exact YAML-extracted CI smoke program passed locally against checksum-pinned Paper
+  1.21.11 build 132 on RCON port 25585. The shortened Build Battle reached
+  `BUILDING -> REVEAL`; the installed judge wrote fixture results and authenticated over RCON;
+  Paper logged `SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959 chat_lines=8` exactly once;
+  `battle results` logged `Winner: Alex!`; and Paper shut down with all dimensions saved.
+- The same live smoke reran the judge with an intentionally wrong RCON password. The judge
+  remained successful, both result artifacts remained non-empty, and diagnostics reported
+  `RCON authentication failed` without printing either password.
+- The modified workflow parsed as YAML and its complete embedded Paper smoke program passed
+  `bash -n` after GitHub-expression substitution.
+- `/review` against `code_review.md` found no P1: judge and announcement logic have focused and
+  real-server coverage, player-facing output is bounded and kid-appropriate, no raw JSON,
+  inventory GUI, or block mutation was introduced, timings remain configurable, and no real
+  credential is present.
 
 ## Retrospective
 
-To be completed after implementation, review, and acceptance verification.
+BB-09 closes the visible judging loop without coupling the standalone judge to Bukkit. The
+judge owns durable publication and a best-effort authenticated transport; the plugin owns
+phase awareness, file replay, Bedrock-safe presentation, deduplication, and plot effects. The
+most useful failure was the real RCON smoke: it exposed both Paper's packet-read assumption and
+its permission-aware broadcast edge case, neither of which the in-memory protocol and service
+tests could reveal alone. Keeping the disk artifact authoritative makes both failures graceful
+and preserves `/battle results` as the operator/player recovery path.

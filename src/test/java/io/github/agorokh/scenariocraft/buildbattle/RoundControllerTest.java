@@ -622,6 +622,23 @@ class RoundControllerTest {
     }
 
     @Test
+    void winnerCelebrationResolvesTheExportedPlotCenter() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+
+        Location celebration = rig.controller.resultCelebrationLocation("p1");
+
+        assertNotNull(celebration);
+        assertTrue(rig.world == celebration.getWorld());
+        assertEquals(0.5, celebration.getX());
+        assertEquals(3.0, celebration.getY());
+        assertEquals(-2.5, celebration.getZ());
+        assertNull(rig.controller.resultCelebrationLocation("p3"));
+        assertNull(rig.controller.resultCelebrationLocation("winner"));
+        rig.close();
+    }
+
+    @Test
     void arenaFailureNotifiesConsoleStarterDirectly() {
         TestRig rig = new TestRig();
         rig.failChunkLoads.set(true);
@@ -2490,7 +2507,8 @@ class RoundControllerTest {
                             timings,
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
-                            true);
+                            true,
+                            20);
             arena = new ArenaWorld(world, floorY);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());

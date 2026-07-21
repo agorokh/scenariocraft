@@ -85,7 +85,9 @@ public final class JudgeCli {
                 rubricPath,
                 judge,
                 output,
-                diagnostics);
+                diagnostics,
+                new RconResultAnnouncer(
+                        configDirectory.resolve("judge.yml"), environment));
     }
 
     static Path configDirectory(Map<String, String> environment) {

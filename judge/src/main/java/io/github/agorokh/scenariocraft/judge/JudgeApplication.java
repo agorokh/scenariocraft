@@ -18,7 +18,25 @@ final class JudgeApplication {
             Path rubricPath,
             PersonaJudge judge,
             PrintWriter output,
-        PrintWriter diagnostics) {
+            PrintWriter diagnostics) {
+        return run(
+                roundDirectory,
+                personasPath,
+                rubricPath,
+                judge,
+                output,
+                diagnostics,
+                (round, results) -> {});
+    }
+
+    int run(
+            Path roundDirectory,
+            Path personasPath,
+            Path rubricPath,
+            PersonaJudge judge,
+            PrintWriter output,
+            PrintWriter diagnostics,
+            RoundResultAnnouncer announcer) {
         try {
             if (!Files.isDirectory(roundDirectory, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(roundDirectory)) {
@@ -46,6 +64,17 @@ final class JudgeApplication {
             ResultsWriter.write(canonicalRound, results);
             output.print(ResultsWriter.humanReadable(results));
             output.flush();
+            try {
+                announcer.announce(round, results);
+            } catch (IOException announcementFailure) {
+                diagnostics.println(
+                        "RCON announcement failed ("
+                                + safeTransportReason(announcementFailure)
+                                + "); results remain available on disk.");
+            } catch (IllegalArgumentException announcementFailure) {
+                diagnostics.println(
+                        "RCON announcement configuration is invalid; results remain available on disk.");
+            }
             diagnostics.flush();
             return results.hasWinner() ? 0 : 1;
         } catch (IOException | IllegalArgumentException | JudgeException exception) {
@@ -53,5 +82,24 @@ final class JudgeApplication {
             diagnostics.flush();
             return 1;
         }
+    }
+
+    private static String safeTransportReason(IOException failure) {
+        if (failure instanceof java.net.SocketTimeoutException) {
+            return "connection timed out";
+        }
+        if (failure instanceof java.net.ConnectException) {
+            return "connection failed";
+        }
+        if (failure instanceof java.io.EOFException) {
+            return "connection closed early";
+        }
+        String message = failure.getMessage();
+        if (message != null && message.startsWith("RCON ")
+                && message.length() <= 200
+                && message.codePoints().noneMatch(Character::isISOControl)) {
+            return message;
+        }
+        return "transport error";
     }
 }

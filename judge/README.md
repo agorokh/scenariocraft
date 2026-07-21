@@ -58,3 +58,34 @@ directory containing those two files. BB-10 owns the production content. Each ro
 contain `manifest.json` and either all seven PNGs under `out/<plot_id>/` or
 `<plot_id>.voxels.json` for the renderer fallback. The command writes `results.json` and
 `results.txt` into the round directory.
+
+## In-game announcement over RCON
+
+After both result files are published, the judge can ask the running Paper server to announce
+them. Enable RCON in `server.properties`, then provide all three settings through the process
+environment:
+
+```sh
+export SCENARIOCRAFT_RCON_HOST=127.0.0.1
+export SCENARIOCRAFT_RCON_PORT=25575
+export SCENARIOCRAFT_RCON_PASSWORD='<server rcon password>'
+```
+
+The same values can be placed in an optional `judge.yml` beside `personas.yml` and
+`rubric.md`:
+
+```yaml
+rcon:
+  host: 127.0.0.1
+  port: 25575
+  password: replace-with-the-server-rcon-password
+  timeout-seconds: 5
+```
+
+Environment values override `judge.yml`. Keep a credential-bearing `judge.yml` outside source
+control with owner-only permissions. `SCENARIOCRAFT_RCON_TIMEOUT_SECONDS` can override the
+connection and response timeout with a value from 1 through 60 seconds. RCON is optional; a
+missing configuration skips the network request. A connection, authentication, or command
+failure is reported without the password and does not change the judge status or remove
+`results.json`/`results.txt`. If the files are shared with the server, ScenarioCraft's REVEAL
+poll still announces them; `/battle results` replays the latest readable result at any time.

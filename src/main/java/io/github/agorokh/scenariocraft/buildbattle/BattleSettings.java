@@ -8,12 +8,16 @@ public record BattleSettings(
         PhaseTimings timings,
         List<String> tasks,
         List<String> exemptNames,
-        boolean allowAnyStart) {
+        boolean allowAnyStart,
+        int resultsPollTicks) {
     public BattleSettings {
         arena = java.util.Objects.requireNonNull(arena, "arena");
         timings = java.util.Objects.requireNonNull(timings, "timings");
         tasks = List.copyOf(tasks);
         exemptNames = List.copyOf(exemptNames);
+        if (resultsPollTicks < 1) {
+            throw new IllegalArgumentException("resultsPollTicks must be positive");
+        }
     }
 
     public boolean canStart(String senderName, boolean operator) {

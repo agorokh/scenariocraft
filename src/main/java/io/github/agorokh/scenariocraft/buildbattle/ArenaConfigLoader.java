@@ -45,7 +45,8 @@ public final class ArenaConfigLoader {
                 timings,
                 tasks,
                 config.getStringList("exempt-names"),
-                config.getBoolean("allow-any-start"));
+                config.getBoolean("allow-any-start"),
+                positiveInt(config, "results-poll-ticks"));
     }
 
     private static int positiveInt(FileConfiguration config, String path) {
