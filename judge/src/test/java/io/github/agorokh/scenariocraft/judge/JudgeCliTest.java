@@ -40,6 +40,20 @@ class JudgeCliTest {
     }
 
     @Test
+    void rejectsInvalidRoundPathsWithoutAStackTrace() {
+        StringWriter diagnostics = new StringWriter();
+
+        int status = JudgeCli.run(
+                new String[] {"--round", "bad\0path", "--dry-run"},
+                Map.of(),
+                new PrintWriter(new StringWriter()),
+                new PrintWriter(diagnostics));
+
+        assertEquals(2, status);
+        assertTrue(diagnostics.toString().contains("Round directory must be a valid path"));
+    }
+
+    @Test
     void rejectsInvalidConfiguredTimeoutBeforeNetworkUse() {
         StringWriter diagnostics = new StringWriter();
 

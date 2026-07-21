@@ -31,6 +31,13 @@ public final class JudgeCli {
             diagnostics.println("Usage: judge --round <round-directory> [--dry-run]");
             return 2;
         }
+        Path roundDirectory;
+        try {
+            roundDirectory = Path.of(arguments[1]);
+        } catch (IllegalArgumentException exception) {
+            diagnostics.println("Round directory must be a valid path.");
+            return 2;
+        }
         boolean dryRun = arguments.length == 3;
         PersonaJudge judge;
         if (dryRun) {
@@ -71,7 +78,7 @@ public final class JudgeCli {
             return 2;
         }
         return new JudgeApplication().run(
-                Path.of(arguments[1]),
+                roundDirectory,
                 personasPath,
                 rubricPath,
                 judge,
