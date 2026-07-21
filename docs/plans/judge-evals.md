@@ -80,6 +80,17 @@ session.
 - Current-head review caught a cross-module vocabulary drift after the one-block judge fix: the
   plugin's `BattleResultParser` still rejected `block`, discarding the valid result before player
   announcement. Both production boundaries now accept it, with a parser regression test.
+- Final review found that live eval manifests used the display-style name `Eval builder`, while
+  `JudgeRound` accepts only production player identifiers without spaces. The live runner now uses
+  `EvalBuilder`, recorded fixtures use the same identity, and a focused runner test inspects the
+  generated manifest before the judge subprocess returns.
+- The same pass questioned incomplete canonical image sets. `requestBody` already rejected any
+  count other than seven; the invariant now derives from `RoundImages.NAMES.size()` and has a
+  focused incomplete-set regression test so the canonical contract cannot drift from a literal.
+- Review also proposed a shared library for the plugin and standalone judge feedback vocabularies.
+  No shared runtime module exists, adding one would expand BB-11's scope, and the reported regex
+  whitespace difference is semantic formatting only because `JudgeVerdict` uses `Pattern.COMMENTS`.
+  The existing boundary-specific regression tests remain the scoped protection against drift.
 
 ## Acceptance evidence
 

@@ -80,6 +80,23 @@ class OpenAiPersonaJudgeTest {
     }
 
     @Test
+    void rejectsAnIncompleteCanonicalImageSet() throws Exception {
+        Path image = temporaryDirectory.resolve(RoundImages.NAMES.getFirst());
+        Files.write(image, completePng(640, 480));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> OpenAiPersonaJudge.requestBody(
+                        PERSONA,
+                        "Build a cottage",
+                        RUBRIC,
+                        "p1",
+                        List.of(JudgeImage.read(image, temporaryDirectory.toRealPath()))));
+
+        assertTrue(exception.getMessage().contains("complete canonical image set"));
+    }
+
+    @Test
     void parsesValidStructuredVerdictFromResponseEnvelope() throws Exception {
         String verdict = validVerdict();
         JsonObject text = new JsonObject();

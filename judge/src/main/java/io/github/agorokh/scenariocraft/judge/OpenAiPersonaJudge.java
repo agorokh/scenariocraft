@@ -238,8 +238,8 @@ final class OpenAiPersonaJudge implements PersonaJudge {
 
     static String requestBody(
             Persona persona, String task, String rubric, String plotId, List<JudgeImage> images) {
-        if (images.size() != 7) {
-            throw new IllegalArgumentException("exactly seven images are required");
+        if (images.size() != RoundImages.NAMES.size()) {
+            throw new IllegalArgumentException("the complete canonical image set is required");
         }
         long totalImageBytes = images.stream().mapToLong(image -> image.bytes().length).sum();
         if (totalImageBytes > RoundImages.MAX_TOTAL_IMAGE_BYTES) {

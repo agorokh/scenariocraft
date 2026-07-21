@@ -25,6 +25,7 @@ from typing import Any
 
 
 CRITERIA = ("theme_fit", "creativity", "effort", "detail")
+EVAL_PLAYER = "EvalBuilder"
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BLOCK_ID = re.compile(r"^[a-z0-9._-]+:[a-z0-9/._-]+$")
 MAX_JSON_BYTES = 16 * 1024 * 1024
@@ -641,7 +642,7 @@ def live_response(spec: CaseSpec, repo_root: Path) -> Any:
             "plots": [
                 {
                     "plot_id": "p1",
-                    "player": "Eval builder",
+                    "player": EVAL_PLAYER,
                     "origin": voxel["origin"],
                     "size": voxel["size"],
                 }

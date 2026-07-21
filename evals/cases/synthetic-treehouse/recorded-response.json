@@ -4,7 +4,7 @@
   "task": "Build a treehouse",
   "contestants": [{
     "plot_id": "p1",
-    "player": "Eval builder",
+    "player": "EvalBuilder",
     "verdicts": [
       {"persona": "Professor Brickworth", "reasoning": "The log supports, plank platform, and ladder establish a familiar but recognizable treehouse start.", "scores": {"theme_fit": 8, "creativity": 3, "effort": 3, "detail": 3}, "comment": "Your wooden structure has a clear raised platform and ladder. Try adding a leafy roof shape next."},
       {"persona": "Captain Sparkle", "reasoning": "The raised platform answers the task directly, while its conventional shape leaves room for a personal idea.", "scores": {"theme_fit": 8, "creativity": 3, "effort": 3, "detail": 3}, "comment": "Your ladder detail makes the treehouse idea recognizable. Add a bold flag color to the platform next."},
@@ -13,5 +13,5 @@
     "mean": 4.25,
     "failures": []
   }],
-  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 4.25}
+  "winner": {"plot_id": "p1", "player": "EvalBuilder", "mean": 4.25}
 }

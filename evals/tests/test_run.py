@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 RUNNER = Path(__file__).resolve().parents[1] / "run.py"
@@ -53,13 +54,13 @@ def response(task, score):
         "contestants": [
             {
                 "plot_id": "p1",
-                "player": "Eval builder",
+                "player": "EvalBuilder",
                 "verdicts": verdicts,
                 "mean": float(score),
                 "failures": [],
             }
         ],
-        "winner": {"plot_id": "p1", "player": "Eval builder", "mean": float(score)},
+        "winner": {"plot_id": "p1", "player": "EvalBuilder", "mean": float(score)},
     }
 
 
@@ -90,6 +91,44 @@ def write_case(root, case_id, score, higher_than=None):
 
 
 class EvalRunnerTest(unittest.TestCase):
+    def test_live_response_uses_a_production_valid_player_identifier(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo_root = Path(temporary)
+            judge = repo_root / "judge" / "build" / "install" / "judge" / "bin" / "judge"
+            judge.parent.mkdir(parents=True)
+            judge.write_text("#!/bin/sh\n", encoding="utf-8")
+            judge.chmod(0o700)
+            (repo_root / "judge" / "personas.yml").write_text("personas: []\n", encoding="utf-8")
+            (repo_root / "judge" / "rubric.md").write_text("rubric\n", encoding="utf-8")
+            spec = scenario_evals.CaseSpec(
+                "live-case",
+                repo_root,
+                "Build a tiny tower",
+                {
+                    "origin": [0, 64, 0],
+                    "size": [1, 1, 1],
+                    "palette": ["minecraft:air", "minecraft:stone"],
+                    "blocks": [1],
+                },
+                expected(),
+            )
+
+            def complete_live_run(command, **_kwargs):
+                round_dir = Path(command[command.index("--round") + 1])
+                manifest = json.loads(
+                    (round_dir / "manifest.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual("EvalBuilder", manifest["plots"][0]["player"])
+                (round_dir / "results.json").write_text(
+                    json.dumps(response(spec.task, 5)), encoding="utf-8"
+                )
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(
+                scenario_evals.subprocess, "run", side_effect=complete_live_run
+            ):
+                scenario_evals.live_response(spec, repo_root)
+
     def test_recorded_suite_passes_score_tone_structure_and_ordering(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

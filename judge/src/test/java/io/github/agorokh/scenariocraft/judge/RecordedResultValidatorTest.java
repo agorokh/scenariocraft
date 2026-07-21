@@ -40,8 +40,8 @@ class RecordedResultValidatorTest {
                 "round-20260721-120000",
                 "Build a cabin",
                 List.of(new RoundResults.ContestantResult(
-                        "p1", "Eval builder", verdicts, 10.0, List.of())),
-                new RoundResults.Winner("p1", "Eval builder", 10.0),
+                        "p1", "EvalBuilder", verdicts, 10.0, List.of())),
+                new RoundResults.Winner("p1", "EvalBuilder", 10.0),
                 null,
                 null);
         assertThrows(IllegalArgumentException.class, () -> RecordedResultValidator.validate(
@@ -55,8 +55,8 @@ class RecordedResultValidatorTest {
                 "round-20260721-120000",
                 "Build a cabin",
                 List.of(new RoundResults.ContestantResult(
-                        "p1", "Eval builder", verdicts, mean, List.of())),
-                new RoundResults.Winner("p1", "Eval builder", mean),
+                        "p1", "EvalBuilder", verdicts, mean, List.of())),
+                new RoundResults.Winner("p1", "EvalBuilder", mean),
                 null,
                 null);
     }
