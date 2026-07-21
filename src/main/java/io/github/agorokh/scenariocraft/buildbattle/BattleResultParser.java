@@ -7,6 +7,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -42,7 +43,7 @@ final class BattleResultParser {
             Pattern.compile(
                     "\\b(?:awful|bad|boring|disgusting|dumb|embarrassing|failure|garbage|gross|"
                             + "hate|horrible|idiot|incompetent|lazy|loser|nobody|pathetic|pointless|"
-                            + "shame|stupid|sucks?|talentless|terrible|trash|ugly|useless|"
+                            + "fool|jerk|moron|shame|stupid|sucks?|talentless|terrible|trash|ugly|useless|"
                             + "worthless|worst)\\b|\\b(?:no|without) talent\\b|"
                             + "\\black(?:s|ing)? talent\\b|"
                             + "\\b(?:dead|death|die|harm|hurt|kill|murder|self-harm|suicide)\\b|"
@@ -189,11 +190,13 @@ final class BattleResultParser {
 
     private static String feedbackText(String value) {
         String normalized = displayText(value, 500, "comment");
-        if (!BUILD_FEATURE.matcher(normalized).find()
-                || !POSITIVE_EFFECT.matcher(normalized).find()) {
+        Matcher feature = BUILD_FEATURE.matcher(normalized);
+        if (!feature.find() || !POSITIVE_EFFECT.matcher(normalized).find()) {
             throw invalid("comment must name a concrete strength");
         }
-        return normalized;
+        return "A positive detail stood out in the "
+                + feature.group().toLowerCase(Locale.ROOT)
+                + ".";
     }
 
     private static boolean unsafeCodePoint(int codePoint) {

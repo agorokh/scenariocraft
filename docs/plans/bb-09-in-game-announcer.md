@@ -43,7 +43,7 @@ session.
 | 2026-07-21 | Broaden copied-text rejection to self-harm/threat vocabulary, ignore `judge.yml` everywhere, and treat invalid optional RCON configuration as announcement failure rather than judging failure. | Player safety, credential containment, and durable publication must each fail independently at their own boundary. |
 | 2026-07-21 | Reject common profanity, sexual-assault language, and Minecraft formatting markers at the copied-result boundary, and describe missing verdicts truthfully instead of inventing praise. | Untrusted judge artifacts must not gain presentation capabilities or expose children to abusive text, while a provider failure cannot be represented as feedback the judge never supplied. |
 | 2026-07-21 | Bound completed-result candidates rather than round directories, recover the async read gate from unchecked filesystem failures, and enforce the judge's eight-plot/eight-persona presentation limits in the plugin parser. | Delayed judging and filesystem stream failures must not permanently disable replay, while copied artifacts must not amplify into an unbounded main-thread chat broadcast. |
-| 2026-07-21 | Require copied feedback to name a concrete build feature and positive effect, reject common identity slurs, isolate automatic polling from manual reads, and expose an export ID only after its directory is published successfully. | The last presentation boundary must preserve the genuine-strength contract, while a slow command or timestamp collision must never suppress or misdirect the active round announcement. |
+| 2026-07-21 | Require copied feedback to name a concrete build feature and positive effect, render only that allowlisted feature in a fixed safe strength sentence, reject common identity slurs, isolate automatic polling from manual reads, and expose an export ID only after its directory is published successfully. | Arbitrary copied prose cannot be made safe by an ever-growing denylist; the last presentation boundary must preserve the genuine-strength signal without broadcasting the untrusted tail, while a slow command or timestamp collision must never suppress or misdirect the active round announcement. |
 
 ## Surprises & Discoveries
 
@@ -91,6 +91,9 @@ session.
   corrective sentence can still violate the project's genuine-strength rule. The plugin
   therefore applies the same concrete-feature plus positive-effect semantic floor before
   any copied comment reaches chat.
+- A positive prefix does not make the rest of copied prose safe. The player-facing form now
+  extracts only the matched allowlisted build feature and emits a fixed strength sentence;
+  this removes arbitrary trailing prose instead of trying to enumerate every abusive word.
 
 ## Acceptance evidence
 
@@ -123,10 +126,11 @@ session.
 - Replay regressions keep an older completed result visible behind 257 unjudged exports,
   async-read regression proves an unchecked filesystem failure releases the next request,
   and the parser rejects feedback beyond the eight-persona judging limit.
-- Boundary regressions reject slurs and feedback without a concrete positive build effect;
-  an intentionally queued manual read no longer prevents an active-round poll. Export
-  tests expose no current round ID before publication and keep it empty after a directory
-  collision fails.
+- Boundary regressions reject slurs and feedback without a concrete positive build effect,
+  reject the reported abusive-tail case, and prove unknown copied tail prose is not retained
+  in the player-facing summary. An intentionally queued manual read no longer prevents an
+  active-round poll. Export tests expose no current round ID before publication and keep it
+  empty after a directory collision fails.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

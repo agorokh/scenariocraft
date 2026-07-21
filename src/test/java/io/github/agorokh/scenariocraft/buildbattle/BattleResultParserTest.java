@@ -33,7 +33,9 @@ class BattleResultParserTest {
         assertEquals("Alex wins!", formatter.title(result));
         assertTrue(lines.stream().allMatch(line -> line.length() <= BattleResultFormatter.MAX_CHAT_LENGTH));
         assertTrue(lines.stream().anyMatch(line -> line.contains("Captain Comet on Alex:")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("positive detail stood out in the roof")));
         assertFalse(lines.stream().anyMatch(line -> line.contains("{") || line.contains("}")));
+        assertFalse(lines.stream().anyMatch(line -> line.contains("sparkly")));
     }
 
     @Test
@@ -145,6 +147,20 @@ class BattleResultParserTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("Try adding more.")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        parser.parse(
+                                template.formatted(
+                                        "The bright roof is clever, but you are a moron.")));
+
+        BattleResult safeSummary =
+                parser.parse(
+                        template.formatted(
+                                "The bright roof is clever, followed by arbitrary zogwort prose."));
+        assertEquals(
+                "A positive detail stood out in the roof.",
+                safeSummary.contestants().getFirst().feedback().getFirst().comment());
     }
 
     @Test
