@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.PriorityQueue;
 
 /** Bounded discovery of judge results below the plugin's rounds directory. */
 final class BattleResultRepository {
@@ -28,26 +29,39 @@ final class BattleResultRepository {
                 || Files.isSymbolicLink(roundsDirectory)) {
             return Optional.empty();
         }
-        List<Path> rounds;
+        PriorityQueue<Path> recent =
+                new PriorityQueue<>(Comparator.comparing(path -> path.getFileName().toString()));
         try (var paths = Files.list(roundsDirectory)) {
-            rounds = paths
+            paths
                     .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
                     .filter(path -> !Files.isSymbolicLink(path))
                     .filter(path -> path.getFileName().toString().matches("round-[0-9]{8}-[0-9]{6}"))
-                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed())
-                    .limit(MAX_ROUND_DIRECTORIES + 1L)
-                    .toList();
+                    .forEach(
+                            path -> {
+                                recent.add(path);
+                                if (recent.size() > MAX_ROUND_DIRECTORIES) {
+                                    recent.remove();
+                                }
+                            });
         }
-        if (rounds.size() > MAX_ROUND_DIRECTORIES) {
-            throw new IOException("round directory count exceeds " + MAX_ROUND_DIRECTORIES);
-        }
+        List<Path> rounds =
+                recent.stream()
+                        .sorted(
+                                Comparator.comparing(
+                                                (Path path) -> path.getFileName().toString())
+                                        .reversed())
+                        .toList();
         for (Path round : rounds) {
             Path result = round.resolve("results.txt");
             if (!Files.exists(result, LinkOption.NOFOLLOW_LINKS)) {
                 continue;
             }
             try {
-                return Optional.of(parser.read(result));
+                BattleResult parsed = parser.read(result);
+                if (!parsed.roundId().equals(round.getFileName().toString())) {
+                    throw new IOException("latest results.txt round id does not match its directory");
+                }
+                return Optional.of(parsed);
             } catch (IllegalArgumentException malformed) {
                 throw new IOException("latest results.txt is malformed", malformed);
             }
@@ -64,7 +78,11 @@ final class BattleResultRepository {
             return Optional.empty();
         }
         try {
-            return Optional.of(parser.read(result));
+            BattleResult parsed = parser.read(result);
+            if (!parsed.roundId().equals(roundId)) {
+                throw new IOException("results.txt round id does not match its directory");
+            }
+            return Optional.of(parsed);
         } catch (IllegalArgumentException malformed) {
             throw new IOException("results.txt is malformed", malformed);
         }

@@ -56,6 +56,16 @@ class ArenaConfigLoaderTest {
         assertEquals(
                 new ResultAnnouncementSettings(2, 3, 10),
                 ArenaConfigLoader.loadResultAnnouncements(legacy));
+
+        legacy.set("reveal-linger-seconds", 1);
+        assertEquals(
+                new ResultAnnouncementSettings(1, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(legacy));
+
+        legacy.set("results-poll-seconds", 2);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ArenaConfigLoader.loadResultAnnouncements(legacy));
     }
 
     @Test

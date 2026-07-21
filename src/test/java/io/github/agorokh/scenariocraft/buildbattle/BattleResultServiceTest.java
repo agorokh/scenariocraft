@@ -70,7 +70,9 @@ class BattleResultServiceTest {
         Files.writeString(
                 active.resolve("results.txt"),
                 BattleResultRepositoryTest.validResult("round-20260721-193000"));
-        rig.poll.get().run();
+        for (int tick = 0; tick <= 40; tick++) {
+            rig.poll.get().run();
+        }
 
         assertEquals(1, rig.titles.size());
         rig.service.close();

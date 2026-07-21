@@ -35,6 +35,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private final AtomicBoolean readInFlight = new AtomicBoolean();
     private final BukkitTask pollingTask;
     private String announcedRoundId;
+    private String pollingRoundId;
+    private long ticksUntilPoll;
     private boolean closed;
 
     public BattleResultService(
@@ -58,8 +60,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                         .runTaskTimer(
                                 plugin,
                                 this::pollDuringReveal,
-                                settings.pollTicks(),
-                                settings.pollTicks());
+                                1L,
+                                1L);
     }
 
     @Override
@@ -101,7 +103,9 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     }
 
     private void pollDuringReveal() {
-        if (closed || phase.get() != RoundPhase.REVEAL || readInFlight.get()) {
+        if (closed || phase.get() != RoundPhase.REVEAL) {
+            pollingRoundId = null;
+            ticksUntilPoll = 0L;
             return;
         }
         Optional<String> expectedRound = resultRoundId.get();
@@ -109,6 +113,18 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             return;
         }
         String expectedRoundId = expectedRound.orElseThrow();
+        if (!expectedRoundId.equals(pollingRoundId)) {
+            pollingRoundId = expectedRoundId;
+            ticksUntilPoll = 0L;
+        }
+        if (readInFlight.get()) {
+            return;
+        }
+        if (ticksUntilPoll > 0L) {
+            ticksUntilPoll--;
+            return;
+        }
+        ticksUntilPoll = settings.pollTicks();
         readAsync(
                 () -> repository.round(expectedRoundId),
                 result -> {

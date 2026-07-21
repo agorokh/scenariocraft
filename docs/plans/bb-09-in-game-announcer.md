@@ -37,6 +37,8 @@ session.
 | 2026-07-21 | Parse `results.txt` with fixed headers, bounded bytes/lines/fields, then format only parsed fields with JSON punctuation removed and per-line clamps. | Copied result files are an external input; strict parsing prevents raw JSON, failure details, control characters, or an unbounded line from reaching players. |
 | 2026-07-21 | Carry the exact exporter-allocated round ID into the controller and require polling to load that directory, never the globally latest result. | A later REVEAL normally begins before its judge result exists; global latest discovery would replay the previous round before announcing the current one. |
 | 2026-07-21 | Treat absent result-announcement keys as versioned defaults while validating any explicitly configured value. | `saveDefaultConfig()` must not make an existing server config unable to boot after an upgrade adds new optional settings. |
+| 2026-07-21 | Run a one-tick phase observer that reads immediately when an active export ID appears, then honors the configured disk-read interval; require that interval not exceed REVEAL. | A repeating task scheduled only at the poll interval can miss an entire short phase depending on timer alignment. The per-tick work is an enum/ID check only; filesystem reads remain asynchronous and rate-limited. |
+| 2026-07-21 | Keep only the newest 256 round paths in a bounded priority queue while scanning history, and require every parsed header to match its directory name. | Historical accumulation must not permanently disable replay, while copied/misplaced results must never impersonate the active round. |
 
 ## Surprises & Discoveries
 
@@ -58,11 +60,15 @@ session.
   “latest result” is not the same as “active round result,” and packaged config defaults do
   not guarantee upgrade safety for an already-written server config. Both became focused
   regression tests before the replacement head was pushed.
+- The next current-head review found that “configured interval” and “bounded history” each
+  needed lifecycle semantics, not just numeric caps: poll scheduling must align to phase
+  entry, and the history cap must bound memory without turning normal retention into a
+  permanent command outage.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 244 tests, judge 73 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 246 tests, judge 73 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -75,6 +81,9 @@ session.
   the poller stays silent while only the previous round has results, then announces exactly
   once when the exporter-selected active round appears. `ArenaConfigLoaderTest` removes all
   three new keys and verifies legacy configurations receive safe defaults.
+- Repository regressions cover 257 retained round directories and reject a result whose
+  `Round:` header does not match the requested directory. Poll/config regressions cover the
+  immediate active-round check and reject an interval longer than REVEAL.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.
