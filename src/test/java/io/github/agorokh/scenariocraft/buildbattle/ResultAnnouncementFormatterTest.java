@@ -17,13 +17,15 @@ class ResultAnnouncementFormatterTest {
 
         assertTrue(announcement.title().codePointCount(0, announcement.title().length())
                 <= ResultAnnouncementFormatter.MAX_TITLE_CODE_POINTS);
-        assertTrue(announcement.chatLines().stream().allMatch(line ->
-                line.codePointCount(0, line.length())
-                        <= ResultAnnouncementFormatter.MAX_CHAT_CODE_POINTS));
+        assertTrue(announcement.chatLines().stream().allMatch(line -> {
+            String visibleLine = line.replaceAll("§.", "");
+            return visibleLine.codePointCount(0, visibleLine.length())
+                    <= ResultAnnouncementFormatter.MAX_CHAT_CODE_POINTS;
+        }));
         assertTrue(announcement.chatLines().stream()
                 .anyMatch(line -> line.contains("Builder Bob: 8.75 —")));
         assertTrue(announcement.chatLines().stream()
-                .anyMatch(line -> line.equals("Winner: Alex!")));
+                .anyMatch(line -> line.equals("§6Winner: Alex!§r")));
         assertFalse(announcement.chatLines().stream()
                 .anyMatch(line -> line.contains("{") || line.contains("}")
                         || line.contains("\"winner\"")));
@@ -64,6 +66,60 @@ class ResultAnnouncementFormatterTest {
         assertTrue(announcement.chatLines().stream()
                 .anyMatch(line -> line.contains("Hidden castle details are worth celebrating.")));
         assertFalse(announcement.chatLines().stream()
-                .anyMatch(line -> line.contains("§") || line.contains("kHidden")));
+                .anyMatch(line -> line.contains("§k") || line.contains("kHidden")));
+    }
+
+    @Test
+    void givesEachJudgePersonaADistinctReadableSignatureColor() {
+        BattleResultSummary result = BattleResultsReader.parse("""
+                Round: round-20260721-193000
+                Task: A dragon treehouse
+
+                Alex (p1)
+                  Professor Brickworth: 8.75 — The sturdy shape gives this build character.
+                  Captain Sparkle: 9.00 — The bright roof is a delightful focal point.
+                  Granny Redstone: 8.50 — The welcoming doorway is a genuine strength.
+                  Mean: 8.75
+
+                Winner: Alex with 8.75
+                """);
+
+        ResultAnnouncementFormatter.Announcement announcement =
+                ResultAnnouncementFormatter.format(result);
+
+        assertTrue(announcement.chatLines().stream()
+                .anyMatch(line -> line.contains("§9Professor Brickworth: 8.75§r —")));
+        assertTrue(announcement.chatLines().stream()
+                .anyMatch(line -> line.contains("§dCaptain Sparkle: 9.00§r —")));
+        assertTrue(announcement.chatLines().stream()
+                .anyMatch(line -> line.contains("§5Granny Redstone: 8.50§r —")));
+        assertTrue(announcement.chatLines().stream()
+                .filter(line -> line.contains("genuine strength"))
+                .allMatch(line -> line.endsWith("§r — The welcoming doorway is a genuine strength.")));
+    }
+
+    @Test
+    void colorCodesDoNotShortenLongJudgeComments() {
+        String longComment = "bright ".repeat(30).trim();
+        BattleResultSummary result = BattleResultsReader.parse("""
+                Round: round-20260721-193000
+                Task: A dragon treehouse
+
+                Alex (p1)
+                  Professor Brickworth: 8.75 — %s
+                  Mean: 8.75
+
+                Winner: Alex with 8.75
+                """.formatted(longComment));
+
+        String verdictLine = ResultAnnouncementFormatter.format(result).chatLines().stream()
+                .filter(line -> line.contains("Professor Brickworth"))
+                .findFirst()
+                .orElseThrow();
+        String visibleLine = verdictLine.replaceAll("§.", "");
+
+        assertEquals(ResultAnnouncementFormatter.MAX_CHAT_CODE_POINTS,
+                visibleLine.codePointCount(0, visibleLine.length()));
+        assertTrue(verdictLine.contains("§9Professor Brickworth: 8.75§r —"));
     }
 }

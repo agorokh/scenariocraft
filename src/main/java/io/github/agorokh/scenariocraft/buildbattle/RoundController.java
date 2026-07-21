@@ -789,9 +789,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             String pickerName =
                     currentPickerName == null ? "the note picker" : currentPickerName;
             player.sendMessage(
-                    "This secret note belongs to "
+                    "§eThis secret note belongs to "
                             + pickerName
-                            + " this round. You'll see the idea together soon!");
+                            + " this round. You'll see the idea together soon!§r");
             return;
         }
         if (!revealCurrentTask()) {
@@ -938,8 +938,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             broadcast(
                     friendlyPhase(phase())
                             + ": "
+                            + "§b"
                             + timer.remainingSeconds()
-                            + " seconds left.");
+                            + " seconds§r left.");
         }
         if (!timer.isComplete()) {
             return;
@@ -948,7 +949,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         switch (phase()) {
             case GATHERING -> beginNotePick();
             case NOTE_PICK -> {
-                broadcast("Time is up — the secret note opened itself for everyone!");
+                broadcast("§6Time is up§r — the secret note opened itself for everyone!");
                 revealCurrentTask();
                 beginBuilding();
             }
@@ -1000,8 +1001,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         currentPickerId = picker.playerId();
         currentPickerName = picker.playerName();
         broadcast(
-                currentPickerName
-                        + " is the secret-note picker! The chest is waiting at the hub.");
+                "§6"
+                        + currentPickerName
+                        + "§r is the secret-note picker! The chest is waiting at the hub.");
         for (Player player : server.getOnlinePlayers()) {
             sendPickerTitle(player);
         }
@@ -1469,10 +1471,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         String subtitle =
                 currentPickerId.equals(player.getUniqueId())
-                        ? "Open the chest at the hub!"
-                        : "They'll reveal the build idea!";
+                        ? "§aOpen the chest at the hub!"
+                        : "§7They'll reveal the build idea!";
         player.sendTitle(
-                currentPickerName + " has the secret note!",
+                "§6" + currentPickerName + "§r has the secret note!",
                 subtitle,
                 TELEPORT_FADE_TICKS,
                 TITLE_STAY_TICKS,
@@ -1485,7 +1487,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         player.sendTitle(
                 "Build idea!",
-                currentTask,
+                "§6" + currentTask,
                 TELEPORT_FADE_TICKS,
                 TITLE_STAY_TICKS,
                 TELEPORT_FADE_TICKS);

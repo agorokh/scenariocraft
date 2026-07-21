@@ -33,15 +33,24 @@ class RoundTimerTest {
     void buildWarningsFireOnceAtEveryRequestedBoundary() {
         RoundTimer timer = RoundTimer.start(601);
         List<Integer> warnedAt = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
 
         while (!timer.isComplete()) {
             timer = timer.tick();
             if (timer.buildWarning().isPresent()) {
                 warnedAt.add(timer.remainingSeconds());
+                warnings.add(timer.buildWarning().orElseThrow());
             }
         }
 
         assertEquals(List.of(600, 300, 60, 10), warnedAt);
+        assertEquals(
+                List.of(
+                        "§b10 minutes§r left — keep those great ideas growing!",
+                        "§b5 minutes§r left — your build is taking shape!",
+                        "§b1 minute§r left — add your favorite finishing touches!",
+                        "§b10 seconds§r left — make them count!"),
+                warnings);
     }
 
     @Test
