@@ -1,9 +1,11 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -46,5 +48,28 @@ class TaskDeckTest {
 
         TaskDeck restartedServer = new TaskDeck(tasks, ignored -> 0, history, null);
         assertEquals("Rocket", restartedServer.draw());
+    }
+
+    @Test
+    void historyWriteRunsOnConfiguredExecutor() {
+        Path history = temporaryDirectory.resolve("async-task-history.txt");
+        List<Runnable> queuedWrites = new ArrayList<>();
+        TaskDeck deck =
+                new TaskDeck(
+                        List.of("Castle", "Rocket"),
+                        ignored -> 0,
+                        history,
+                        null,
+                        queuedWrites::add);
+
+        assertEquals("Castle", deck.draw());
+        assertFalse(history.toFile().exists());
+        assertEquals(1, queuedWrites.size());
+
+        queuedWrites.removeFirst().run();
+
+        TaskDeck restarted =
+                new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
+        assertEquals("Rocket", restarted.draw());
     }
 }

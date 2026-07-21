@@ -10,6 +10,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.function.IntUnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -20,7 +22,9 @@ final class TaskDeck {
     private final IntUnaryOperator randomIndex;
     private final Path historyFile;
     private final Logger logger;
+    private final Executor historyExecutor;
     private final Set<String> recentPicks = new LinkedHashSet<>();
+    private CompletableFuture<Void> pendingWrite = CompletableFuture.completedFuture(null);
 
     TaskDeck(List<String> tasks, IntUnaryOperator randomIndex) {
         this(tasks, randomIndex, null, null);
@@ -31,6 +35,15 @@ final class TaskDeck {
             IntUnaryOperator randomIndex,
             Path historyFile,
             Logger logger) {
+        this(tasks, randomIndex, historyFile, logger, Runnable::run);
+    }
+
+    TaskDeck(
+            List<String> tasks,
+            IntUnaryOperator randomIndex,
+            Path historyFile,
+            Logger logger,
+            Executor historyExecutor) {
         this.tasks = List.copyOf(new LinkedHashSet<>(tasks));
         if (this.tasks.isEmpty()) {
             throw new IllegalArgumentException("task deck must not be empty");
@@ -38,6 +51,7 @@ final class TaskDeck {
         this.randomIndex = Objects.requireNonNull(randomIndex, "randomIndex");
         this.historyFile = historyFile;
         this.logger = logger;
+        this.historyExecutor = Objects.requireNonNull(historyExecutor, "historyExecutor");
         loadHistory();
     }
 
@@ -70,15 +84,27 @@ final class TaskDeck {
         }
     }
 
-    private void saveHistory() {
+    private synchronized void saveHistory() {
         if (historyFile == null) {
             return;
         }
+        List<String> snapshot = List.copyOf(recentPicks);
+        try {
+            pendingWrite =
+                    pendingWrite
+                            .handle((ignored, failure) -> null)
+                            .thenRunAsync(() -> writeHistory(snapshot), historyExecutor);
+        } catch (RuntimeException failure) {
+            logHistoryFailure("schedule a write for", failure);
+        }
+    }
+
+    private void writeHistory(List<String> snapshot) {
         Path parent = historyFile.toAbsolutePath().normalize().getParent();
         Path temporary = parent.resolve(historyFile.getFileName() + ".tmp");
         try {
             Files.createDirectories(parent);
-            Files.write(temporary, recentPicks, StandardCharsets.UTF_8);
+            Files.write(temporary, snapshot, StandardCharsets.UTF_8);
             try {
                 Files.move(
                         temporary,
@@ -93,7 +119,7 @@ final class TaskDeck {
         }
     }
 
-    private void logHistoryFailure(String operation, IOException failure) {
+    private void logHistoryFailure(String operation, Exception failure) {
         if (logger != null) {
             logger.log(
                     Level.WARNING,

@@ -29,8 +29,20 @@ class FamilyServerContractTest(unittest.TestCase):
         self.assertIn('docker-compose.bedrock.yml', script)
         self.assertIn('SCENARIOCRAFT_BEDROCK_PORT=19133 compose_cmd up', script)
         self.assertIn('docker cp "$container_id:/data/plugins/floodgate/key.pem"', script)
+        self.assertIn('test -s /data/plugins/floodgate/key.pem', script)
+        self.assertIn('[[ ! -s "$runtime_dir/key.pem" ]]', script)
         self.assertIn('launchctl bootstrap', script)
+        self.assertIn('rm -f "$plist"', script)
+        self.assertIn('-iUDP:19132', script)
+        self.assertIn('version "21([.]|\\")', script)
         self.assertIn('demo/check-bedrock.sh', script)
+
+    def test_status_exits_when_bedrock_probe_fails(self):
+        script = (ROOT / "demo" / "family-server.sh").read_text(encoding="utf-8")
+        status_case = script.split('    status)\n', 1)[1].split('        ;;', 1)[0]
+
+        self.assertIn('else', status_case)
+        self.assertIn('exit 1', status_case)
 
     def test_automated_demos_keep_the_short_test_configuration(self):
         for relative_path in ("demo/run-headless.sh", "e2e/run-proof-round.sh"):

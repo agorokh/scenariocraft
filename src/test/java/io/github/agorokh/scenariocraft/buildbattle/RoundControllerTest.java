@@ -2851,6 +2851,10 @@ class RoundControllerTest {
                                             ((Runnable) arguments[1]).run();
                                             yield task;
                                         }
+                                        case "runTaskAsynchronously" -> {
+                                            ((Runnable) arguments[1]).run();
+                                            yield task;
+                                        }
                                         case "runTaskLater" -> {
                                             AtomicBoolean cancelled = new AtomicBoolean();
                                             delayedTasks.add(

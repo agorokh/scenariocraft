@@ -328,7 +328,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 : plugin.getDataFolder()
                                         .toPath()
                                         .resolve("task-history.txt"),
-                        logger);
+                        logger,
+                        task -> server.getScheduler().runTaskAsynchronously(plugin, task));
         this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
         this.roundExporter = Objects.requireNonNull(roundExporter, "roundExporter");
         this.teleportTransport = Objects.requireNonNull(teleportTransport, "teleportTransport");
@@ -757,7 +758,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     if (phase() == RoundPhase.BUILDING
                             && contestants.get(player.getUniqueId()) == contestant) {
                         applyPersonalBorder(player, contestant);
-                        enableBuildingControls(player);
+                        enableBuildingControlsAfterPlotEntry(player, contestant);
                     } else {
                         player.setGameMode(GameMode.ADVENTURE);
                         markStrandedForRecovery(player);
@@ -1371,7 +1372,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 () -> {
                     applyPersonalBorder(player, contestant);
                     if (phase() == RoundPhase.BUILDING) {
-                        enableBuildingControls(player);
+                        enableBuildingControlsAfterPlotEntry(player, contestant);
                     }
                     if (pendingPlotEntries.remove(player.getUniqueId())) {
                         finishBeginBuildingIfReady();
@@ -1694,7 +1695,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 // Bedrock can apply the teleport's temporary Adventure ability
                                 // packet after the same-tick Creative update. Reassert once the
                                 // player is settled so the client sends block placements.
-                                enableBuildingControls(player);
+                                player.setGameMode(GameMode.CREATIVE);
                             }
                         },
                         1L);

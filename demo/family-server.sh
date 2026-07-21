@@ -58,7 +58,7 @@ wait_for_floodgate_key() {
     local container_id
     container_id=$(compose_cmd ps -q paper)
     for _ in $(seq 1 30); do
-        if docker exec "$container_id" test -f /data/plugins/floodgate/key.pem 2>/dev/null; then
+        if docker exec "$container_id" test -s /data/plugins/floodgate/key.pem 2>/dev/null; then
             return
         fi
         sleep 2
@@ -69,16 +69,46 @@ wait_for_floodgate_key() {
 }
 
 find_java_21() {
-    local java_home
+    local candidate java_home
     if java_home=$(/usr/libexec/java_home -v 21 2>/dev/null); then
-        printf '%s/bin/java\n' "$java_home"
-    elif [[ -x /opt/homebrew/opt/openjdk@21/bin/java ]]; then
-        printf '%s\n' /opt/homebrew/opt/openjdk@21/bin/java
-    elif command -v java >/dev/null 2>&1 && java -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")'; then
-        command -v java
-    else
-        echo "Java 21 is required for host-native Geyser (for example: brew install openjdk@21)." >&2
+        candidate="$java_home/bin/java"
+        if [[ -x "$candidate" ]] && "$candidate" -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")'; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    fi
+    for candidate in /opt/homebrew/opt/openjdk@21/bin/java "$(command -v java 2>/dev/null || true)"; do
+        if [[ -n "$candidate" && -x "$candidate" ]] \
+                && "$candidate" -version 2>&1 | head -n 1 | grep -Eq 'version "21([.]|\")'; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+    echo "Java 21 is required for host-native Geyser (for example: brew install openjdk@21)." >&2
+    exit 1
+}
+
+unload_macos_geyser() {
+    local remove_plist="$1" plist service_target
+    plist="$HOME/Library/LaunchAgents/$geyser_label.plist"
+    service_target="gui/$(id -u)/$geyser_label"
+    for _ in $(seq 1 20); do
+        if ! launchctl print "$service_target" >/dev/null 2>&1; then
+            break
+        fi
+        launchctl bootout "$service_target" 2>/dev/null || true
+        sleep 0.25
+    done
+    if launchctl print "$service_target" >/dev/null 2>&1; then
+        echo "Could not stop the managed macOS Geyser LaunchAgent." >&2
         exit 1
+    fi
+    if [[ "$remove_plist" == true ]]; then
+        rm -f "$plist"
+        if lsof -nP -iUDP:19132 >/dev/null 2>&1; then
+            echo "UDP 19132 is still occupied by a Geyser process not managed by ScenarioCraft." >&2
+            exit 1
+        fi
     fi
 }
 
@@ -138,14 +168,23 @@ YAML
 }
 
 start_macos_geyser() {
-    local container_id java_bin plist service_target
+    local container_id java_bin listener_pid plist service_target service_state
+    command -v lsof >/dev/null 2>&1 || {
+        echo "lsof is required to verify the macOS Geyser listener." >&2
+        exit 1
+    }
     java_bin=$(find_java_21)
     install_geyser
     write_geyser_config
     wait_for_floodgate_key
     container_id=$(compose_cmd ps -q paper)
+    unload_macos_geyser false
     docker cp "$container_id:/data/plugins/floodgate/key.pem" "$runtime_dir/key.pem"
     chmod 600 "$runtime_dir/key.pem"
+    if [[ ! -s "$runtime_dir/key.pem" ]]; then
+        echo "Floodgate key copy was empty; refusing to start Geyser." >&2
+        exit 1
+    fi
 
     mkdir -p "$HOME/Library/LaunchAgents"
     plist="$HOME/Library/LaunchAgents/$geyser_label.plist"
@@ -159,7 +198,6 @@ start_macos_geyser() {
     plutil -insert StandardErrorPath -string "$geyser_log" "$plist"
 
     service_target="gui/$(id -u)/$geyser_label"
-    launchctl bootout "$service_target" 2>/dev/null || true
     for _ in $(seq 1 20); do
         if launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null; then
             break
@@ -172,7 +210,12 @@ start_macos_geyser() {
     fi
 
     for _ in $(seq 1 30); do
-        if raknet_probe 127.0.0.1 2>/dev/null; then
+        service_state=$(launchctl print "$service_target" 2>/dev/null || true)
+        listener_pid=$(printf '%s\n' "$service_state" | awk '/^[[:space:]]*pid = [0-9]+$/ {print $3; exit}')
+        if [[ -n "$listener_pid" ]] \
+                && lsof -nP -a -p "$listener_pid" -iUDP:19132 >/dev/null 2>&1 \
+                && raknet_probe 127.0.0.1 >/dev/null 2>&1; then
+            raknet_probe 127.0.0.1
             return
         fi
         sleep 2
@@ -202,11 +245,14 @@ case "${1:-up}" in
         compose_cmd ps
         if raknet_probe 127.0.0.1; then
             echo "Bedrock UDP 19132 answered a RakNet discovery probe."
+        else
+            echo "Bedrock UDP 19132 did not answer a valid RakNet discovery probe." >&2
+            exit 1
         fi
         ;;
     down)
         if [[ $(uname -s) == Darwin ]]; then
-            launchctl bootout "gui/$(id -u)/$geyser_label" 2>/dev/null || true
+            unload_macos_geyser true
         fi
         compose_cmd down
         ;;
