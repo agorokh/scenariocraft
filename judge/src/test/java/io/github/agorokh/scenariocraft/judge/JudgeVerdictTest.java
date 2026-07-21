@@ -39,6 +39,13 @@ class JudgeVerdictTest {
     }
 
     @Test
+    void acceptsOneBlockAsTheConcreteStrengthInAnEdgeCase() {
+        assertDoesNotThrow(() -> verdict(
+                "Your stone block creates a clear starting point. "
+                        + "Try building a small roof around it next."));
+    }
+
+    @Test
     void acceptsNeutralNegativeWordsInsideConcretePraise() {
         assertDoesNotThrow(() -> verdict(
                 "The roof is strong without extra trim. Add a chimney next."));

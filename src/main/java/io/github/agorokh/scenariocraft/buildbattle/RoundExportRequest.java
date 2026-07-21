@@ -7,6 +7,8 @@ import java.util.Set;
 
 /** Paper-independent metadata and plot volumes for one round export. */
 record RoundExportRequest(String task, String world, List<Plot> plots) {
+    private static final String PLAYER_IDENTIFIER = "(?=.{1,64}$)[._*#~+\\-]*[A-Za-z0-9_]+";
+
     RoundExportRequest {
         task = requireText(task, "task");
         world = requireText(world, "world");
@@ -37,6 +39,9 @@ record RoundExportRequest(String task, String world, List<Plot> plots) {
             player = requireText(player, "player");
             if (!plotId.matches("p[1-9][0-9]*")) {
                 throw new IllegalArgumentException("plotId must match p<N>");
+            }
+            if (!player.matches(PLAYER_IDENTIFIER)) {
+                throw new IllegalArgumentException("player must be a valid player identifier");
             }
             if (sizeX <= 0 || sizeY < 0 || sizeZ <= 0) {
                 throw new IllegalArgumentException("plot sizes are invalid");

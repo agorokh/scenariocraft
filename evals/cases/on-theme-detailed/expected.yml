@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source": {"kind": "synthetic", "reference": "Issue #13 on-theme detailed edge case", "response_origin": "hand-authored-golden"},
+  "scores": {
+    "theme_fit": {"min": 8, "max": 10},
+    "creativity": {"min": 4, "max": 7},
+    "effort": {"min": 5, "max": 7},
+    "detail": {"min": 5, "max": 7}
+  },
+  "ordering": {"higher_than": ["empty-plot", "single-block", "off-theme-elaborate"], "lower_than": []},
+  "tone": {"genuine_positive": true, "banned_phrases": ["awful", "boring", "lazy", "you failed"]},
+  "structure": {"valid_schema": true, "reason_precedes_score": true}
+}

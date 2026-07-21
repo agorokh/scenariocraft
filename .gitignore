@@ -6,3 +6,7 @@ node_modules/
 out/
 run/
 *.iml
+__pycache__/
+
+# Local judge RCON configuration contains a server credential.
+judge.yml

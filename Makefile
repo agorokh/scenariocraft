@@ -1,4 +1,4 @@
-.PHONY: ci-fast demo demo-dry-run proof-round proof-check renderer-dist site-check verify-wrapper
+.PHONY: ci-fast demo demo-dry-run evals-check evals-release evals-unit proof-round proof-check renderer-dist site-check verify-wrapper
 
 demo:
 	./demo/run-headless.sh
@@ -9,8 +9,9 @@ demo-dry-run:
 proof-round:
 	./e2e/run-proof-round.sh
 
-ci-fast: site-check proof-check
+ci-fast: site-check proof-check evals-unit
 	./gradlew build --no-daemon
+	./evals/run.sh --dry-run --allow-synthetic-only
 
 verify-wrapper:
 	@if command -v sha256sum >/dev/null 2>&1; then \
@@ -21,6 +22,15 @@ verify-wrapper:
 
 renderer-dist: verify-wrapper
 	./gradlew :renderer:installDist --no-daemon
+
+evals-unit:
+	python3 -m unittest discover -s evals/tests -p 'test_*.py'
+
+evals-check: evals-unit
+	./evals/run.sh --dry-run --allow-synthetic-only
+
+evals-release: evals-unit
+	./evals/run.sh --dry-run
 
 site-check:
 	test -f site/index.html

@@ -126,6 +126,44 @@ fallback. Players can use `/speedbuild results` to replay the latest result, inc
 round leaves REVEAL. Malformed, oversized, symbolic-link, or raw-JSON input is rejected with a
 friendly message rather than displayed.
 
+## Judge regression evals
+
+The eval runner requires Python 3.10 or newer. Run the deterministic recorded-response suite
+used by CI from the repository root:
+
+```sh
+./evals/run.sh --dry-run --allow-synthetic-only
+```
+
+`--allow-synthetic-only` is an explicit transitional mode for the committed synthetic suite; it
+does not satisfy issue #13's release evidence. `make evals-release` omits that exception and fails
+closed unless at least two checksum-bound family cases and their council reviews are present.
+
+Each directory under `evals/cases/` contains a schema-v1 `voxels.json`, `task.txt`,
+`recorded-response.json`, and an assertion-based `expected.yml`. Synthetic edge cases identify
+their responses as hand-authored production-schema goldens; family-round cases must identify an
+exact live recording by round, plot, artifact commit, repository artifact paths, and SHA-256.
+The runner reads both artifacts from the cited commit and verifies their hashes. The `.yml` files use the
+JSON-compatible subset of YAML so CI needs no extra parser package. Assertions cover score bands,
+cross-case ordering, banned phrasing, the production result schema, calculated mean, and
+reasoning-before-score field order. The production Java validator owns persona-YAML parsing,
+kid-safe concrete praise, sentence structure, and configured-panel validation so the eval runner
+cannot drift from the judge contract.
+
+For a live GPT-5.6 pass, provide the API key only through the process environment and omit
+`--dry-run`; the runner first rebuilds the installed judge from the current checkout:
+
+```sh
+export OPENAI_API_KEY='<your OpenAI API key>'
+./evals/run.sh --allow-synthetic-only
+```
+
+Live mode creates an isolated one-plot round for each fixture, uses the production renderer,
+personas, rubric, moderation, and judge, and never overwrites the committed recorded responses.
+It strips RCON configuration and uses a temporary config directory, so eval verdicts cannot be
+announced to a live server. The runner prints a pass/fail table and exits non-zero when any
+assertion fails.
+
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 player-data recovery marker or the plugin-owned registry fails, the console and online
 operators receive a separate persistence alert; keep the player contained and have them

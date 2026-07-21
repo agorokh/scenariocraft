@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source": {"kind": "synthetic", "reference": "Issue #13 off-theme elaborate edge case", "response_origin": "hand-authored-golden"},
+  "scores": {
+    "theme_fit": {"min": 1, "max": 3},
+    "creativity": {"min": 6, "max": 9},
+    "effort": {"min": 7, "max": 9},
+    "detail": {"min": 6, "max": 9}
+  },
+  "ordering": {"higher_than": ["empty-plot", "single-block", "interior-only"], "lower_than": ["on-theme-detailed"]},
+  "tone": {"genuine_positive": true, "banned_phrases": ["awful", "wrong", "pointless", "you failed"]},
+  "structure": {"valid_schema": true, "reason_precedes_score": true}
+}

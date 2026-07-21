@@ -27,6 +27,22 @@ public final class JudgeCli {
             Map<String, String> environment,
             PrintWriter output,
             PrintWriter diagnostics) {
+        if (arguments.length == 4
+                && "--validate-recorded".equals(arguments[0])
+                && "--task-file".equals(arguments[2])) {
+            try {
+                Path configDirectory = configDirectory(environment);
+                return RecordedResultValidator.run(
+                        Path.of(arguments[1]),
+                        Path.of(arguments[3]),
+                        configDirectory.resolve("personas.yml"),
+                        configDirectory.resolve("rubric.md"),
+                        diagnostics);
+            } catch (IllegalArgumentException exception) {
+                diagnostics.println("Recorded response and task must use valid paths.");
+                return 2;
+            }
+        }
         if (arguments.length < 2 || arguments.length > 3
                 || !"--round".equals(arguments[0])
                 || (arguments.length == 3 && !"--dry-run".equals(arguments[2]))) {
@@ -79,6 +95,25 @@ public final class JudgeCli {
                     + "; set SCENARIOCRAFT_JUDGE_CONFIG_DIR to their directory.");
             return 2;
         }
+        ResultAnnouncer announcer = ignored -> {};
+        try {
+            java.util.Optional<RconSettings> rcon =
+                    RconSettings.load(configDirectory.resolve("judge.yml"), environment);
+            if (rcon.isPresent()) {
+                RconClient client = new RconClient();
+                announcer =
+                        roundId ->
+                                client.execute(
+                                        rcon.orElseThrow(), "battle announce " + roundId);
+            } else {
+                diagnostics.println(
+                        "RCON announcement is not configured; results will still be written for plugin polling.");
+            }
+        } catch (java.io.IOException | IllegalArgumentException exception) {
+            diagnostics.println(
+                    "RCON configuration is invalid; results will still be written for plugin polling: "
+                            + exception.getMessage());
+        }
         return new JudgeApplication().run(
                 roundDirectory,
                 personasPath,
@@ -86,8 +121,7 @@ public final class JudgeCli {
                 judge,
                 output,
                 diagnostics,
-                new RconResultAnnouncer(
-                        configDirectory.resolve("judge.yml"), environment));
+                announcer);
     }
 
     static Path configDirectory(Map<String, String> environment) {

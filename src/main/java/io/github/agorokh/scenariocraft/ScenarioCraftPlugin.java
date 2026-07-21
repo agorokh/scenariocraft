@@ -5,14 +5,15 @@ import io.github.agorokh.scenariocraft.buildbattle.ArenaWorld;
 import io.github.agorokh.scenariocraft.buildbattle.ArenaWorldService;
 import io.github.agorokh.scenariocraft.buildbattle.BatchedBlockEditor;
 import io.github.agorokh.scenariocraft.buildbattle.BattleCommand;
+import io.github.agorokh.scenariocraft.buildbattle.BattleResultService;
 import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
 import io.github.agorokh.scenariocraft.buildbattle.BlockFill;
 import io.github.agorokh.scenariocraft.buildbattle.DemoSampleBuild;
 import io.github.agorokh.scenariocraft.buildbattle.PlotBounds;
 import io.github.agorokh.scenariocraft.buildbattle.PlotGeometry;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
-import io.github.agorokh.scenariocraft.buildbattle.ResultAnnouncementService;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
+import io.github.agorokh.scenariocraft.buildbattle.ResultAnnouncementSettings;
 import io.github.agorokh.scenariocraft.buildbattle.SecretChestPosition;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportRecoveryStore;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportTransport;
@@ -30,12 +31,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class ScenarioCraftPlugin extends JavaPlugin {
     private BatchedBlockEditor blockEditor;
     private RoundController roundController;
-    private ResultAnnouncementService resultAnnouncements;
+    private BattleResultService resultService;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         BattleSettings settings = ArenaConfigLoader.load(getConfig());
+        ResultAnnouncementSettings resultSettings =
+                ArenaConfigLoader.loadResultAnnouncements(getConfig(), settings);
 
         ArenaWorld arena = new ArenaWorldService(getServer(), getLogger()).loadOrCreate();
         int topWallY = Math.addExact(arena.floorY(), settings.arena().wallHeight());
@@ -90,14 +93,17 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         teleportTransport,
                         recoveryStore,
                         demoSampleBuild);
-        resultAnnouncements =
-                ResultAnnouncementService.forPlugin(
+        resultService =
+                new BattleResultService(
                         this,
-                        roundController,
-                        roundController::resultCelebrationLocation,
-                        settings.resultsPollTicks());
+                        getDataFolder().toPath().resolve("rounds"),
+                        resultSettings,
+                        roundController::phase,
+                        roundController::resultRoundId,
+                        roundController::winnerCelebrationLocation,
+                        getLogger());
         BattleCommand battleCommand =
-                new BattleCommand(settings, roundController, resultAnnouncements);
+                new BattleCommand(settings, roundController, resultService);
         Objects.requireNonNull(
                         getCommand("speedbuild"), "speedbuild command missing from plugin.yml")
                 .setExecutor(battleCommand);
@@ -180,8 +186,8 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (resultAnnouncements != null) {
-            resultAnnouncements.close();
+        if (resultService != null) {
+            resultService.close();
         }
         if (roundController != null) {
             roundController.close();

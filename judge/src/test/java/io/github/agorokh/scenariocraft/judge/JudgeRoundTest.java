@@ -21,6 +21,7 @@ class JudgeRoundTest {
         assertThrows(IllegalArgumentException.class, () -> round("Build a cottage\u001b[2J", "Alex"));
         assertThrows(IllegalArgumentException.class, () -> round("Build a cottage", "Alex\u202e"));
         assertThrows(IllegalArgumentException.class, () -> round("Build a cottage\nHide this", "Alex"));
+        assertThrows(IllegalArgumentException.class, () -> round("Build a cottage", "You are a clown"));
     }
 
     @Test
