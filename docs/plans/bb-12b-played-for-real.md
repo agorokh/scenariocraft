@@ -23,6 +23,7 @@ and the static site/CI contract.
 - [x] Capture the issue's acceptance evidence, including a clean proof-round timing.
 - [x] Complete the final `/review` and resolve its findings.
 - [x] Record the final retrospective.
+- [x] Repair the stale GitHub conflict state after confirming the current base is already merged.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -42,6 +43,7 @@ session.
 | 2026-07-21 | Record the judge renderer palette per proof manifest and give all three proof materials explicit palette entries. | The live judge and public page must use the same disclosed colors instead of relying on a renderer fallback. |
 | 2026-07-21 | Give the three bots distinct 6-, 11-, and 18-block structures. | Identical six-block structures repeatedly produced tied panels; different truthful builds make the winner path testable without manufacturing a result. |
 | 2026-07-21 | State the kid-comment lexical contract in both the live judge prompt and its strict response schema. | Live responses must reliably name a visible strength first and end with one achievable next step, matching the validator rather than discovering its contract only after a rejected response. |
+| 2026-07-21 | Push a normal follow-up commit instead of rebasing or force-pushing after GitHub reported the synchronized head as conflicting. | The current base commit is already a direct parent of the PR head, so there is no content conflict to choose between; advancing the branch safely forces GitHub to recompute mergeability while preserving review history. |
 
 ## Surprises & Discoveries
 
@@ -66,6 +68,10 @@ session.
 - The first successful live result exposed a proof-fixture error: Gson omits null winner-alternative
   fields, while the validator fixture expected explicit nulls. Aligning the strict validator with
   production serialization let the exact one-command run publish and verify its bundle.
+- GitHub reported the PR as `dirty` even though the current base is a direct parent of the PR head
+  and `git merge-base --is-ancestor` confirms the branch already contains it. The conflict repair
+  therefore needs no content choice; a normal follow-up commit is sufficient to refresh the stale
+  mergeability calculation without rewriting history.
 
 ## Acceptance evidence
 
