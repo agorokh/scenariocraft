@@ -81,6 +81,27 @@ class JudgeApplicationTest {
         assertThrows(ClassNotFoundException.class, () -> Class.forName("org.bukkit.Bukkit"));
     }
 
+    @Test
+    void hardFailureRemovesStaleResultArtifacts() throws Exception {
+        Path runtime = copyFixtureRuntime();
+        Path round = runtime.resolve("rounds/round-20260721-193000");
+        Files.writeString(round.resolve("results.json"), "{\"winner\":\"stale\"}");
+        Files.writeString(round.resolve("results.txt"), "Winner: stale");
+        Files.writeString(round.resolve("manifest.json"), "not json");
+
+        int status = new JudgeApplication().run(
+                round,
+                runtime.resolve("judge/personas.yml"),
+                runtime.resolve("judge/rubric.md"),
+                new StubPersonaJudge(),
+                new PrintWriter(new StringWriter()),
+                new PrintWriter(new StringWriter()));
+
+        assertEquals(1, status);
+        assertFalse(Files.exists(round.resolve("results.json")));
+        assertFalse(Files.exists(round.resolve("results.txt")));
+    }
+
     private Path copyFixtureRuntime() throws Exception {
         Path source = Path.of(System.getProperty("scenariocraft.repoRoot"))
                 .resolve("judge/src/test/resources/fixtures/runtime");

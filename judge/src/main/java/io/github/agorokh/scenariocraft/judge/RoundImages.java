@@ -6,11 +6,14 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 final class RoundImages {
+    static final long MAX_VOXEL_BYTES = 16L * 1024 * 1024;
     static final List<String> NAMES = List.of(
             "iso-ne.png", "iso-se.png", "iso-sw.png", "iso-nw.png",
             "plan.png", "cut-x.png", "cut-z.png");
@@ -30,20 +33,24 @@ final class RoundImages {
         }
 
         Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
-        validateVoxelSource(roundRoot, voxelFile, plotId);
-        VoxelPlot voxelPlot = VoxelPlot.read(voxelFile);
-        if (!plotId.equals(voxelPlot.plotId())) {
-            throw new IOException("Voxel plot_id does not match manifest plot " + plotId);
-        }
-
+        byte[] voxelBytes = snapshotVoxelSource(roundRoot, voxelFile, plotId);
         Path temporaryOutput = Files.createTempDirectory("scenariocraft-judge-render-");
         try {
-            new VoxelRenderer().render(voxelPlot, temporaryOutput);
-            List<Path> rendered = imagePaths(temporaryOutput);
+            Path stableVoxelFile = temporaryOutput.resolve("input")
+                    .resolve(plotId + ".voxels.json");
+            Files.createDirectories(stableVoxelFile.getParent());
+            Files.write(stableVoxelFile, voxelBytes);
+            VoxelPlot voxelPlot = VoxelPlot.read(stableVoxelFile);
+            if (!plotId.equals(voxelPlot.plotId())) {
+                throw new IOException("Voxel plot_id does not match manifest plot " + plotId);
+            }
+            Path renderedOutput = temporaryOutput.resolve("output");
+            new VoxelRenderer().render(voxelPlot, renderedOutput);
+            List<Path> rendered = imagePaths(renderedOutput);
             if (!allRegularFiles(rendered)) {
                 throw new IOException("Renderer did not produce seven PNGs for " + plotId);
             }
-            return snapshotImages(temporaryOutput.toRealPath(), rendered);
+            return snapshotImages(renderedOutput.toRealPath(), rendered);
         } finally {
             deleteTree(temporaryOutput);
         }
@@ -71,15 +78,39 @@ final class RoundImages {
                 .allMatch(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
     }
 
-    private static void validateVoxelSource(Path roundRoot, Path voxelFile, String plotId)
+    private static byte[] snapshotVoxelSource(Path roundRoot, Path voxelFile, String plotId)
             throws IOException {
-        if (!Files.isRegularFile(voxelFile, LinkOption.NOFOLLOW_LINKS)) {
+        BasicFileAttributes before = Files.readAttributes(
+                voxelFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!before.isRegularFile()) {
             throw new IOException("Missing seven PNGs and voxel source for " + plotId);
         }
-        if (!voxelFile.toRealPath().startsWith(roundRoot)) {
+        Path realBefore = voxelFile.toRealPath();
+        if (!realBefore.startsWith(roundRoot)) {
             throw new IOException("Voxel source escapes the round directory: " + voxelFile);
         }
         JudgeImage.requireSingleLink(voxelFile);
+        if (before.size() <= 0 || before.size() > MAX_VOXEL_BYTES) {
+            throw new IOException("Voxel source size is outside the allowed range: " + voxelFile);
+        }
+        byte[] bytes;
+        try (var input = Files.newInputStream(voxelFile, LinkOption.NOFOLLOW_LINKS)) {
+            bytes = input.readNBytes((int) MAX_VOXEL_BYTES + 1);
+        }
+        BasicFileAttributes after = Files.readAttributes(
+                voxelFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        Path realAfter = voxelFile.toRealPath();
+        JudgeImage.requireSingleLink(voxelFile);
+        if (bytes.length > MAX_VOXEL_BYTES
+                || before.fileKey() == null
+                || !Objects.equals(before.fileKey(), after.fileKey())
+                || before.size() != after.size()
+                || bytes.length != before.size()
+                || !before.lastModifiedTime().equals(after.lastModifiedTime())
+                || !realBefore.equals(realAfter)) {
+            throw new IOException("Voxel source changed while it was being read: " + voxelFile);
+        }
+        return bytes;
     }
 
     private static void rejectSymbolicLinks(List<Path> paths) throws IOException {

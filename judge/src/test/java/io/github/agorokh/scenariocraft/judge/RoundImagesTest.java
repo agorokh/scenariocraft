@@ -5,9 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +86,21 @@ class RoundImagesTest {
                 IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
 
         assertTrue(exception.getMessage().contains("Hard-linked judge inputs are not allowed"));
+    }
+
+    @Test
+    void rejectsOversizedVoxelFallbackBeforeParsing() throws Exception {
+        Path oversized = temporaryDirectory.resolve("p1.voxels.json");
+        try (FileChannel channel = FileChannel.open(
+                oversized, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            channel.position(RoundImages.MAX_VOXEL_BYTES);
+            channel.write(ByteBuffer.wrap(new byte[] {0}));
+        }
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+
+        assertTrue(exception.getMessage().contains("outside the allowed range"));
     }
 
     @Test

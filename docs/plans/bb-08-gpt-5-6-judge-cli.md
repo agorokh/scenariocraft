@@ -42,6 +42,7 @@ session.
 | 2026-07-21 | Replace the brittle positive-word requirement with structural two-sentence guidance plus strict hostile/negative-language rejection, classify retryable HTTP statuses, and configure connect timeout separately. | Concrete praise has unbounded valid wording, while kid safety still needs a conservative fail-closed shape; deterministic 4xx responses should not be retried; every operational timeout must be configurable. |
 | 2026-07-21 | Require every live comment to pass `omni-moderation-latest` after local structural validation and before publication. | The issue still permits exactly one GPT-5.6 vision request per persona, while the official moderation endpoint provides a semantic, fail-closed safety boundary that a finite word list cannot. |
 | 2026-07-21 | Document Unix `nlink` support as a runtime requirement instead of weakening the hard-link provenance gate on unsupported filesystems. | Silently skipping an unavailable ownership check would reopen the input-substitution path; operators need an explicit recovery path that preserves the fail-closed boundary. |
+| 2026-07-21 | Snapshot voxel JSON behind a 16 MiB cap, cap OpenAI response bodies at 1 MiB, and remove prior result artifacts before reading a new round. | Every heap-facing input needs a bound, and a hard failure must not leave a previous winner looking current. |
 
 ## Surprises & Discoveries
 

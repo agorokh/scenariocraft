@@ -20,6 +20,8 @@ final class JudgeApplication {
             if (!Files.isDirectory(roundDirectory)) {
                 throw new IOException("Round directory does not exist: " + roundDirectory);
             }
+            Files.deleteIfExists(roundDirectory.resolve("results.txt"));
+            Files.deleteIfExists(roundDirectory.resolve("results.json"));
             JudgeRound round = JudgeRound.read(roundDirectory.resolve("manifest.json"));
             JudgeConfig config = JudgeConfig.load(personasPath, rubricPath);
             Map<String, List<JudgeImage>> images = new LinkedHashMap<>();

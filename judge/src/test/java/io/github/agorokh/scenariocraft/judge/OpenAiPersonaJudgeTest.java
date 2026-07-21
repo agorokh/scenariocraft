@@ -9,6 +9,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -154,6 +155,16 @@ class OpenAiPersonaJudgeTest {
                 JudgeException.class,
                 () -> OpenAiPersonaJudge.parseModerationFlag(
                         "{\"results\":[{\"categories\":{}}]}"));
+    }
+
+    @Test
+    void rejectsOpenAiResponseBodiesAboveTheHeapBound() {
+        byte[] oversized = new byte[OpenAiPersonaJudge.MAX_RESPONSE_BYTES + 1];
+
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.readBoundedResponse(
+                        new ByteArrayInputStream(oversized)));
     }
 
     @Test

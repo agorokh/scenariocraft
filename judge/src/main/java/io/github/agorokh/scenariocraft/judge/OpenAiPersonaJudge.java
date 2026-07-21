@@ -8,10 +8,12 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -25,6 +27,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
     private static final URI MODERATIONS_ENDPOINT =
             URI.create("https://api.openai.com/v1/moderations");
     private static final String MODERATION_MODEL = "omni-moderation-latest";
+    static final int MAX_RESPONSE_BYTES = 1024 * 1024;
     private static final Gson JSON = new Gson();
     private static final Set<String> VERDICT_KEYS =
             Set.of("persona", "reasoning", "scores", "comment");
@@ -95,15 +98,27 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<InputStream> response =
+                client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        String responseBody = readBoundedResponse(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String message = httpErrorMessage(
-                    response.statusCode(), response.body(),
+                    response.statusCode(), responseBody,
                     response.headers().firstValue("x-request-id").orElse(null), apiKey);
             throw new JudgeException(
                     message, null, isRetryableHttpStatus(response.statusCode()));
         }
-        return response.body();
+        return responseBody;
+    }
+
+    static String readBoundedResponse(InputStream input) throws IOException, JudgeException {
+        try (input) {
+            byte[] bytes = input.readNBytes(MAX_RESPONSE_BYTES + 1);
+            if (bytes.length > MAX_RESPONSE_BYTES) {
+                throw new JudgeException("OpenAI response exceeded the byte limit");
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     private void requireSafeComment(String comment)
