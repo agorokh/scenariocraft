@@ -7,12 +7,21 @@ import io.github.agorokh.scenariocraft.buildbattle.BatchedBlockEditor;
 import io.github.agorokh.scenariocraft.buildbattle.BattleCommand;
 import io.github.agorokh.scenariocraft.buildbattle.BattleResultService;
 import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
+import io.github.agorokh.scenariocraft.buildbattle.BlockFill;
+import io.github.agorokh.scenariocraft.buildbattle.DemoSampleBuild;
+import io.github.agorokh.scenariocraft.buildbattle.PlotBounds;
+import io.github.agorokh.scenariocraft.buildbattle.PlotGeometry;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import io.github.agorokh.scenariocraft.buildbattle.ResultAnnouncementSettings;
+import io.github.agorokh.scenariocraft.buildbattle.SecretChestPosition;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportRecoveryStore;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportTransport;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.logging.Level;
 import org.bukkit.command.CommandMap;
@@ -54,6 +63,8 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         ProtectionPluginWarner.warnIfPresent(
                 getServer().getPluginManager(), getLogger(), arena.world().getName());
 
+        DemoSampleBuild demoSampleBuild = loadDemoSampleBuild();
+
         blockEditor =
                 new BatchedBlockEditor(
                         this, arena.world(), settings.arena().blocksPerTick(), getLogger());
@@ -80,7 +91,8 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         blockEditor,
                         getLogger(),
                         teleportTransport,
-                        recoveryStore);
+                        recoveryStore,
+                        demoSampleBuild);
         resultService =
                 new BattleResultService(
                         this,
@@ -94,6 +106,10 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                 new BattleCommand(settings, roundController, resultService);
         Objects.requireNonNull(getCommand("battle"), "battle command missing from plugin.yml")
                 .setExecutor(battleCommand);
+
+        if (settings.demoMode()) {
+            bootstrapDemoArena(settings, arena, demoSampleBuild);
+        }
 
         getLogger()
                 .info(
@@ -109,6 +125,62 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         getLogger()
                 .info(
                         "ScenarioCraft enabled — battle_world is ready for kid-invented scenarios.");
+    }
+
+    private DemoSampleBuild loadDemoSampleBuild() {
+        try (InputStream input = getResource("demo/sample-build.blocks")) {
+            if (input == null) {
+                throw new IllegalStateException("bundled demo sample build is missing");
+            }
+            return DemoSampleBuild.load(input);
+        } catch (IOException failure) {
+            throw new IllegalStateException("bundled demo sample build is invalid", failure);
+        }
+    }
+
+    private void bootstrapDemoArena(
+            BattleSettings settings, ArenaWorld arena, DemoSampleBuild demoSampleBuild) {
+        List<PlotBounds> plots =
+                PlotGeometry.aroundHub(
+                        arena.world().getSpawnLocation().getBlockX(),
+                        arena.world().getSpawnLocation().getBlockZ(),
+                        2,
+                        settings.arena().plotSize(),
+                        settings.arena().plotSpacing());
+        List<BlockFill> sampleFills = new ArrayList<>();
+        for (PlotBounds plot : plots) {
+            sampleFills.addAll(
+                    demoSampleBuild.placeIn(
+                            plot, arena.floorY(), settings.arena().wallHeight()));
+        }
+        long mutations =
+                blockEditor.enqueueArena(
+                        plots,
+                        arena.floorY(),
+                        settings.arena().wallHeight(),
+                        SecretChestPosition.atHub(arena),
+                        sampleFills,
+                        completed ->
+                                getLogger()
+                                        .info(
+                                                "SCENARIOCRAFT_DEMO_ARENA_READY battle_world "
+                                                        + "has two sample plots after "
+                                                        + completed
+                                                        + " batched mutations."),
+                        failure ->
+                                getLogger()
+                                        .log(
+                                                Level.SEVERE,
+                                                "SCENARIOCRAFT_DEMO_ARENA_FAILURE "
+                                                        + "could not bootstrap the demo arena",
+                                                failure));
+        getLogger()
+                .info(
+                        "ScenarioCraft demo arena bootstrap queued "
+                                + mutations
+                                + " mutations at "
+                                + settings.arena().blocksPerTick()
+                                + " per tick.");
     }
 
     @Override

@@ -1,0 +1,77 @@
+services:
+  demo-secrets:
+    image: alpine:3.23
+    command: ["/demo/create-rcon-secret.sh"]
+    volumes:
+      - demo-secrets:/run/scenariocraft
+      - rounds:/rounds
+      - ./demo/create-rcon-secret.sh:/demo/create-rcon-secret.sh:ro
+
+  plugin:
+    build:
+      context: .
+      target: plugin-installer
+    volumes:
+      - plugins:/plugins
+      - ./demo/plugin-config.yml:/demo/plugin-config.yml:ro
+
+  paper:
+    image: itzg/minecraft-server:2026.4.0-java21
+    depends_on:
+      demo-secrets:
+        condition: service_completed_successfully
+      plugin:
+        condition: service_completed_successfully
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "1.21.11"
+      ONLINE_MODE: "FALSE"
+      ENFORCE_SECURE_PROFILE: "FALSE"
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD_FILE: /run/scenariocraft/rcon-password
+      MEMORY: 2G
+      MOTD: "ScenarioCraft Speed Build demo"
+      SPAWN_PROTECTION: "0"
+      VIEW_DISTANCE: "6"
+      SIMULATION_DISTANCE: "4"
+      ENABLE_AUTOPAUSE: "FALSE"
+    ports:
+      - "25565:25565"
+    volumes:
+      - server-data:/data
+      - plugins:/data/plugins
+      - rounds:/data/plugins/ScenarioCraft/rounds
+      - demo-secrets:/run/scenariocraft:ro
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+    stdin_open: true
+    tty: true
+
+  judge:
+    build:
+      context: .
+      target: judge
+    depends_on:
+      paper:
+        condition: service_healthy
+    environment:
+      OPENAI_API_KEY: "${OPENAI_API_KEY:?OPENAI_API_KEY is required; export it before starting ScenarioCraft}"
+      SCENARIOCRAFT_DEMO_DRY_RUN: "${SCENARIOCRAFT_DEMO_DRY_RUN:-false}"
+      SCENARIOCRAFT_JUDGE_CONFIG_DIR: /opt/scenariocraft/config
+      SCENARIOCRAFT_RCON_HOST: paper
+      SCENARIOCRAFT_RCON_PORT: "25575"
+      SCENARIOCRAFT_RCON_TIMEOUT_SECONDS: "10"
+    volumes:
+      - rounds:/plugins/ScenarioCraft/rounds
+      - demo-secrets:/run/scenariocraft:ro
+
+volumes:
+  demo-secrets:
+  plugins:
+  rounds:
+  server-data:

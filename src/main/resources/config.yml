@@ -64,3 +64,6 @@ tasks:
 
 exempt-names: []
 allow-any-start: true
+
+# BB-12's Docker demo overrides this to prebuild the arena and auto-fill empty plots.
+demo-mode: false

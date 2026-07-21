@@ -37,14 +37,20 @@ no game logic yet.
 
 ## Quickstart
 
-Quickstart instructions will be added with the runnable demo instance in BB-12. Contributors
-can build the scaffold now with Java 21:
+1. `git clone https://github.com/agorokh/scenariocraft.git && cd scenariocraft`
+2. `export OPENAI_API_KEY='<your OpenAI API key>'`
+3. `docker compose up --build`
+4. Join `localhost:25565` in Minecraft Java 1.21.x.
+5. Run `/battle start` in chat.
 
-```sh
-./gradlew build
-```
+The demo uses Paper 1.21.11 in offline mode and is intended only for a trusted local network.
+RCON stays inside the Compose network and uses a generated password. With one human player,
+solo mode automatically fills the second plot from the bundled sample rocket so the full
+render, judge, and chat-verdict path still runs. See [the demo runbook](demo/README.md) for
+headless verification and cleanup details.
 
-The plugin jar is written to `build/libs/`.
+Missing `OPENAI_API_KEY` stops Compose immediately with an instruction to export it; the key
+is passed from the shell environment and is never stored in the Compose file or image.
 
 ## Publishing the How to Play page
 

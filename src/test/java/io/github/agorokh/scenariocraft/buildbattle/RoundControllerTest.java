@@ -654,6 +654,30 @@ class RoundControllerTest {
     }
 
     @Test
+    void demoSoloRoundPlacesAndExportsTheBundledSampleAsASecondContestant()
+            throws Exception {
+        DemoSampleBuild sample =
+                DemoSampleBuild.load(
+                        new java.io.ByteArrayInputStream(
+                                "GOLD_BLOCK 0 0 0 0 0 0\n"
+                                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        TestRig rig = new TestRig(true, sample);
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        rig.runBlockTick();
+
+        RoundExportRequest request = rig.exportRequests.getFirst();
+        assertEquals(2, request.plots().size());
+        assertEquals("BuilderKid", request.plots().get(0).player());
+        assertEquals("p2", request.plots().get(1).plotId());
+        assertEquals("ScenarioCraft Sample 2", request.plots().get(1).player());
+        assertTrue(
+                rig.playerMessages.contains(
+                        "Solo mode is on: your challenger is the bundled sample build!"));
+        rig.close();
+    }
+
+    @Test
     void winnerCelebrationResolvesTheExportedPlotCenter() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.REVEAL);
@@ -2413,11 +2437,21 @@ class RoundControllerTest {
         private final ActiveArenaMutationListener mutations;
 
         private TestRig() {
-            this(new PhaseTimings(1, 1, 1, 1), 0, TeleportRecoveryStore.inMemory());
+            this(
+                    new PhaseTimings(1, 1, 1, 1),
+                    0,
+                    TeleportRecoveryStore.inMemory(),
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(TeleportRecoveryStore recoveryStore) {
-            this(new PhaseTimings(1, 1, 1, 1), 0, recoveryStore);
+            this(
+                    new PhaseTimings(1, 1, 1, 1),
+                    0,
+                    recoveryStore,
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(ArenaSettings arenaSettings) {
@@ -2425,15 +2459,36 @@ class RoundControllerTest {
                     new PhaseTimings(1, 1, 1, 1),
                     0,
                     TeleportRecoveryStore.inMemory(),
-                    arenaSettings);
+                    arenaSettings,
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(PhaseTimings timings) {
-            this(timings, 0, TeleportRecoveryStore.inMemory());
+            this(
+                    timings,
+                    0,
+                    TeleportRecoveryStore.inMemory(),
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(PhaseTimings timings, int floorY) {
-            this(timings, floorY, TeleportRecoveryStore.inMemory());
+            this(
+                    timings,
+                    floorY,
+                    TeleportRecoveryStore.inMemory(),
+                    false,
+                    DemoSampleBuild.empty());
+        }
+
+        private TestRig(boolean demoMode, DemoSampleBuild demoSampleBuild) {
+            this(
+                    new PhaseTimings(1, 1, 1, 1),
+                    0,
+                    TeleportRecoveryStore.inMemory(),
+                    demoMode,
+                    demoSampleBuild);
         }
 
         private TestRig(
@@ -2444,14 +2499,33 @@ class RoundControllerTest {
                     timings,
                     floorY,
                     recoveryStore,
-                    new ArenaSettings(1, 1, 3, 2, 1_000));
+                    new ArenaSettings(1, 1, 3, 2, 1_000),
+                    false,
+                    DemoSampleBuild.empty());
         }
 
         private TestRig(
                 PhaseTimings timings,
                 int floorY,
                 TeleportRecoveryStore recoveryStore,
-                ArenaSettings arenaSettings) {
+                boolean demoMode,
+                DemoSampleBuild demoSampleBuild) {
+            this(
+                    timings,
+                    floorY,
+                    recoveryStore,
+                    new ArenaSettings(1, 1, 3, 2, 1_000),
+                    demoMode,
+                    demoSampleBuild);
+        }
+
+        private TestRig(
+                PhaseTimings timings,
+                int floorY,
+                TeleportRecoveryStore recoveryStore,
+                ArenaSettings arenaSettings,
+                boolean demoMode,
+                DemoSampleBuild demoSampleBuild) {
             BukkitTask task =
                     proxy(
                             BukkitTask.class,
@@ -2758,6 +2832,7 @@ class RoundControllerTest {
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
                             true,
+                            demoMode,
                             20);
             arena = new ArenaWorld(world, floorY);
             editor =
@@ -2810,7 +2885,8 @@ class RoundControllerTest {
                                 }
                             },
                             new TeleportTransport(server),
-                            recoveryStore);
+                            recoveryStore,
+                            demoSampleBuild);
             mutations = controller.mutationListener();
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
