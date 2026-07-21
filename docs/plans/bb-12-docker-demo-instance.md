@@ -17,7 +17,7 @@ renderer/judge process, Docker packaging, bootstrap data, and operator documenta
 - [x] Implement with tests.
 - [ ] Capture the issue's acceptance evidence. Dry-run and live-key judge evidence are
       complete; integrated chat-announcement and one-human evidence remain.
-- [ ] Complete `/review` and resolve P1 findings.
+- [x] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -67,6 +67,9 @@ session.
   `ScenarioCraft Sample 2` as p2 through the normal voxel contract.
 - `make ci-fast` passed in the Java 21 Gradle container; draft PR #37's build and real-Paper
   smoke checks passed for implementation commit `112ce73`.
+- `/review` against `code_review.md` found no P1: the sample build is placed through the
+  configured batched editor, export changes have regressions, player text is kid-appropriate,
+  and the Compose/images contain no committed credential.
 - Pending after BB-09 integration: `make demo` must also observe
   `SCENARIOCRAFT_RESULTS_ANNOUNCED`, followed by the literal one-human-player chat check.
 
