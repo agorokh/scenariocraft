@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://agorokh.github.io/scenariocraft/">
-    <img src="assets/branding/speed-build-logo.png" width="480"
+    <img src="site/assets/branding/speed-build-logo.png" width="480"
          alt="Speed Build logo: a grass-block S and deepslate B with speed streaks">
   </a><br>
   <strong><a href="https://agorokh.github.io/scenariocraft/">How to Play Speed Build</a></strong>
@@ -45,6 +45,13 @@ can build the scaffold now with Java 21:
 ```
 
 The plugin jar is written to `build/libs/`.
+
+## Publishing the How to Play page
+
+The `Deploy Pages` workflow uploads the literal `site/` directory. Repository Settings must
+keep **Pages > Build and deployment > Source** set to **GitHub Actions**, and the
+`github-pages` environment must allow Pages deployments. If deployment reports `Get Pages
+site failed` or a 404, restore those settings and rerun the workflow.
 
 ## Build Battle operator notes
 

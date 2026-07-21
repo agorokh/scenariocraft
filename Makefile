@@ -11,7 +11,7 @@ ci-fast: site-check
 site-check:
 	test -f site/index.html
 	test -f site/styles.css
-	test -f assets/branding/speed-build-logo.png
+	test -f site/assets/branding/speed-build-logo.png
 	test "$$(grep -c '<article class="step' site/index.html)" -eq 7
 	grep -Fq 'name &amp; logo by our 10-year-old designer, working with ChatGPT' site/index.html
 	grep -Fq 'NOT AN OFFICIAL MINECRAFT PRODUCT' site/index.html

@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - 'site/**'
-      - 'assets/branding/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -29,18 +28,10 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v6
 
-      - name: Stage self-contained site
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/site/assets/branding"
-          cp -R site/. "${RUNNER_TEMP}/site/"
-          cp assets/branding/*.png "${RUNNER_TEMP}/site/assets/branding/"
-
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: ${{ runner.temp }}/site
+          path: site
 
   deploy:
     environment:
