@@ -1658,6 +1658,23 @@ class RoundControllerTest {
     }
 
     @Test
+    void activeArenaAllowsPistonRetractionTowardThePiston() {
+        TestRig rig = new TestRig(new ArenaSettings(3, 2, 5, 2, 1_000));
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockPistonRetractEvent retract =
+                new BlockPistonRetractEvent(
+                        rig.blockAt(0, 1, -5),
+                        List.of(rig.blockAt(1, 1, -5)),
+                        BlockFace.EAST);
+
+        rig.mutations.onArenaPistonRetract(retract);
+
+        assertFalse(retract.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void auditedEnvironmentalFamiliesUseNarrowArenaGuards() {
         TestRig rig = new TestRig();
         Block inside = rig.blockAt(0, 1, -3);
@@ -2339,6 +2356,14 @@ class RoundControllerTest {
             this(new PhaseTimings(1, 1, 1, 1), 0, recoveryStore);
         }
 
+        private TestRig(ArenaSettings arenaSettings) {
+            this(
+                    new PhaseTimings(1, 1, 1, 1),
+                    0,
+                    TeleportRecoveryStore.inMemory(),
+                    arenaSettings);
+        }
+
         private TestRig(PhaseTimings timings) {
             this(timings, 0, TeleportRecoveryStore.inMemory());
         }
@@ -2351,6 +2376,18 @@ class RoundControllerTest {
                 PhaseTimings timings,
                 int floorY,
                 TeleportRecoveryStore recoveryStore) {
+            this(
+                    timings,
+                    floorY,
+                    recoveryStore,
+                    new ArenaSettings(1, 1, 3, 2, 1_000));
+        }
+
+        private TestRig(
+                PhaseTimings timings,
+                int floorY,
+                TeleportRecoveryStore recoveryStore,
+                ArenaSettings arenaSettings) {
             BukkitTask task =
                     proxy(
                             BukkitTask.class,
@@ -2652,7 +2689,7 @@ class RoundControllerTest {
                                     });
             settings =
                     new BattleSettings(
-                            new ArenaSettings(1, 1, 3, 2, 1_000),
+                            arenaSettings,
                             timings,
                             List.of("A dragon treehouse"),
                             List.of("Parent"),

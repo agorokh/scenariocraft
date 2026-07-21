@@ -414,6 +414,7 @@ final class ActiveArenaMutationListener implements Listener {
                 Family.PISTON_EXTEND,
                 event.getBlock(),
                 event.getBlocks(),
+                event.getDirection(),
                 event.getDirection());
     }
 
@@ -424,7 +425,8 @@ final class ActiveArenaMutationListener implements Listener {
                 Family.PISTON_RETRACT,
                 event.getBlock(),
                 event.getBlocks(),
-                event.getDirection());
+                event.getDirection(),
+                event.getDirection().getOppositeFace());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -442,13 +444,14 @@ final class ActiveArenaMutationListener implements Listener {
             Family family,
             Block piston,
             List<Block> movedBlocks,
-            BlockFace direction) {
+            BlockFace headDirection,
+            BlockFace movementDirection) {
         List<Block> targets = new ArrayList<>();
         targets.add(piston);
-        targets.add(piston.getRelative(direction));
+        targets.add(piston.getRelative(headDirection));
         for (Block movedBlock : movedBlocks) {
             targets.add(movedBlock);
-            targets.add(movedBlock.getRelative(direction));
+            targets.add(movedBlock.getRelative(movementDirection));
         }
         cancelUnlessAllowed(event, family, null, piston, targets);
     }

@@ -22,6 +22,8 @@ families, and establishes a checked-in regression matrix as the durable review c
 - [x] 2026-07-20: Record the retrospective after GitHub's real Paper smoke passed.
 - [x] 2026-07-20: Address current-head review feedback by including the piston head in
   boundary checks and adding a build-ceiling regression.
+- [x] 2026-07-20: Correct retraction containment to follow pulled blocks toward the piston
+  and add a legitimate inward-retraction regression.
 
 ## Decision Log
 
@@ -30,7 +32,7 @@ families, and establishes a checked-in regression matrix as the durable review c
 | 2026-07-20 | Keep the mutation policy and listener in the Build Battle package and inject round state through narrow queries. | Issue #25 requires a dedicated seam independent of relocation hardening and explicitly forbids a premature general scenario framework. |
 | 2026-07-20 | Treat the checked-in matrix and parameterized policy tests as two views of the same event-family contract. | Reviewers need a readable audit while tests must prevent deny families and boundary rules from drifting. |
 | 2026-07-20 | Permit ordinary in-plot physics and cancel only documented unsafe mutation families or boundary crossings. | Wholesale physics cancellation would break normal builds and violates the acceptance criteria. |
-| 2026-07-20 | Include the piston head in the bounded destination set for extension and retraction events. | Paper's moved-block list omits a newly extended head when the piston pushes only air, which otherwise permits a vertical build-boundary escape. |
+| 2026-07-20 | Check the piston head in the facing direction, but check moved blocks in their actual movement direction; retraction uses the opposite face. | Paper's moved-block list omits a newly extended head when the piston pushes only air, while retract events report the facing direction even though pulled blocks move toward the piston. |
 
 ## Surprises & Discoveries
 
@@ -46,6 +48,8 @@ families, and establishes a checked-in regression matrix as the durable review c
   matrix exposed the coordinate-order mistake before implementation was pushed.
 - Current-head review found that Paper's piston moved-block list does not include the new head
   when extending into air. The listener now checks that bounded extra destination explicitly.
+- The follow-up current-head pass caught that `BlockPistonRetractEvent#getDirection()` reports
+  the facing direction rather than the pulled blocks' movement direction.
 
 ## Acceptance evidence
 
@@ -55,6 +59,8 @@ families, and establishes a checked-in regression matrix as the durable review c
 - `make ci-fast` passes on Java 21 after the extraction and regression additions.
 - `RoundControllerTest.activeArenaCancelsPistonHeadExtensionAboveBuildHeight` proves an empty
   moved-block list cannot extend a piston head beyond `maxBuildY`.
+- `RoundControllerTest.activeArenaAllowsPistonRetractionTowardThePiston` proves a sticky piston
+  can pull an edge block inward without a false boundary denial.
 - Source review confirms the only loop introduced walks Paper's bounded piston moved-block list;
   no handler scans or mutates arena blocks.
 - GitHub Actions `build` and real Paper 1.21.11 `smoke` both passed for the pushed
