@@ -27,7 +27,7 @@ local APFS, ext4, or other Unix-attribute filesystem before judging it.
 Voxel fallback files are capped at 16 MiB, OpenAI response bodies at 1 MiB, and prior result
 artifacts are removed before each attempt so a hard failure cannot expose a stale winner.
 PNG inputs must contain a complete, CRC-valid chunk stream with image data and a terminal IEND.
-Each seven-image set is capped at 16 MiB total. Manifests are capped at 1 MiB, 16 plots,
+Each seven-image set is capped at 16 MiB total. Manifests are capped at 1 MiB, 8 plots,
 512 task characters, 128 world characters, and 64 player-name characters.
 Persona and rubric files are each capped at 64 KiB; persona count and prompt-field lengths are
 also bounded before any OpenAI request is constructed.

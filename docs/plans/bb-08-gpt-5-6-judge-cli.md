@@ -47,6 +47,7 @@ session.
 | 2026-07-21 | Cap each seven-image set at 16 MiB total and bound manifest bytes, text fields, and plot count; reserve the local cruelty denylist for abusive terms and leave contextual neutral wording to moderation. | Per-file limits do not bound aggregate Base64/Gson request memory, untrusted metadata must not inflate heap or prompts, and neutral phrases must not cause avoidable quorum failures. |
 | 2026-07-21 | Cap retained round images at 32 MiB, decode PNG rasters, require concrete strength vocabulary plus a build feature, cap verdict text, and require fallback voxel origin/size and structural limits. | Final review showed that individually bounded inputs can still aggregate, structurally valid PNG chunks can contain unusable raster data, moderation does not prove praise, and stale voxel geometry can misattribute a build. |
 | 2026-07-21 | Canonicalize and reject a symlinked round root before deleting old results, and apply local plus moderation safety checks to serialized reasoning as well as comments. | Fail-closed artifact invalidation must not become redirected deletion, and every model-generated field written to results is untrusted player-adjacent output. |
+| 2026-07-21 | Preserve a primary renderer failure when temp cleanup also fails, keep the documented eight-plot limit aligned with runtime, and translate a missing voxel fallback into the operator diagnostic. | Cleanup must not erase the actionable cause, and published contracts/errors must match actual behavior. |
 
 ## Surprises & Discoveries
 

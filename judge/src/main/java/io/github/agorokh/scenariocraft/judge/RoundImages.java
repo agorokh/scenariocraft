@@ -5,6 +5,7 @@ import io.github.agorokh.scenariocraft.renderer.VoxelRenderer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
@@ -37,6 +38,7 @@ final class RoundImages {
         Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
         byte[] voxelBytes = snapshotVoxelSource(roundRoot, voxelFile, plotId);
         Path temporaryOutput = Files.createTempDirectory("scenariocraft-judge-render-");
+        Throwable primaryFailure = null;
         try {
             Path stableVoxelFile = temporaryOutput.resolve("input")
                     .resolve(plotId + ".voxels.json");
@@ -60,8 +62,11 @@ final class RoundImages {
                 throw new IOException("Renderer did not produce seven PNGs for " + plotId);
             }
             return snapshotImages(renderedOutput.toRealPath(), rendered);
+        } catch (IOException | RuntimeException | Error exception) {
+            primaryFailure = exception;
+            throw exception;
         } finally {
-            deleteTree(temporaryOutput);
+            cleanupTemporaryOutput(temporaryOutput, primaryFailure);
         }
     }
 
@@ -96,8 +101,14 @@ final class RoundImages {
 
     private static byte[] snapshotVoxelSource(Path roundRoot, Path voxelFile, String plotId)
             throws IOException {
-        BasicFileAttributes before = Files.readAttributes(
-                voxelFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        BasicFileAttributes before;
+        try {
+            before = Files.readAttributes(
+                    voxelFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (NoSuchFileException exception) {
+            throw new IOException(
+                    "Missing seven PNGs and voxel source for " + plotId, exception);
+        }
         if (!before.isRegularFile()) {
             throw new IOException("Missing seven PNGs and voxel source for " + plotId);
         }
@@ -149,6 +160,18 @@ final class RoundImages {
             for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(path);
             }
+        }
+    }
+
+    private static void cleanupTemporaryOutput(Path root, Throwable primaryFailure)
+            throws IOException {
+        try {
+            deleteTree(root);
+        } catch (IOException cleanupFailure) {
+            if (primaryFailure == null) {
+                throw cleanupFailure;
+            }
+            primaryFailure.addSuppressed(cleanupFailure);
         }
     }
 }

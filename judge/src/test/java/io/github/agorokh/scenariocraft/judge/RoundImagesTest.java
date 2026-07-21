@@ -34,6 +34,16 @@ class RoundImagesTest {
     }
 
     @Test
+    void missingImagesAndVoxelSourceUseTheOperatorDiagnostic() {
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> RoundImages.prepare(temporaryDirectory, plot()));
+
+        assertTrue(exception.getMessage().contains(
+                "Missing seven PNGs and voxel source for p1"));
+    }
+
+    @Test
     void rejectsSymbolicLinkImagesInsteadOfUploadingTheirTargets() throws Exception {
         Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
         Path target = Files.write(temporaryDirectory.resolve("outside.png"), new byte[] {1});
