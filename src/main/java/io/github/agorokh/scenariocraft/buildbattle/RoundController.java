@@ -2297,8 +2297,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         strandedArenaPlayers.remove(player.getUniqueId());
-        onCleared.run();
         recoveryGameModes.remove(player.getUniqueId());
+        onCleared.run();
     }
 
     private void reportRecoveryPersistenceFailure(

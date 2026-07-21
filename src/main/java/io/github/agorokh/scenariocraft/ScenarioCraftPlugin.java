@@ -10,6 +10,7 @@ import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportRecoveryStore;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportTransport;
+import java.nio.file.Path;
 import java.util.Objects;
 import java.util.logging.Level;
 import org.bukkit.command.CommandMap;
@@ -51,16 +52,18 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         blockEditor =
                 new BatchedBlockEditor(
                         this, arena.world(), settings.arena().blocksPerTick(), getLogger());
+        Path recoveryRegistry =
+                getDataFolder().toPath().resolve("pending-teleport-recovery.txt");
         TeleportRecoveryStore recoveryStore;
         try {
-            recoveryStore =
-                    TeleportRecoveryStore.open(
-                            getDataFolder().toPath().resolve("pending-teleport-recovery.txt"));
+            recoveryStore = TeleportRecoveryStore.open(recoveryRegistry);
         } catch (IllegalStateException failure) {
             getLogger()
                     .log(
                             Level.SEVERE,
-                            "SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE Could not load teleport recovery registry. Stop the server, back up the registry, and follow the recovery runbook in README.md before enabling ScenarioCraft again.",
+                            "SCENARIOCRAFT_RECOVERY_REGISTRY_FAILURE Could not load teleport recovery registry "
+                                    + recoveryRegistry.toAbsolutePath().normalize()
+                                    + ". Stop the server, back up the registry, and follow the recovery runbook in README.md before enabling ScenarioCraft again.",
                             failure);
             throw failure;
         }

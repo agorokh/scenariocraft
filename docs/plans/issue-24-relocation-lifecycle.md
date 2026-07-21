@@ -94,6 +94,10 @@ session.
   100 log lines on failure, and resets its log offset before `battle start`. Shutdown settlement
   no longer invokes phase failure callbacks. Persisted recovery count and registry I/O now have
   distinct durable log markers that include the registry location.
+- Recovery cleanup now removes the cached original mode before invoking phase re-entry, so a
+  synchronous re-entry failure can establish a fresh recovery without that new cache being
+  erased. Enable-time registry failure uses the same path-bearing registry marker as runtime
+  registry I/O, and the smoke validates fd 3 before starting Paper.
 
 ## Acceptance evidence
 
@@ -107,7 +111,7 @@ session.
   on-disk store reopen and successful hub retry.
 - `TeleportTransportTest` pins the exact namespaced, explicit-world, UUID-targeted production
   command including coordinates and rotation.
-- `make ci-fast` passed on Java 21 with 124 plugin tests and 13 renderer tests, all green.
+- `make ci-fast` passed on Java 21 with 125 plugin tests and 13 renderer tests, all green.
 - A local Paper 1.21.11 build 132 smoke run enabled ScenarioCraft, executed
   `minecraft:execute in minecraft:battle_world run minecraft:tp` against a marker entity,
   confirmed its authoritative destination, and shut down with all dimensions saved. The run

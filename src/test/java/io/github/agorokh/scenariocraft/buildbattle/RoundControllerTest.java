@@ -936,6 +936,40 @@ class RoundControllerTest {
     }
 
     @Test
+    void synchronousReentryFailureRetainsOriginalRecoveryGameMode() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.failTeleportDispatch.set(true);
+        rig.controller.onPlayerQuit(
+                new PlayerQuitEvent(
+                        rig.player,
+                        net.kyori.adventure.text.Component.empty(),
+                        PlayerQuitEvent.QuitReason.DISCONNECTED));
+        rig.runDelayedTasks();
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.teleportCommandsAvailable.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+
+        rig.playerOnline.set(false);
+        rig.controller.onPlayerJoin(
+                new PlayerJoinEvent(
+                        rig.player, net.kyori.adventure.text.Component.empty()));
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        rig.playerOnline.set(true);
+        rig.teleportCommandsAvailable.set(true);
+        rig.close();
+    }
+
+    @Test
     void handledTeleportMaySettleBeforeTheOneTickConfirmation() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);

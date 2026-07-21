@@ -167,6 +167,10 @@ jobs:
             set -euo pipefail
             cd "$1"
             exec 3<>server.stdin
+            if ! { printf "" >&3; } 2>/dev/null; then
+              printf "Paper command pipe fd 3 is unavailable.\n" >&2
+              exit 1
+            fi
             java -Xms512M -Xmx1G -jar paper.jar --nogui <&3 >server-console.log 2>&1 &
             server_pid=$!
             cleanup() {
