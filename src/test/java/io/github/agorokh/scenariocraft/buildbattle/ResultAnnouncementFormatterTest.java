@@ -122,4 +122,50 @@ class ResultAnnouncementFormatterTest {
                 visibleLine.codePointCount(0, visibleLine.length()));
         assertTrue(verdictLine.contains("§9Professor Brickworth: 8.75§r —"));
     }
+
+    @Test
+    void repeatedVerdictTextInsideACommentStaysAtTheDefaultColor() {
+        BattleResultSummary result = BattleResultsReader.parse("""
+                Round: round-20260721-193000
+                Task: A dragon treehouse
+
+                Alex (p1)
+                  Professor Brickworth: 8.75 — Professor Brickworth: 8.75 is a sturdy score.
+                  Mean: 8.75
+
+                Winner: Alex with 8.75
+                """);
+
+        String verdictLine = ResultAnnouncementFormatter.format(result).chatLines().stream()
+                .filter(line -> line.contains("Professor Brickworth"))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(
+                "Alex — §9Professor Brickworth: 8.75§r — Professor Brickworth: 8.75 is a sturdy score.",
+                verdictLine);
+    }
+
+    @Test
+    void verdictTextInsideAPlayerNameStaysAtTheDefaultColor() {
+        BattleResultSummary result = new BattleResultSummary(
+                "round-20260721-193000",
+                "A dragon treehouse",
+                java.util.List.of(new BattleResultSummary.ContestantFeedback(
+                        "p1",
+                        "Professor Brickworth: 8.75 fan",
+                        java.util.List.of(new BattleResultSummary.PersonaFeedback(
+                                "Professor Brickworth", "8.75", "The sturdy shape stands out.")))),
+                new BattleResultSummary.Winner("p1", "Professor Brickworth: 8.75 fan"),
+                null);
+
+        String verdictLine = ResultAnnouncementFormatter.format(result).chatLines().stream()
+                .filter(line -> line.contains("sturdy shape"))
+                .findFirst()
+                .orElseThrow();
+
+        assertEquals(
+                "Professor Brickworth: 8.75 fan — §9Professor Brickworth: 8.75§r — The sturdy shape stands out.",
+                verdictLine);
+    }
 }

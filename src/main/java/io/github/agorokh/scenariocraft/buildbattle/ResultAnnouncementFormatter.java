@@ -17,10 +17,10 @@ final class ResultAnnouncementFormatter {
         chat.add(limit("Speed Build results — " + clean(result.task()), MAX_CHAT_CODE_POINTS));
         for (BattleResultSummary.ContestantFeedback contestant : result.contestants()) {
             for (BattleResultSummary.PersonaFeedback feedback : contestant.feedback()) {
+                String playerPrefix = clean(contestant.player()) + " — ";
                 String persona = clean(feedback.persona());
                 String plainLine = limit(
-                        clean(contestant.player())
-                                + " — "
+                        playerPrefix
                                 + persona
                                 + ": "
                                 + feedback.score()
@@ -31,7 +31,7 @@ final class ResultAnnouncementFormatter {
                 String color = personaColor(persona);
                 chat.add(color.isEmpty()
                         ? plainLine
-                        : plainLine.replace(verdict, color + verdict + "§r"));
+                        : colorVerdict(plainLine, playerPrefix.length(), verdict, color));
             }
         }
         String title;
@@ -52,6 +52,19 @@ final class ResultAnnouncementFormatter {
             case "Granny Redstone" -> "§5";
             default -> "";
         };
+    }
+
+    private static String colorVerdict(
+            String line, int start, String verdict, String color) {
+        int end = start + verdict.length();
+        if (end > line.length() || !line.regionMatches(start, verdict, 0, verdict.length())) {
+            return line;
+        }
+        return line.substring(0, start)
+                + color
+                + line.substring(start, end)
+                + "§r"
+                + line.substring(end);
     }
 
     private static String clean(String value) {
