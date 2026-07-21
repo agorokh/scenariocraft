@@ -104,7 +104,7 @@ session.
   regardless of the configured content-directory depth.
 - Copied-result regressions also reject common profanity and section-sign formatting codes;
   when every persona verdict fails, the formatter reports that feedback could not be
-  completed instead of fabricating praise.
+  completed and uses a neutral no-winner status instead of fabricating praise.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

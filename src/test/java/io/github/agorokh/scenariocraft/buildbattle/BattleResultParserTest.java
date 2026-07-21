@@ -134,8 +134,11 @@ class BattleResultParserTest {
                         No winner: not enough verdicts
                         """);
 
-        String feedback = formatter.chatLines(result).get(1);
+        List<String> lines = formatter.chatLines(result);
+        String feedback = lines.get(1);
         assertTrue(feedback.contains("couldn't finish feedback"));
         assertFalse(feedback.contains("cheering"));
+        assertEquals("No winner this time — the judges need another look.", lines.getLast());
+        assertEquals("Judges need another look", formatter.title(result));
     }
 }

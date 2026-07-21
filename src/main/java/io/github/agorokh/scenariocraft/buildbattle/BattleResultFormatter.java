@@ -35,14 +35,14 @@ final class BattleResultFormatter {
         lines.add(
                 result.winner()
                         .map(winner -> clamp("Winner: " + safe(winner.player()) + "!", MAX_CHAT_LENGTH))
-                        .orElse("Every build had something worth celebrating — the judges need another look!"));
+                        .orElse("No winner this time — the judges need another look."));
         return List.copyOf(lines);
     }
 
     String title(BattleResult result) {
         return result.winner()
                 .map(winner -> clamp(safe(winner.player()) + " wins!", MAX_TITLE_LENGTH))
-                .orElse("Amazing builds!");
+                .orElse("Judges need another look");
     }
 
     private static String safe(String value) {
