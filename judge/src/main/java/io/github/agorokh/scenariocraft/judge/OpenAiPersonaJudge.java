@@ -80,7 +80,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         try {
             String body = requestBody(persona, task, rubric, plotId, images);
             JudgeVerdict verdict = parseResponse(send(endpoint, body), persona.name());
-            requireSafeComment(verdict.comment());
+            requireSafeVerdictText(verdict);
             return verdict;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -121,9 +121,10 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         }
     }
 
-    private void requireSafeComment(String comment)
+    private void requireSafeVerdictText(JudgeVerdict verdict)
             throws IOException, InterruptedException, JudgeException {
-        String responseBody = send(moderationEndpoint, moderationRequestBody(comment));
+        String text = verdict.reasoning() + "\n" + verdict.comment();
+        String responseBody = send(moderationEndpoint, moderationRequestBody(text));
         if (parseModerationFlag(responseBody)) {
             throw new JudgeException("OpenAI moderation rejected the judge comment");
         }

@@ -3,6 +3,7 @@ package io.github.agorokh.scenariocraft.judge;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,19 +18,21 @@ final class JudgeApplication {
             Path rubricPath,
             PersonaJudge judge,
             PrintWriter output,
-            PrintWriter diagnostics) {
+        PrintWriter diagnostics) {
         try {
-            if (!Files.isDirectory(roundDirectory)) {
+            if (!Files.isDirectory(roundDirectory, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(roundDirectory)) {
                 throw new IOException("Round directory does not exist: " + roundDirectory);
             }
-            Files.deleteIfExists(roundDirectory.resolve("results.txt"));
-            Files.deleteIfExists(roundDirectory.resolve("results.json"));
-            JudgeRound round = JudgeRound.read(roundDirectory.resolve("manifest.json"));
+            Path canonicalRound = roundDirectory.toRealPath();
+            Files.deleteIfExists(canonicalRound.resolve("results.txt"));
+            Files.deleteIfExists(canonicalRound.resolve("results.json"));
+            JudgeRound round = JudgeRound.read(canonicalRound.resolve("manifest.json"));
             JudgeConfig config = JudgeConfig.load(personasPath, rubricPath);
             Map<String, List<JudgeImage>> images = new LinkedHashMap<>();
             long totalImageBytes = 0;
             for (JudgeRound.Plot plot : round.plots()) {
-                List<JudgeImage> plotImages = RoundImages.prepare(roundDirectory, plot);
+                List<JudgeImage> plotImages = RoundImages.prepare(canonicalRound, plot);
                 totalImageBytes = Math.addExact(
                         totalImageBytes,
                         plotImages.stream().mapToLong(JudgeImage::size).sum());
@@ -40,7 +43,7 @@ final class JudgeApplication {
             }
             RoundResults results =
                     JudgeCouncil.judge(round, config, images, judge, diagnostics);
-            ResultsWriter.write(roundDirectory, results);
+            ResultsWriter.write(canonicalRound, results);
             output.print(ResultsWriter.humanReadable(results));
             output.flush();
             diagnostics.flush();

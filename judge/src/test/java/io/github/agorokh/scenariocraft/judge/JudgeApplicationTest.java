@@ -102,6 +102,28 @@ class JudgeApplicationTest {
         assertFalse(Files.exists(round.resolve("results.txt")));
     }
 
+    @Test
+    void rejectsSymlinkedRoundBeforeDeletingTargetResults() throws Exception {
+        Path runtime = copyFixtureRuntime();
+        Path realRound = runtime.resolve("rounds/round-20260721-193000");
+        Files.writeString(realRound.resolve("results.json"), "{\"winner\":\"keep\"}");
+        Files.writeString(realRound.resolve("results.txt"), "Winner: keep");
+        Path linkedRound = temporaryDirectory.resolve("linked-round");
+        Files.createSymbolicLink(linkedRound, realRound);
+
+        int status = new JudgeApplication().run(
+                linkedRound,
+                runtime.resolve("judge/personas.yml"),
+                runtime.resolve("judge/rubric.md"),
+                new StubPersonaJudge(),
+                new PrintWriter(new StringWriter()),
+                new PrintWriter(new StringWriter()));
+
+        assertEquals(1, status);
+        assertTrue(Files.exists(realRound.resolve("results.json")));
+        assertTrue(Files.exists(realRound.resolve("results.txt")));
+    }
+
     private Path copyFixtureRuntime() throws Exception {
         Path source = Path.of(System.getProperty("scenariocraft.repoRoot"))
                 .resolve("judge/src/test/resources/fixtures/runtime");

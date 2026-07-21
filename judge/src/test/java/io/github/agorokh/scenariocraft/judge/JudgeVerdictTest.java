@@ -59,6 +59,16 @@ class JudgeVerdictTest {
     }
 
     @Test
+    void rejectsUnsafeOrCruelPublishedReasoning() {
+        assertThrows(IllegalArgumentException.class, () -> new JudgeVerdict(
+                "Professor Fixture", "This build is disgusting.", SCORES,
+                "The roof is strong. Add a chimney next."));
+        assertThrows(IllegalArgumentException.class, () -> new JudgeVerdict(
+                "Professor Fixture", "Safe words\u202ehidden", SCORES,
+                "The roof is strong. Add a chimney next."));
+    }
+
+    @Test
     void rejectsMultilineComments() {
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof has a strong shape.\nAdd more blocks next."));

@@ -45,8 +45,9 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
         if (persona == null || persona.isBlank()) {
             throw new IllegalArgumentException("persona must be non-blank");
         }
-        if (reasoning == null || reasoning.isBlank()
-                || reasoning.length() > MAX_REASONING_LENGTH) {
+        if (reasoning == null || reasoning.isBlank() || reasoning.length() > MAX_REASONING_LENGTH
+                || reasoning.codePoints().anyMatch(JudgeVerdict::isUnsafeControl)
+                || CRUEL_LANGUAGE.matcher(reasoning).find()) {
             throw new IllegalArgumentException("reasoning must be non-blank");
         }
         if (scores == null) {

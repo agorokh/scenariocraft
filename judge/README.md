@@ -35,6 +35,8 @@ Round snapshots are capped at 32 MiB total. Fallback voxels must match the manif
 size and stay within renderer palette, block-count, dimension, and volume limits. PNG raster
 data is decoded before acceptance. Verdict reasoning is capped at 4,000 characters and the
 kid-facing comment at 500 characters.
+Round roots themselves may not be symbolic links. Both serialized reasoning and kid-facing
+comments must pass local control/cruelty validation and live OpenAI moderation.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the
