@@ -39,9 +39,20 @@ trap cleanup EXIT INT TERM
 
 started="$(date +%s)"
 started_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-${compose} --project-name "${project}" up --build --detach
-
 deadline=$((started + timeout_seconds))
+${compose} --project-name "${project}" up --build --detach &
+compose_up_pid=$!
+while kill -0 "${compose_up_pid}" 2>/dev/null; do
+    if [ "$(date +%s)" -ge "${deadline}" ]; then
+        echo "Timed out starting the demo services." >&2
+        kill "${compose_up_pid}" 2>/dev/null || true
+        wait "${compose_up_pid}" || true
+        exit 1
+    fi
+    sleep 1
+done
+wait "${compose_up_pid}"
+
 while ! ${compose} --project-name "${project}" logs --since "${started_iso}" paper 2>&1 \
         | grep -q 'SCENARIOCRAFT_DEMO_ARENA_READY'; do
     if [ "$(date +%s)" -ge "${deadline}" ]; then

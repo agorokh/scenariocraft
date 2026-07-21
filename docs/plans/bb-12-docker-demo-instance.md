@@ -66,6 +66,11 @@ session.
   the third (exhausted) retry and isolates the shared round directory in its own named volume.
 - A fresh named `rounds` volume is root-owned by Docker. The existing root-run secrets service
   initializes it for Paper and judge UID 1000 before either dependent service starts.
+- The demo originally shortened REVEAL to five minutes, which could end before the live
+  judge's bounded retry budget. It now retains the production 900-second window so a late
+  verdict can still be announced through the normal RCON and poll paths.
+- The headless timeout now also supervises the initial Compose build/start command rather than
+  beginning only after it returns, so a stalled clean-machine image build cannot run forever.
 
 ## Acceptance evidence
 

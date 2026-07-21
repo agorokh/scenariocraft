@@ -7,7 +7,9 @@ blocks-per-tick: 6000
 gather-seconds: 5
 note-seconds: 5
 build-seconds: 90
-reveal-linger-seconds: 300
+# Keep REVEAL open through the production judge's bounded retry budget so the
+# RCON-triggered announcement can still run after a slow live verdict.
+reveal-linger-seconds: 900
 
 tasks:
   - A rocket-powered castle
