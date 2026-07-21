@@ -2,26 +2,31 @@
 """ScenarioCraft judge evaluation runner.
 
 The .yml files intentionally use the JSON-compatible subset of YAML so the eval gate has no
-host dependency beyond Python 3. Live mode invokes the installed production judge without a
-shell; recorded mode reads committed production results.json responses.
+host dependency beyond Python 3. Live mode invokes the production judge without a shell;
+recorded mode reads committed production-schema golden responses.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
 
 CRITERIA = ("theme_fit", "creativity", "effort", "detail")
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+BLOCK_ID = re.compile(r"^[a-z0-9._-]+:[a-z0-9/._-]+$")
 POSITIVE = re.compile(
     r"\b(?:beautiful|bold|bright|charming|clear|clever|colorful|colourful|cozy|"
     r"creative|delightful|detailed|excellent|fantastic|good|great|impressive|"
@@ -59,6 +64,13 @@ class CaseResult:
     failures: list[str]
 
 
+def has_unsafe_text(value: str) -> bool:
+    return any(
+        unicodedata.category(character) in ("Cc", "Cf", "Zl", "Zp")
+        for character in value
+    )
+
+
 def _read_bytes(path: Path, maximum: int) -> bytes:
     if path.is_symlink() or not path.is_file():
         raise EvalError(f"required regular file is missing or symbolic: {path}")
@@ -78,7 +90,13 @@ def load_json(path: Path, maximum: int = MAX_JSON_BYTES) -> Any:
         return value
 
     try:
-        return json.loads(_read_bytes(path, maximum), object_pairs_hook=unique_object)
+        return json.loads(
+            _read_bytes(path, maximum),
+            object_pairs_hook=unique_object,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                EvalError(f"non-finite number {value} in {path}")
+            ),
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise EvalError(f"invalid JSON-compatible YAML/JSON in {path}: {exc}") from exc
 
@@ -88,9 +106,20 @@ def load_task(path: Path) -> str:
         task = _read_bytes(path, MAX_TEXT_BYTES).decode("utf-8").strip()
     except UnicodeDecodeError as exc:
         raise EvalError(f"task must be UTF-8: {path}") from exc
-    if not task or len(task) > 512 or any(ord(char) < 32 for char in task):
+    if not task or len(task) > 512 or has_unsafe_text(task):
         raise EvalError(f"task must be safe, non-blank text of at most 512 characters: {path}")
     return task
+
+
+def load_persona_names(path: Path) -> set[str]:
+    try:
+        text = _read_bytes(path, MAX_TEXT_BYTES).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise EvalError(f"persona config must be UTF-8: {path}") from exc
+    names = set(re.findall(r'^\s*-\s+name:\s+"([^"\r\n]+)"\s*$', text, re.MULTILINE))
+    if len(names) < 2 or len(names) > 8 or any(has_unsafe_text(name) for name in names):
+        raise EvalError(f"could not read the bounded persona panel from {path}")
+    return names
 
 
 def require_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
@@ -128,7 +157,12 @@ def validate_voxel(value: Any, label: str) -> dict[str, Any]:
         or not palette
         or palette[0] != "minecraft:air"
         or len(palette) > 4096
-        or any(not isinstance(item, str) or not item or len(item) > 256 for item in palette)
+        or any(
+            not isinstance(item, str)
+            or len(item) > 256
+            or not BLOCK_ID.fullmatch(item)
+            for item in palette
+        )
     ):
         raise EvalError(f"{label} palette is invalid")
     blocks = voxel["blocks"]
@@ -154,11 +188,47 @@ def validate_expected(value: Any, label: str) -> dict[str, Any]:
     )
     if expected["schema"] != 1:
         raise EvalError(f"{label} schema must be 1")
-    source = require_keys(expected["source"], {"kind", "reference"}, f"{label} source")
-    if source["kind"] not in ("synthetic", "family-round"):
+    source = expected["source"]
+    if not isinstance(source, dict) or source.get("kind") not in ("synthetic", "family-round"):
         raise EvalError(f"{label} source kind must be synthetic or family-round")
-    if not isinstance(source["reference"], str) or not source["reference"].strip():
-        raise EvalError(f"{label} source reference must be non-blank")
+    if source["kind"] == "synthetic":
+        require_keys(
+            source,
+            {"kind", "reference", "response_origin"},
+            f"{label} source",
+        )
+        if source["response_origin"] != "hand-authored-golden":
+            raise EvalError(f"{label} synthetic response must be a hand-authored golden")
+        if not isinstance(source["reference"], str) or not source["reference"].strip():
+            raise EvalError(f"{label} source reference must be non-blank")
+    else:
+        require_keys(
+            source,
+            {
+                "kind",
+                "round_id",
+                "plot_id",
+                "artifact_commit",
+                "voxel_sha256",
+                "response_sha256",
+                "response_origin",
+            },
+            f"{label} source",
+        )
+        if source["response_origin"] != "live-recording":
+            raise EvalError(f"{label} family response must be a live recording")
+        if not re.fullmatch(r"round-[0-9]{8}-[0-9]{6}", str(source["round_id"])):
+            raise EvalError(f"{label} family round_id is invalid")
+        if not re.fullmatch(r"p[1-9][0-9]*", str(source["plot_id"])):
+            raise EvalError(f"{label} family plot_id is invalid")
+        patterns = {
+            "artifact_commit": r"[0-9a-f]{40}",
+            "voxel_sha256": r"[0-9a-f]{64}",
+            "response_sha256": r"[0-9a-f]{64}",
+        }
+        for field, pattern in patterns.items():
+            if not re.fullmatch(pattern, str(source[field])):
+                raise EvalError(f"{label} family {field} is invalid")
     scores = require_keys(expected["scores"], set(CRITERIA), f"{label} scores")
     for criterion in CRITERIA:
         band = require_keys(scores[criterion], {"min", "max"}, f"{label} {criterion}")
@@ -222,7 +292,13 @@ def load_cases(cases_root: Path) -> list[CaseSpec]:
     return specs
 
 
-def validate_ground_truth(ground_truth_root: Path, case_ids: set[str]) -> set[str]:
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(_read_bytes(path, MAX_JSON_BYTES)).hexdigest()
+
+
+def validate_ground_truth(
+    ground_truth_root: Path, specs_by_id: dict[str, CaseSpec]
+) -> set[str]:
     if ground_truth_root.is_symlink() or not ground_truth_root.is_dir():
         raise EvalError(f"ground-truth directory is missing or symbolic: {ground_truth_root}")
     files = sorted(ground_truth_root.glob("*.yml"))
@@ -234,14 +310,38 @@ def validate_ground_truth(ground_truth_root: Path, case_ids: set[str]) -> set[st
             raise EvalError(f"unsafe ground-truth file: {path}")
         root = require_keys(
             load_json(path, MAX_TEXT_BYTES),
-            {"schema", "case_id", "adult_supervised", "reviews"},
+            {
+                "schema",
+                "case_id",
+                "round_id",
+                "plot_id",
+                "voxel_sha256",
+                "response_sha256",
+                "adult_supervised",
+                "reviews",
+            },
             path.name,
         )
         if root["schema"] != 1 or root["adult_supervised"] is not True:
             raise EvalError(f"{path.name} must use schema 1 and adult_supervised true")
         case_id = root["case_id"]
-        if case_id not in case_ids or case_id != path.stem or case_id in seen_cases:
+        if case_id not in specs_by_id or case_id != path.stem or case_id in seen_cases:
             raise EvalError(f"{path.name} must identify one unique existing eval case")
+        spec = specs_by_id[case_id]
+        source = spec.expected["source"]
+        if source["kind"] != "family-round":
+            raise EvalError(f"{path.name} may review only a family-round case")
+        voxel_hash = file_sha256(spec.directory / "voxels.json")
+        response_hash = file_sha256(spec.directory / "recorded-response.json")
+        if (
+            root["round_id"] != source["round_id"]
+            or root["plot_id"] != source["plot_id"]
+            or root["voxel_sha256"] != source["voxel_sha256"]
+            or root["response_sha256"] != source["response_sha256"]
+            or root["voxel_sha256"] != voxel_hash
+            or root["response_sha256"] != response_hash
+        ):
+            raise EvalError(f"{path.name} is not bound to the exact reviewed artifacts")
         seen_cases.add(case_id)
         reviews = root["reviews"]
         if not isinstance(reviews, list) or len(reviews) != 2:
@@ -267,7 +367,7 @@ def validate_ground_truth(ground_truth_root: Path, case_ids: set[str]) -> set[st
                 or not reason.strip()
                 or len(reason) > 240
                 or any(character in reason for character in "\r\n")
-                or any(ord(character) < 32 for character in reason)
+                or has_unsafe_text(reason)
             ):
                 raise EvalError(f"{path.name} reason must be safe one-line text")
         if ages != {7, 10}:
@@ -275,7 +375,12 @@ def validate_ground_truth(ground_truth_root: Path, case_ids: set[str]) -> set[st
     return seen_cases
 
 
-def validate_results(value: Any, task: str, label: str) -> list[dict[str, Any]]:
+def validate_results(
+    value: Any,
+    task: str,
+    label: str,
+    expected_personas: set[str] | None = None,
+) -> list[dict[str, Any]]:
     results = require_keys(
         value,
         {"schema", "round_id", "task", "contestants", "winner"},
@@ -283,15 +388,25 @@ def validate_results(value: Any, task: str, label: str) -> list[dict[str, Any]]:
     )
     if results["schema"] != 1 or results["task"] != task:
         raise EvalError(f"{label} has the wrong schema or task")
+    if not isinstance(results["round_id"], str) or not re.fullmatch(
+        r"round-[0-9]{8}-[0-9]{6}", results["round_id"]
+    ):
+        raise EvalError(f"{label} round_id has an invalid format")
     contestants = results["contestants"]
     if not isinstance(contestants, list) or len(contestants) != 1:
         raise EvalError(f"{label} must contain exactly one contestant")
     contestant = require_keys(
         contestants[0], {"plot_id", "player", "verdicts", "mean", "failures"}, f"{label} contestant"
     )
+    if contestant["plot_id"] != "p1" or not isinstance(contestant["player"], str):
+        raise EvalError(f"{label} contestant identity is invalid")
+    if contestant["failures"] != []:
+        raise EvalError(f"{label} successful recorded response must not contain failures")
     verdicts = contestant["verdicts"]
     if not isinstance(verdicts, list) or len(verdicts) < 2:
         raise EvalError(f"{label} must contain at least two verdicts")
+    personas: set[str] = set()
+    verdict_means: list[float] = []
     for index, raw in enumerate(verdicts):
         verdict = require_keys(
             raw, {"persona", "reasoning", "scores", "comment"}, f"{label} verdict {index}"
@@ -301,16 +416,57 @@ def validate_results(value: Any, task: str, label: str) -> list[dict[str, Any]]:
         for field in ("persona", "reasoning", "comment"):
             if not isinstance(verdict[field], str) or not verdict[field].strip():
                 raise EvalError(f"{label} verdict {index} {field} must be non-blank")
+            if has_unsafe_text(verdict[field]):
+                raise EvalError(f"{label} verdict {index} {field} contains control text")
+        if len(verdict["reasoning"]) > 4000 or len(verdict["comment"]) > 500:
+            raise EvalError(f"{label} verdict {index} text exceeds the production limit")
+        if verdict["persona"] in personas:
+            raise EvalError(f"{label} verdict personas must be unique")
+        personas.add(verdict["persona"])
+        sentence_ends = re.findall(r"[.!?]+(?=\s+|$)", verdict["comment"])
+        if len(sentence_ends) != 2 or not re.search(r"[.!?]+$", verdict["comment"]):
+            raise EvalError(f"{label} verdict {index} comment must contain two sentences")
         score = require_keys(verdict["scores"], set(CRITERIA), f"{label} verdict {index} scores")
         for criterion in CRITERIA:
             require_integer(score[criterion], f"{label} verdict {index} {criterion}", 1, 10)
+        verdict_means.append(sum(score[criterion] for criterion in CRITERIA) / len(CRITERIA))
+    computed_mean = sum(verdict_means) / len(verdict_means)
+    recorded_mean = contestant["mean"]
+    if (
+        isinstance(recorded_mean, bool)
+        or not isinstance(recorded_mean, (int, float))
+        or not math.isfinite(recorded_mean)
+        or abs(recorded_mean - computed_mean) > 1e-9
+    ):
+        raise EvalError(f"{label} contestant mean does not match its verdicts")
+    winner = require_keys(
+        results["winner"], {"plot_id", "player", "mean"}, f"{label} winner"
+    )
+    if (
+        winner["plot_id"] != contestant["plot_id"]
+        or winner["player"] != contestant["player"]
+        or isinstance(winner["mean"], bool)
+        or not isinstance(winner["mean"], (int, float))
+        or not math.isfinite(winner["mean"])
+        or abs(winner["mean"] - computed_mean) > 1e-9
+    ):
+        raise EvalError(f"{label} winner does not match the scored contestant")
+    if expected_personas is not None and personas != expected_personas:
+        raise EvalError(f"{label} verdict personas do not match the configured panel")
     return verdicts
 
 
-def evaluate_case(spec: CaseSpec, response: Any) -> CaseResult:
+def evaluate_case(
+    spec: CaseSpec, response: Any, expected_personas: set[str] | None = None
+) -> CaseResult:
     failures: list[str] = []
     try:
-        verdicts = validate_results(response, spec.task, f"{spec.case_id} response")
+        verdicts = validate_results(
+            response,
+            spec.task,
+            f"{spec.case_id} response",
+            expected_personas,
+        )
     except EvalError as exc:
         return CaseResult(spec.case_id, None, [str(exc)])
     criterion_means: dict[str, float] = {}
@@ -359,14 +515,29 @@ def evaluate_ordering(specs: list[CaseSpec], results: dict[str, CaseResult]) -> 
                 )
 
 
+def prepare_live_judge(repo_root: Path) -> None:
+    if not os.environ.get("OPENAI_API_KEY", "").strip():
+        raise EvalError("live mode requires OPENAI_API_KEY; use --dry-run in CI")
+    completed = subprocess.run(
+        [str(repo_root / "gradlew"), ":judge:installDist", "--no-daemon"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        timeout=600,
+        check=False,
+    )
+    if completed.returncode != 0:
+        diagnostic = completed.stderr.strip().splitlines()[-1:] or ["unknown failure"]
+        raise EvalError(f"could not build the live judge: {diagnostic[0]}")
+
+
 def live_response(spec: CaseSpec, repo_root: Path) -> Any:
     judge = repo_root / "judge" / "build" / "install" / "judge" / "bin" / "judge"
     if not judge.is_file() or not os.access(judge, os.X_OK):
-        raise EvalError("live mode requires ./gradlew :judge:installDist first")
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise EvalError("live mode requires OPENAI_API_KEY; use --dry-run in CI")
+        raise EvalError("the freshly built live judge command is missing")
     with tempfile.TemporaryDirectory(prefix="scenariocraft-eval-") as temporary:
-        round_dir = Path(temporary) / "round-20260721-120000"
+        temporary_root = Path(temporary)
+        round_dir = temporary_root / "round-20260721-120000"
         round_dir.mkdir()
         voxel = dict(spec.voxel)
         voxel["plot_id"] = "p1"
@@ -386,8 +557,15 @@ def live_response(spec: CaseSpec, repo_root: Path) -> Any:
             ],
         }
         (round_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        config_directory = temporary_root / "config"
+        config_directory.mkdir()
+        shutil.copyfile(repo_root / "judge" / "personas.yml", config_directory / "personas.yml")
+        shutil.copyfile(repo_root / "judge" / "rubric.md", config_directory / "rubric.md")
         environment = dict(os.environ)
-        environment["SCENARIOCRAFT_JUDGE_CONFIG_DIR"] = str(repo_root / "judge")
+        for name in list(environment):
+            if name.startswith("SCENARIOCRAFT_RCON_"):
+                environment.pop(name)
+        environment["SCENARIOCRAFT_JUDGE_CONFIG_DIR"] = str(config_directory)
         completed = subprocess.run(
             [str(judge), "--round", str(round_dir)],
             cwd=repo_root,
@@ -413,9 +591,8 @@ def run(
     if len(specs) < 6:
         raise EvalError("eval suite must contain at least six cases")
     if ground_truth_root is not None:
-        reviewed = validate_ground_truth(
-            ground_truth_root, {spec.case_id for spec in specs}
-        )
+        specs_by_id = {spec.case_id: spec for spec in specs}
+        reviewed = validate_ground_truth(ground_truth_root, specs_by_id)
         family_cases = {
             spec.case_id
             for spec in specs
@@ -425,6 +602,9 @@ def run(
             raise EvalError("eval suite must contain at least two family-round cases")
         if not family_cases.issubset(reviewed):
             raise EvalError("every family-round case must have design-council ground truth")
+    if not dry_run:
+        prepare_live_judge(repo_root)
+    expected_personas = load_persona_names(repo_root / "judge" / "personas.yml")
     results: dict[str, CaseResult] = {}
     for spec in specs:
         response = (
@@ -432,7 +612,7 @@ def run(
             if dry_run
             else live_response(spec, repo_root)
         )
-        results[spec.case_id] = evaluate_case(spec, response)
+        results[spec.case_id] = evaluate_case(spec, response, expected_personas)
     evaluate_ordering(specs, results)
     print(f"{'CASE':<32} {'RESULT':<6} DETAILS")
     print(f"{'-' * 32} {'-' * 6} {'-' * 30}")

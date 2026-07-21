@@ -7,7 +7,8 @@
     "player": "Eval builder",
     "verdicts": [
       {"persona": "Professor Brickworth", "reasoning": "The log supports, plank platform, and ladder establish a compact but recognizable treehouse.", "scores": {"theme_fit": 8, "creativity": 6, "effort": 6, "detail": 6}, "comment": "Your wooden structure has a clear raised platform and ladder. Try adding a leafy roof shape next."},
-      {"persona": "Captain Sparkle", "reasoning": "The raised platform answers the task directly and the ladder gives the small scene a useful story detail.", "scores": {"theme_fit": 8, "creativity": 7, "effort": 6, "detail": 5}, "comment": "Your ladder detail makes the treehouse idea recognizable. Add a bold flag color to the platform next."}
+      {"persona": "Captain Sparkle", "reasoning": "The raised platform answers the task directly and the ladder gives the small scene a useful story detail.", "scores": {"theme_fit": 8, "creativity": 7, "effort": 6, "detail": 5}, "comment": "Your ladder detail makes the treehouse idea recognizable. Add a bold flag color to the platform next."},
+      {"persona": "Granny Redstone", "reasoning": "The log supports, plank floor, and ladder make a small but complete treehouse concept.", "scores": {"theme_fit": 8, "creativity": 6, "effort": 6, "detail": 6}, "comment": "Your raised platform gives the treehouse a clear structure. Try adding a leafy wall pattern next."}
     ],
     "mean": 6.5,
     "failures": []

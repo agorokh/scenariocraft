@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source": {"kind": "synthetic", "reference": "Issue #13 cutaway-view regression case"},
+  "source": {"kind": "synthetic", "reference": "Issue #13 cutaway-view regression case", "response_origin": "hand-authored-golden"},
   "scores": {
     "theme_fit": {"min": 6, "max": 9},
     "creativity": {"min": 6, "max": 9},

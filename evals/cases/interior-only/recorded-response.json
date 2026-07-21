@@ -7,10 +7,11 @@
     "player": "Eval builder",
     "verdicts": [
       {"persona": "Professor Brickworth", "reasoning": "The center cross-sections reveal an oak-lined room and red-wool centerpiece behind the stone shell.", "scores": {"theme_fit": 8, "creativity": 7, "effort": 8, "detail": 9}, "comment": "Your interior room has a warm detailed color pattern. Consider adding a doorway through the stone wall next."},
+      {"persona": "Captain Sparkle", "reasoning": "The center slices reveal a red-wool centerpiece and oak furnishing inside the stone cabin shell.", "scores": {"theme_fit": 8, "creativity": 8, "effort": 8, "detail": 9}, "comment": "Your red interior detail gives the hidden room a bold heart. Add a bright window so the cozy palette peeks outside next."},
       {"persona": "Granny Redstone", "reasoning": "The cutaway views show a deliberately furnished cabin interior that exterior views alone cannot reveal.", "scores": {"theme_fit": 8, "creativity": 8, "effort": 8, "detail": 9}, "comment": "Your cozy interior design makes the hidden room feel welcoming. Keep the warm palette and add a small window next."}
     ],
-    "mean": 8.125,
+    "mean": 8.166666666666666,
     "failures": []
   }],
-  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 8.125}
+  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 8.166666666666666}
 }

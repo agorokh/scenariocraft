@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "source": {"kind": "synthetic", "reference": "Issue #13 on-theme detailed edge case"},
+  "source": {"kind": "synthetic", "reference": "Issue #13 on-theme detailed edge case", "response_origin": "hand-authored-golden"},
   "scores": {
     "theme_fit": {"min": 7, "max": 10},
     "creativity": {"min": 7, "max": 10},

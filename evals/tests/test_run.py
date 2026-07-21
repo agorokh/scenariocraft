@@ -19,7 +19,11 @@ SPEC.loader.exec_module(scenario_evals)
 def expected(higher_than=None):
     return {
         "schema": 1,
-        "source": {"kind": "synthetic", "reference": "unit test"},
+        "source": {
+            "kind": "synthetic",
+            "reference": "unit test",
+            "response_origin": "hand-authored-golden",
+        },
         "scores": {
             criterion: {"min": 1, "max": 10} for criterion in scenario_evals.CRITERIA
         },
@@ -31,7 +35,7 @@ def expected(higher_than=None):
 
 def response(task, score):
     verdicts = []
-    for persona in ("One", "Two"):
+    for persona in ("Professor Brickworth", "Captain Sparkle", "Granny Redstone"):
         verdicts.append(
             {
                 "persona": persona,
@@ -128,6 +132,12 @@ class EvalRunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(scenario_evals.EvalError, "before reasoning"):
             scenario_evals.validate_results(value, "Build a tiny tower", "case")
 
+    def test_recorded_aggregate_must_match_verdict_scores(self):
+        value = response("Build a tiny tower", 5)
+        value["contestants"][0]["mean"] = 9.0
+        with self.assertRaisesRegex(scenario_evals.EvalError, "mean does not match"):
+            scenario_evals.validate_results(value, "Build a tiny tower", "case")
+
     def test_voxel_volume_mismatch_is_rejected(self):
         value = {
             "schema": 1,
@@ -149,10 +159,42 @@ class EvalRunnerTest(unittest.TestCase):
 
     def test_ground_truth_requires_anonymous_age_and_role_only_reviews(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            base = Path(temporary)
+            root = base / "ground-truth"
+            root.mkdir()
+            case_directory = base / "cases" / "family-case"
+            case_directory.mkdir(parents=True)
+            (case_directory / "voxels.json").write_text('{"fixture": true}', encoding="utf-8")
+            (case_directory / "recorded-response.json").write_text(
+                '{"response": true}', encoding="utf-8"
+            )
+            voxel_hash = scenario_evals.file_sha256(case_directory / "voxels.json")
+            response_hash = scenario_evals.file_sha256(
+                case_directory / "recorded-response.json"
+            )
+            source = {
+                "kind": "family-round",
+                "round_id": "round-20260721-123456",
+                "plot_id": "p1",
+                "artifact_commit": "a" * 40,
+                "voxel_sha256": voxel_hash,
+                "response_sha256": response_hash,
+                "response_origin": "live-recording",
+            }
+            spec = scenario_evals.CaseSpec(
+                "family-case",
+                case_directory,
+                "Task",
+                {},
+                {"source": source},
+            )
             valid = {
                 "schema": 1,
                 "case_id": "family-case",
+                "round_id": source["round_id"],
+                "plot_id": source["plot_id"],
+                "voxel_sha256": voxel_hash,
+                "response_sha256": response_hash,
                 "adult_supervised": True,
                 "reviews": [
                     {"age": 7, "role": "judge auditor", "agreement": "agree", "reason": "The scores match the visible detail."},
@@ -161,11 +203,11 @@ class EvalRunnerTest(unittest.TestCase):
             }
             path = root / "family-case.yml"
             path.write_text(json.dumps(valid), encoding="utf-8")
-            scenario_evals.validate_ground_truth(root, {"family-case"})
+            scenario_evals.validate_ground_truth(root, {"family-case": spec})
             valid["reviews"][0]["name"] = "not allowed"
             path.write_text(json.dumps(valid), encoding="utf-8")
             with self.assertRaisesRegex(scenario_evals.EvalError, "exactly these keys"):
-                scenario_evals.validate_ground_truth(root, {"family-case"})
+                scenario_evals.validate_ground_truth(root, {"family-case": spec})
 
 
 if __name__ == "__main__":
