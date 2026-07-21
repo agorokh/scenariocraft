@@ -126,11 +126,25 @@ class ResultAnnouncementServiceTest {
     @Test
     void replayWithoutAResultSendsTheFriendlyMessage() {
         List<String> messages = new ArrayList<>();
+        List<Runnable> asynchronousTasks = new ArrayList<>();
+        List<Runnable> serverTasks = new ArrayList<>();
         BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
         BukkitScheduler scheduler = proxy(
                 BukkitScheduler.class,
-                (ignored, method, arguments) ->
-                        method.getName().equals("runTaskTimer") ? task : null);
+                (ignored, method, arguments) -> {
+                    if (method.getName().equals("runTaskTimer")) {
+                        return task;
+                    }
+                    if (method.getName().equals("runTaskAsynchronously")) {
+                        asynchronousTasks.add((Runnable) arguments[1]);
+                        return task;
+                    }
+                    if (method.getName().equals("runTask")) {
+                        serverTasks.add((Runnable) arguments[1]);
+                        return task;
+                    }
+                    return defaultValue(method.getReturnType());
+                });
         Server server = proxy(
                 Server.class,
                 (ignored, method, arguments) ->
@@ -159,6 +173,10 @@ class ResultAnnouncementServiceTest {
                 20L);
 
         service.replayLatest(sender);
+        assertTrue(messages.isEmpty());
+        asynchronousTasks.removeFirst().run();
+        assertTrue(messages.isEmpty());
+        serverTasks.removeFirst().run();
 
         assertEquals(
                 List.of("No judge results yet — check back after the reveal!"), messages);

@@ -35,6 +35,8 @@ session.
 | 2026-07-20 | Read RCON settings from `SCENARIOCRAFT_RCON_HOST`, `SCENARIOCRAFT_RCON_PORT`, and `SCENARIOCRAFT_RCON_PASSWORD`, falling back to optional `judge.yml` fields. | Deployments can keep credentials out of the repository while retaining a file-based configuration option requested by the issue. |
 | 2026-07-21 | Keep result-file reads for automatic polling on an async scheduler task and return only the announcement to the server thread. | Even bounded filesystem work can stall a tick on slow storage; a single-flight handoff keeps Bukkit calls on the main thread without overlapping reads. |
 | 2026-07-21 | Treat a missing `results-poll-ticks` as the packaged default, while still rejecting an explicitly invalid value. | Existing generated configs do not gain newly added keys during upgrade, so a mandatory lookup would prevent the plugin from enabling. |
+| 2026-07-21 | Read player-requested result replays asynchronously too, and replace machine-oriented no-winner reasons with a fixed warm message. | Players may issue the replay command repeatedly against shared storage, and operational quorum diagnostics are not appropriate judge feedback for children. |
+| 2026-07-21 | Skip `judge.yml` entirely when the environment supplies the complete RCON trio. | Environment overrides must remain usable when an optional local configuration file is stale, malformed, or inaccessible. |
 
 ## Surprises & Discoveries
 
@@ -61,11 +63,16 @@ session.
   reports malformed input with its own runtime exception type. Regression tests now pin the
   backward-compatible default, console/RCON-only command path, and best-effort malformed-YAML
   behavior.
+- The replacement-head review found two more cross-boundary cases: player-triggered replay reads
+  need the same async handoff as polling, and a complete environment override must not parse an
+  irrelevant stale `judge.yml`. It also caught that machine-oriented quorum diagnostics could
+  reach children; the formatter now keeps those details on disk and displays a warm neutral
+  no-winner message in game.
 
 ## Acceptance evidence
 
-- `make ci-fast` passed on Java 21 with 136 plugin tests, 77 judge tests, and 14 renderer tests
-  (227 total), zero failures after the current-head review fixes.
+- `make ci-fast` passed on Java 21 with 137 plugin tests, 78 judge tests, and 14 renderer tests
+  (229 total), zero failures after the replacement-head review fixes.
 - `BattleResultsReaderTest`, `ResultAnnouncementFormatterTest`, and
   `ResultAnnouncementServiceTest` cover the friendly no-results path, strict bounded text
   parsing, raw-JSON rejection/cleaning, 120-code-point chat lines, 64-code-point titles,

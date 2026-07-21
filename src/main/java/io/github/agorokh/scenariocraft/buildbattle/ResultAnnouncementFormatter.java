@@ -7,6 +7,8 @@ import java.util.List;
 final class ResultAnnouncementFormatter {
     static final int MAX_CHAT_CODE_POINTS = 120;
     static final int MAX_TITLE_CODE_POINTS = 64;
+    private static final String NO_WINNER_MESSAGE =
+            "No winner yet — every build showed imagination. The judges will take another look.";
 
     private ResultAnnouncementFormatter() {}
 
@@ -32,7 +34,7 @@ final class ResultAnnouncementFormatter {
             chat.add(title);
         } else {
             title = "Build Battle results";
-            chat.add(limit(clean(result.noWinnerReason()), MAX_CHAT_CODE_POINTS));
+            chat.add(NO_WINNER_MESSAGE);
         }
         return new Announcement(title, List.copyOf(chat));
     }

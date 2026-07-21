@@ -41,7 +41,9 @@ record RconConfig(String host, int port, String password, Duration timeout) {
 
     static Optional<RconConfig> load(Path configPath, Map<String, String> environment)
             throws IOException {
-        Map<String, Object> file = loadFile(configPath);
+        Map<String, Object> file = hasCompleteEnvironment(environment)
+                ? Map.of()
+                : loadFile(configPath);
         String host = configuredString(environment, "SCENARIOCRAFT_RCON_HOST", file.get("host"));
         String password = configuredString(
                 environment, "SCENARIOCRAFT_RCON_PASSWORD", file.get("password"));
@@ -66,6 +68,12 @@ record RconConfig(String host, int port, String password, Duration timeout) {
         }
         return Optional.of(new RconConfig(
                 host, port, password, Duration.ofSeconds(timeoutSeconds)));
+    }
+
+    private static boolean hasCompleteEnvironment(Map<String, String> environment) {
+        return environment.containsKey("SCENARIOCRAFT_RCON_HOST")
+                && environment.containsKey("SCENARIOCRAFT_RCON_PORT")
+                && environment.containsKey("SCENARIOCRAFT_RCON_PASSWORD");
     }
 
     private static Map<String, Object> loadFile(Path path) throws IOException {

@@ -72,19 +72,49 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
     @Override
     public void replayLatest(CommandSender sender) {
         Objects.requireNonNull(sender, "sender");
+        if (closed.get()) {
+            return;
+        }
         try {
-            Optional<BattleResultsReader.LatestResult> latest = reader.latest();
-            if (latest.isEmpty()) {
-                sender.sendMessage(NO_RESULTS_MESSAGE);
-                return;
-            }
-            ResultAnnouncementFormatter.Announcement announcement =
-                    ResultAnnouncementFormatter.format(latest.get().summary());
-            announcement.chatLines().forEach(sender::sendMessage);
-        } catch (IOException | IllegalArgumentException failure) {
+            server.getScheduler()
+                    .runTaskAsynchronously(plugin, () -> readLatestForReplay(sender));
+        } catch (RuntimeException failure) {
             logReadFailure(failure);
             sender.sendMessage(READ_FAILURE_MESSAGE);
         }
+    }
+
+    private void readLatestForReplay(CommandSender sender) {
+        ReadResult result;
+        try {
+            result = new ReadResult(reader.latest(), null);
+        } catch (IOException | IllegalArgumentException failure) {
+            result = new ReadResult(Optional.empty(), failure);
+        }
+        ReadResult completed = result;
+        try {
+            server.getScheduler().runTask(plugin, () -> completeReplay(sender, completed));
+        } catch (RuntimeException failure) {
+            logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
+        }
+    }
+
+    private void completeReplay(CommandSender sender, ReadResult result) {
+        if (closed.get()) {
+            return;
+        }
+        if (result.failure() != null) {
+            logReadFailure(result.failure());
+            sender.sendMessage(READ_FAILURE_MESSAGE);
+            return;
+        }
+        if (result.latest().isEmpty()) {
+            sender.sendMessage(NO_RESULTS_MESSAGE);
+            return;
+        }
+        ResultAnnouncementFormatter.Announcement announcement =
+                ResultAnnouncementFormatter.format(result.latest().get().summary());
+        announcement.chatLines().forEach(sender::sendMessage);
     }
 
     @Override
@@ -127,13 +157,13 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
     }
 
     private void readLatestForPoll() {
-        PollRead result;
+        ReadResult result;
         try {
-            result = new PollRead(reader.latestRound(), null);
+            result = new ReadResult(reader.latestRound(), null);
         } catch (IOException | IllegalArgumentException failure) {
-            result = new PollRead(Optional.empty(), failure);
+            result = new ReadResult(Optional.empty(), failure);
         }
-        PollRead completed = result;
+        ReadResult completed = result;
         try {
             server.getScheduler().runTask(plugin, () -> completePoll(completed));
         } catch (RuntimeException failure) {
@@ -142,7 +172,7 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         }
     }
 
-    private void completePoll(PollRead result) {
+    private void completePoll(ReadResult result) {
         pollInFlight.set(false);
         if (closed.get() || round.phase() != RoundPhase.REVEAL) {
             return;
@@ -209,6 +239,6 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         pollTask.cancel();
     }
 
-    private record PollRead(
+    private record ReadResult(
             Optional<BattleResultsReader.LatestResult> latest, Exception failure) {}
 }

@@ -80,4 +80,23 @@ class RconConfigTest {
                 IllegalArgumentException.class,
                 () -> RconConfig.load(config, Map.of()));
     }
+
+    @Test
+    void completeEnvironmentConfigurationDoesNotDependOnJudgeYaml() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(config, "rcon: [stale and malformed");
+
+        RconConfig loaded = RconConfig.load(
+                        config,
+                        Map.of(
+                                "SCENARIOCRAFT_RCON_HOST", "127.0.0.1",
+                                "SCENARIOCRAFT_RCON_PORT", "25585",
+                                "SCENARIOCRAFT_RCON_PASSWORD", "env-secret"))
+                .orElseThrow();
+
+        assertEquals("127.0.0.1", loaded.host());
+        assertEquals(25585, loaded.port());
+        assertEquals("env-secret", loaded.password());
+        assertEquals(Duration.ofSeconds(5), loaded.timeout());
+    }
 }
