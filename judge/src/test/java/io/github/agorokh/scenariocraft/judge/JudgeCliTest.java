@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -75,5 +76,29 @@ class JudgeCliTest {
                 JudgeCli.configDirectory(Map.of(
                         "SCENARIOCRAFT_JUDGE_CONFIG_DIR",
                         "/opt/scenariocraft/judge-content")));
+    }
+
+    @Test
+    void parsesConfiguredConnectTimeout() {
+        assertEquals(
+                Duration.ofSeconds(17),
+                JudgeCli.configuredDuration(
+                        Map.of("SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS", "17"),
+                        "SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS",
+                        10));
+    }
+
+    @Test
+    void missingContentFilesFailWithOverrideGuidance() {
+        StringWriter diagnostics = new StringWriter();
+
+        int status = JudgeCli.run(
+                new String[] {"--round", "somewhere", "--dry-run"},
+                Map.of("SCENARIOCRAFT_JUDGE_CONFIG_DIR", "/definitely/missing"),
+                new PrintWriter(new StringWriter()),
+                new PrintWriter(diagnostics));
+
+        assertEquals(2, status);
+        assertTrue(diagnostics.toString().contains("set SCENARIOCRAFT_JUDGE_CONFIG_DIR"));
     }
 }

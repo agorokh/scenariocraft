@@ -18,17 +18,34 @@ class JudgeVerdictTest {
     }
 
     @Test
-    void rejectsCruelOrStrengthFreeModelComments() {
+    void rejectsCruelOrImprovementFirstModelComments() {
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof is ugly and boring. Add more blocks next."));
         assertThrows(IllegalArgumentException.class, () -> verdict(
-                "The build has a roof. Add more blocks next."));
+                "Try adding more windows. Keep working on the roof next."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "Your clear walls make a recognizable outline. "
+                        + "This is disgusting and nobody will like it."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "Your doorway creates a focal point despite having no talent. "
+                        + "Try adding trim next."));
+    }
+
+    @Test
+    void acceptsConcreteStrengthWithoutRequiringAKeywordList() {
+        assertDoesNotThrow(() -> verdict(
+                "The spiral roof draws the eye toward the doorway. "
+                        + "Consider adding trim around the windows next."));
     }
 
     @Test
     void rejectsMultilineComments() {
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof has a strong shape.\nAdd more blocks next."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "Your roof has a strong shape.\u2028Add more blocks next."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "Your roof has a strong shape. Add more \u202eblocks next."));
     }
 
     private JudgeVerdict verdict(String comment) {

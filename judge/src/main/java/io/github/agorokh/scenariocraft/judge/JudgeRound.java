@@ -16,6 +16,11 @@ import java.util.List;
 import java.util.Set;
 
 record JudgeRound(int schema, String roundId, String task, String world, List<Plot> plots) {
+    private static final Set<String> ROOT_KEYS =
+            Set.of("schema", "round_id", "task", "world", "plots");
+    private static final Set<String> PLOT_KEYS =
+            Set.of("plot_id", "player", "origin", "size");
+
     JudgeRound {
         plots = List.copyOf(plots);
         if (schema != 1) {
@@ -47,6 +52,10 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
                 throw new IllegalArgumentException("manifest.json must contain an object");
             }
             JsonObject object = root.getAsJsonObject();
+            if (!object.keySet().equals(ROOT_KEYS)) {
+                throw new IllegalArgumentException(
+                        "manifest.json has missing or unexpected fields");
+            }
             int schema = requireInteger(object, "schema");
             String roundId = requireString(object, "round_id");
             String task = requireString(object, "task");
@@ -58,9 +67,15 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
                     throw new IllegalArgumentException("manifest plots must contain objects");
                 }
                 JsonObject plot = value.getAsJsonObject();
+                if (!plot.keySet().equals(PLOT_KEYS)) {
+                    throw new IllegalArgumentException(
+                            "manifest plot has missing or unexpected fields");
+                }
                 plots.add(new Plot(
                         requireString(plot, "plot_id"),
-                        requireString(plot, "player")));
+                        requireString(plot, "player"),
+                        requireIntegerArray(plot, "origin"),
+                        requireIntegerArray(plot, "size")));
             }
             return new JudgeRound(schema, roundId, task, world, plots);
         } catch (JsonParseException exception) {
@@ -103,6 +118,31 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
         return value.getAsJsonArray();
     }
 
+    private static List<Integer> requireIntegerArray(JsonObject object, String name) {
+        JsonArray values = requireArray(object, name);
+        if (values.size() != 3) {
+            throw new IllegalArgumentException(name + " must contain exactly three integers");
+        }
+        List<Integer> result = new ArrayList<>(3);
+        for (JsonElement value : values) {
+            if (!value.isJsonPrimitive()) {
+                throw new IllegalArgumentException(name + " must contain JSON integers");
+            }
+            JsonPrimitive primitive = value.getAsJsonPrimitive();
+            String token = primitive.getAsString();
+            if (!primitive.isNumber() || !token.matches("-?(0|[1-9][0-9]*)")) {
+                throw new IllegalArgumentException(name + " must contain JSON integers");
+            }
+            try {
+                result.add(Integer.parseInt(token));
+            } catch (NumberFormatException exception) {
+                throw new IllegalArgumentException(
+                        name + " values must fit in a 32-bit integer", exception);
+            }
+        }
+        return List.copyOf(result);
+    }
+
     private static void requireSafeText(String value, String name) {
         if (value.codePoints().anyMatch(JudgeRound::isUnsafeTextCodePoint)) {
             throw new IllegalArgumentException(name + " contains unsafe control characters");
@@ -117,15 +157,21 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
                 || type == Character.PARAGRAPH_SEPARATOR;
     }
 
-    record Plot(String plotId, String player) {
+    record Plot(String plotId, String player, List<Integer> origin, List<Integer> size) {
         Plot {
-            if (plotId == null || !plotId.matches("[A-Za-z0-9][A-Za-z0-9_-]*")) {
+            if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
                 throw new IllegalArgumentException("plot_id has an unsafe format");
             }
             if (player == null || player.isBlank()) {
                 throw new IllegalArgumentException("player must be non-blank");
             }
             requireSafeText(player, "player");
+            origin = List.copyOf(origin);
+            size = List.copyOf(size);
+            if (origin.size() != 3 || size.size() != 3) {
+                throw new IllegalArgumentException(
+                        "manifest plot origin and size must contain three integers");
+            }
         }
     }
 }

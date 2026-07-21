@@ -22,7 +22,7 @@ final class JudgeApplication {
             }
             JudgeRound round = JudgeRound.read(roundDirectory.resolve("manifest.json"));
             JudgeConfig config = JudgeConfig.load(personasPath, rubricPath);
-            Map<String, List<Path>> images = new LinkedHashMap<>();
+            Map<String, List<JudgeImage>> images = new LinkedHashMap<>();
             for (JudgeRound.Plot plot : round.plots()) {
                 images.put(plot.plotId(), RoundImages.prepare(roundDirectory, plot.plotId()));
             }

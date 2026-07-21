@@ -24,10 +24,10 @@ class RoundImagesTest {
                 temporaryDirectory.resolve("p1.voxels.json"),
                 StandardCopyOption.REPLACE_EXISTING);
 
-        List<Path> images = RoundImages.prepare(temporaryDirectory, "p1");
+        List<JudgeImage> images = RoundImages.prepare(temporaryDirectory, "p1");
 
         assertEquals(7, images.size());
-        assertTrue(images.stream().allMatch(Files::isRegularFile));
+        assertTrue(images.stream().allMatch(image -> image.bytes().length > 24));
     }
 
     @Test
@@ -59,11 +59,43 @@ class RoundImagesTest {
         Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
         Path target = Files.write(temporaryDirectory.resolve("outside.png"), new byte[] {1});
         Files.createLink(output.resolve("iso-ne.png"), target);
+        for (String name : RoundImages.NAMES) {
+            if (!"iso-ne.png".equals(name)) {
+                Files.write(output.resolve(name), new byte[] {1});
+            }
+        }
 
         IOException exception = assertThrows(
                 IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
 
-        assertTrue(exception.getMessage().contains("Hard-linked judge images are not allowed"));
+        assertTrue(exception.getMessage().contains("Hard-linked judge inputs are not allowed"));
+    }
+
+    @Test
+    void rejectsHardLinkedVoxelFallbackSources() throws Exception {
+        Path external = Files.copy(
+                workedExample(),
+                temporaryDirectory.resolve("external.voxels.json"),
+                StandardCopyOption.REPLACE_EXISTING);
+        Files.createLink(temporaryDirectory.resolve("p1.voxels.json"), external);
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+
+        assertTrue(exception.getMessage().contains("Hard-linked judge inputs are not allowed"));
+    }
+
+    @Test
+    void dryRunPreparationRejectsCorruptPngSets() throws Exception {
+        Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
+        for (String name : RoundImages.NAMES) {
+            Files.write(output.resolve(name), new byte[] {1, 2, 3});
+        }
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+
+        assertTrue(exception.getMessage().contains("not a valid PNG"));
     }
 
     private Path workedExample() {

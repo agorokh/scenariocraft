@@ -15,7 +15,10 @@ judge/build/install/judge/bin/judge --round <round-directory> --dry-run
 For a live round, omit `--dry-run` and set `OPENAI_API_KEY` in the process environment. The
 key is never accepted as an argument or written to output. Live calls default to a 90-second
 per-attempt timeout; set `SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS` to a positive integer to
-override it.
+override it. HTTP connections default to 10 seconds; set
+`SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS` to override that timeout separately.
+Every live kid-facing comment must also pass OpenAI moderation before it can enter a result.
+A moderation error or flagged comment fails closed and uses the persona's single retry.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

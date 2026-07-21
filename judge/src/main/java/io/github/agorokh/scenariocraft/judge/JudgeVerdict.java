@@ -8,13 +8,20 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
     private static final Pattern SENTENCE_END = Pattern.compile("[.!?]+(?=\\s+|$)");
     private static final Pattern INITIALISM = Pattern.compile("(?:[A-Za-z]\\.){2,}");
     private static final Pattern CRUEL_LANGUAGE = Pattern.compile(
-            "\\b(?:awful|bad|boring|dumb|garbage|hate|idiot|lazy|loser|pathetic|"
-                    + "stupid|sucks?|terrible|trash|ugly|useless|worst)\\b",
+            "\\b(?:awful|bad|boring|disgusting|dumb|embarrassing|failure|garbage|gross|"
+                    + "hate|horrible|idiot|incompetent|lazy|loser|nobody|pathetic|pointless|"
+                    + "shame|stupid|sucks?|talentless|terrible|trash|ugly|useless|"
+                    + "worthless|worst)\\b|\\b(?:can't|cannot|don't|doesn't|isn't|lack|"
+                    + "lacks|never|no|not|nothing|without|won't)\\b",
             Pattern.CASE_INSENSITIVE);
-    private static final Pattern STRENGTH_LANGUAGE = Pattern.compile(
-            "\\b(?:beautiful|bold|bright|charming|clear|clever|colorful|colourful|"
-                    + "cozy|creative|delightful|detailed|good|great|impressive|inviting|"
-                    + "lovely|neat|nice|solid|strong|sturdy|tidy|warm|welcoming|works)\\b",
+    private static final Pattern IMPROVEMENT_START = Pattern.compile(
+            "^(?:add|build|consider|experiment|focus|for the next round|give|keep|make|"
+                    + "next|place|try|tuck|use|you can|you could)\\b",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONSTRUCTIVE_START = Pattern.compile(
+            "^(?:add|build|consider|experiment|focus|for the next round|give|keep|make|"
+                    + "next|one next step|place|to make|try|tuck|use|you can|you could|"
+                    + "your next step|.{1,60}\\btip is to)\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Set<String> ABBREVIATIONS = Set.of(
             "dr.", "e.g.", "etc.", "i.e.", "mr.", "mrs.", "ms.", "prof.", "vs.");
@@ -62,14 +69,22 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
         if (CRUEL_LANGUAGE.matcher(normalized).find()) {
             throw new IllegalArgumentException("comment must use kid-appropriate language");
         }
-        if (!STRENGTH_LANGUAGE.matcher(normalized.substring(0, firstSentenceEnd)).find()) {
+        String firstSentence = normalized.substring(0, firstSentenceEnd).strip();
+        String secondSentence = normalized.substring(firstSentenceEnd).strip();
+        if (IMPROVEMENT_START.matcher(firstSentence).find()) {
             throw new IllegalArgumentException("comment must name a genuine strength first");
+        }
+        if (!CONSTRUCTIVE_START.matcher(secondSentence).find()) {
+            throw new IllegalArgumentException("comment must end with constructive guidance");
         }
     }
 
     private static boolean isUnsafeControl(int codePoint) {
-        return codePoint == '\n' || codePoint == '\r'
-                || (Character.isISOControl(codePoint) && codePoint != '\t');
+        int type = Character.getType(codePoint);
+        return Character.isISOControl(codePoint)
+                || type == Character.FORMAT
+                || type == Character.LINE_SEPARATOR
+                || type == Character.PARAGRAPH_SEPARATOR;
     }
 
     private static boolean isAbbreviation(String text, int punctuationStart, int punctuationEnd) {

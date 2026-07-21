@@ -38,6 +38,9 @@ session.
 | 2026-07-21 | Make the persona/rubric directory configurable with `SCENARIOCRAFT_JUDGE_CONFIG_DIR`, while preserving `judge/` as the repository-root default. | Operators can launch the installed CLI outside the repository root without weakening the frozen filenames or duplicating BB-10 content. |
 | 2026-07-21 | Reject terminal-control and Unicode-format characters in manifest display fields, and cap uploaded PNGs at 10 MiB and 4096 pixels per dimension after validating their headers. | Manifest text is printed to a terminal and image bytes are fully encoded for every judge attempt; explicit bounds prevent terminal injection and unbounded heap use. |
 | 2026-07-21 | Require equal successful-verdict counts before ranking, reject multi-link image inodes, and run the CI fixture from `RUNNER_TEMP` with the production content directory explicit. | A quorum floor alone does not make unequal means comparable; hard links bypass symlink-only provenance checks; fixture smoke output must not dirty the checkout. |
+| 2026-07-21 | Snapshot each validated PNG into immutable judge memory before either dry-run or live judging, compare successful persona identities rather than only counts, and validate every schema-v1 manifest field. | A stable byte snapshot closes the path-validation/upload race and gives dry-run the same PNG gate; equal-sized but different panels are still incomparable; partial manifests must never reach winner publication. |
+| 2026-07-21 | Replace the brittle positive-word requirement with structural two-sentence guidance plus strict hostile/negative-language rejection, classify retryable HTTP statuses, and configure connect timeout separately. | Concrete praise has unbounded valid wording, while kid safety still needs a conservative fail-closed shape; deterministic 4xx responses should not be retried; every operational timeout must be configurable. |
+| 2026-07-21 | Require every live comment to pass `omni-moderation-latest` after local structural validation and before publication. | The issue still permits exactly one GPT-5.6 vision request per persona, while the official moderation endpoint provides a semantic, fail-closed safety boundary that a finite word list cannot. |
 
 ## Surprises & Discoveries
 
@@ -63,6 +66,13 @@ session.
   alias: resolving the round root but not the image's parent made safe renderer output appear
   outside the round. Canonicalizing both paths fixed the false rejection while retaining the
   inode link-count gate.
+- The cycle-1 configured review landed just after the checkpoint and exposed that equal verdict
+  counts can still hide different persona panels, dry-run had not opened PNG bytes, and image
+  validation and upload were separated by a path re-open. The repair now snapshots validated
+  bytes once and passes those snapshots through the council.
+- The first snapshot-era hard-link test accidentally built only one of seven PNG paths, so the
+  intended fallback path correctly ignored that unused hard link and reported a missing voxel
+  source. Completing the seven-file set made the test exercise the actual upload-input gate.
 
 ## Acceptance evidence
 
@@ -102,6 +112,13 @@ session.
 - The production-content, temp-copy workflow-equivalent dry run passed with three fixture
   verdicts per contestant, `7.92` / `5.92` means, and Alex as winner; `make ci-fast` remained
   green after equal-council, hard-link, and CI workspace-isolation repairs.
+- The snapshot/full-manifest repair also passed `make ci-fast` and the same production-content
+  smoke. Focused coverage now includes different-persona equal-sized panels, corrupt dry-run
+  PNGs, hard-linked voxel sources, stable image snapshots, Unicode model controls, configurable
+  connect timeout, HTTP retry classification, and missing-config guidance.
+- Official OpenAI API documentation confirmed that `POST /v1/moderations` accepts text with
+  `omni-moderation-latest` and returns a boolean `results[].flagged` decision. Malformed,
+  failed, or flagged moderation now consumes the same bounded persona retry as other errors.
 
 ## Retrospective
 

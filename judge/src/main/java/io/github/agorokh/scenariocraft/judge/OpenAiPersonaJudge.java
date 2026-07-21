@@ -12,10 +12,6 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -24,10 +20,11 @@ import java.util.regex.Pattern;
 
 final class OpenAiPersonaJudge implements PersonaJudge {
     static final String MODEL = "gpt-5.6";
-    static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
-    static final int MAX_IMAGE_DIMENSION = 4096;
     private static final URI RESPONSES_ENDPOINT =
             URI.create("https://api.openai.com/v1/responses");
+    private static final URI MODERATIONS_ENDPOINT =
+            URI.create("https://api.openai.com/v1/moderations");
+    private static final String MODERATION_MODEL = "omni-moderation-latest";
     private static final Gson JSON = new Gson();
     private static final Set<String> VERDICT_KEYS =
             Set.of("persona", "reasoning", "scores", "comment");
@@ -38,18 +35,31 @@ final class OpenAiPersonaJudge implements PersonaJudge {
 
     private final HttpClient client;
     private final URI endpoint;
+    private final URI moderationEndpoint;
     private final String apiKey;
     private final Duration requestTimeout;
 
-    OpenAiPersonaJudge(String apiKey, Duration requestTimeout) {
-        this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(),
-                RESPONSES_ENDPOINT, apiKey, requestTimeout);
+    OpenAiPersonaJudge(String apiKey, Duration connectTimeout, Duration requestTimeout) {
+        this(newHttpClient(connectTimeout),
+                RESPONSES_ENDPOINT, MODERATIONS_ENDPOINT, apiKey, requestTimeout);
+    }
+
+    private static HttpClient newHttpClient(Duration connectTimeout) {
+        if (connectTimeout == null || connectTimeout.isZero() || connectTimeout.isNegative()) {
+            throw new IllegalArgumentException("OpenAI connect timeout must be positive");
+        }
+        return HttpClient.newBuilder().connectTimeout(connectTimeout).build();
     }
 
     OpenAiPersonaJudge(
-            HttpClient client, URI endpoint, String apiKey, Duration requestTimeout) {
+            HttpClient client,
+            URI endpoint,
+            URI moderationEndpoint,
+            String apiKey,
+            Duration requestTimeout) {
         this.client = client;
         this.endpoint = endpoint;
+        this.moderationEndpoint = moderationEndpoint;
         this.apiKey = apiKey;
         this.requestTimeout = requestTimeout;
         if (apiKey == null || apiKey.isBlank()) {
@@ -62,26 +72,13 @@ final class OpenAiPersonaJudge implements PersonaJudge {
 
     @Override
     public JudgeVerdict judge(
-            Persona persona, String task, String rubric, String plotId, List<Path> images)
+            Persona persona, String task, String rubric, String plotId, List<JudgeImage> images)
             throws JudgeException {
         try {
             String body = requestBody(persona, task, rubric, plotId, images);
-            HttpRequest request = HttpRequest.newBuilder(endpoint)
-                    .timeout(requestTimeout)
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body))
-                    .build();
-            HttpResponse<String> response =
-                    client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new JudgeException(httpErrorMessage(
-                        response.statusCode(),
-                        response.body(),
-                        response.headers().firstValue("x-request-id").orElse(null),
-                        apiKey));
-            }
-            return parseResponse(response.body(), persona.name());
+            JudgeVerdict verdict = parseResponse(send(endpoint, body), persona.name());
+            requireSafeComment(verdict.comment());
+            return verdict;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new JudgeException("OpenAI request was interrupted", exception, false);
@@ -90,9 +87,68 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         }
     }
 
+    private String send(URI requestEndpoint, String body)
+            throws IOException, InterruptedException, JudgeException {
+        HttpRequest request = HttpRequest.newBuilder(requestEndpoint)
+                .timeout(requestTimeout)
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String message = httpErrorMessage(
+                    response.statusCode(), response.body(),
+                    response.headers().firstValue("x-request-id").orElse(null), apiKey);
+            throw new JudgeException(
+                    message, null, isRetryableHttpStatus(response.statusCode()));
+        }
+        return response.body();
+    }
+
+    private void requireSafeComment(String comment)
+            throws IOException, InterruptedException, JudgeException {
+        String responseBody = send(moderationEndpoint, moderationRequestBody(comment));
+        if (parseModerationFlag(responseBody)) {
+            throw new JudgeException("OpenAI moderation rejected the judge comment");
+        }
+    }
+
+    static String moderationRequestBody(String comment) {
+        JsonObject request = new JsonObject();
+        request.addProperty("model", MODERATION_MODEL);
+        request.addProperty("input", comment);
+        return JSON.toJson(request);
+    }
+
+    static boolean parseModerationFlag(String responseBody) throws JudgeException {
+        try {
+            JsonElement parsed = JsonParser.parseString(responseBody);
+            if (!parsed.isJsonObject()) {
+                throw new IllegalArgumentException("moderation response must be an object");
+            }
+            JsonElement resultsValue = parsed.getAsJsonObject().get("results");
+            if (resultsValue == null || !resultsValue.isJsonArray()
+                    || resultsValue.getAsJsonArray().size() != 1) {
+                throw new IllegalArgumentException("moderation response must contain one result");
+            }
+            JsonElement resultValue = resultsValue.getAsJsonArray().get(0);
+            if (!resultValue.isJsonObject()) {
+                throw new IllegalArgumentException("moderation result must be an object");
+            }
+            JsonElement flaggedValue = resultValue.getAsJsonObject().get("flagged");
+            if (flaggedValue == null || !flaggedValue.isJsonPrimitive()
+                    || !flaggedValue.getAsJsonPrimitive().isBoolean()) {
+                throw new IllegalArgumentException("moderation result must contain flagged");
+            }
+            return flaggedValue.getAsBoolean();
+        } catch (JsonParseException | IllegalArgumentException exception) {
+            throw new JudgeException("OpenAI returned a malformed moderation result", exception);
+        }
+    }
+
     static String requestBody(
-            Persona persona, String task, String rubric, String plotId, List<Path> images)
-            throws IOException {
+            Persona persona, String task, String rubric, String plotId, List<JudgeImage> images) {
         if (images.size() != 7) {
             throw new IllegalArgumentException("exactly seven images are required");
         }
@@ -122,8 +178,8 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 + "\n\nPersona name data:\n" + persona.name()
                 + "\n\nPersona voice data:\n" + persona.voice()));
         Base64.Encoder encoder = Base64.getEncoder();
-        for (Path image : images) {
-            byte[] bytes = readImage(image);
+        for (JudgeImage image : images) {
+            byte[] bytes = image.bytes();
             JsonObject imageInput = new JsonObject();
             imageInput.addProperty("type", "input_image");
             imageInput.addProperty(
@@ -147,39 +203,6 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         text.add("format", format);
         request.add("text", text);
         return JSON.toJson(request);
-    }
-
-    private static byte[] readImage(Path image) throws IOException {
-        long size = Files.size(image);
-        if (size <= 0 || size > MAX_IMAGE_BYTES) {
-            throw new IOException("Judge image size is outside the allowed range: "
-                    + image.getFileName());
-        }
-        byte[] bytes;
-        try (var input = Files.newInputStream(image, LinkOption.NOFOLLOW_LINKS)) {
-            bytes = input.readNBytes((int) MAX_IMAGE_BYTES + 1);
-        }
-        if (bytes.length > MAX_IMAGE_BYTES) {
-            throw new IOException("Judge image exceeds the byte limit: " + image.getFileName());
-        }
-        if (bytes.length < 24
-                || (bytes[0] & 0xff) != 0x89
-                || bytes[1] != 'P' || bytes[2] != 'N' || bytes[3] != 'G'
-                || bytes[4] != 0x0d || bytes[5] != 0x0a
-                || bytes[6] != 0x1a || bytes[7] != 0x0a
-                || bytes[12] != 'I' || bytes[13] != 'H'
-                || bytes[14] != 'D' || bytes[15] != 'R') {
-            throw new IOException("Judge image is not a valid PNG: " + image.getFileName());
-        }
-        ByteBuffer dimensions = ByteBuffer.wrap(bytes, 16, 8);
-        int width = dimensions.getInt();
-        int height = dimensions.getInt();
-        if (width <= 0 || height <= 0
-                || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
-            throw new IOException("Judge image dimensions are outside the allowed range: "
-                    + image.getFileName());
-        }
-        return bytes;
     }
 
     static JudgeVerdict parseResponse(String responseBody, String expectedPersona)
@@ -276,6 +299,10 @@ final class OpenAiPersonaJudge implements PersonaJudge {
             message.append(" (request ").append(requestId).append(')');
         }
         return message.toString();
+    }
+
+    static boolean isRetryableHttpStatus(int status) {
+        return status == 408 || status == 429 || (status >= 500 && status <= 599);
     }
 
     private static String extractApiErrorMessage(String responseBody) {

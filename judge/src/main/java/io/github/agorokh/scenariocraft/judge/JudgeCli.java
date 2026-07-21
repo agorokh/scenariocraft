@@ -42,19 +42,15 @@ public final class JudgeCli {
                         "OPENAI_API_KEY is required for a live run; use --dry-run for offline judging.");
                 return 2;
             }
-            String timeoutText = environment.getOrDefault(
-                    "SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS", "90");
-            if (!timeoutText.matches("[1-9][0-9]*")) {
-                diagnostics.println(
-                        "SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS must be a positive integer.");
-                return 2;
-            }
             try {
                 judge = new OpenAiPersonaJudge(
-                        apiKey, Duration.ofSeconds(Integer.parseInt(timeoutText)));
-            } catch (NumberFormatException exception) {
-                diagnostics.println(
-                        "SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS is too large.");
+                        apiKey,
+                        configuredDuration(
+                                environment, "SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS", 10),
+                        configuredDuration(
+                                environment, "SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS", 90));
+            } catch (IllegalArgumentException exception) {
+                diagnostics.println(exception.getMessage());
                 return 2;
             }
         }
@@ -65,10 +61,19 @@ public final class JudgeCli {
             diagnostics.println("SCENARIOCRAFT_JUDGE_CONFIG_DIR must be a valid non-blank path.");
             return 2;
         }
+        Path personasPath = configDirectory.resolve("personas.yml");
+        Path rubricPath = configDirectory.resolve("rubric.md");
+        if (!java.nio.file.Files.isRegularFile(personasPath)
+                || !java.nio.file.Files.isRegularFile(rubricPath)) {
+            diagnostics.println("Judge config files were not found under "
+                    + configDirectory.toAbsolutePath().normalize()
+                    + "; set SCENARIOCRAFT_JUDGE_CONFIG_DIR to their directory.");
+            return 2;
+        }
         return new JudgeApplication().run(
                 Path.of(arguments[1]),
-                configDirectory.resolve("personas.yml"),
-                configDirectory.resolve("rubric.md"),
+                personasPath,
+                rubricPath,
                 judge,
                 output,
                 diagnostics);
@@ -80,5 +85,18 @@ public final class JudgeCli {
             throw new IllegalArgumentException("config directory must be non-blank");
         }
         return Path.of(value);
+    }
+
+    static Duration configuredDuration(
+            Map<String, String> environment, String name, int defaultSeconds) {
+        String value = environment.getOrDefault(name, Integer.toString(defaultSeconds));
+        if (!value.matches("[1-9][0-9]*")) {
+            throw new IllegalArgumentException(name + " must be a positive integer.");
+        }
+        try {
+            return Duration.ofSeconds(Integer.parseInt(value));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException(name + " is too large.", exception);
+        }
     }
 }

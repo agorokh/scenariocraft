@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 final class RoundImages {
@@ -16,7 +17,7 @@ final class RoundImages {
 
     private RoundImages() {}
 
-    static List<Path> prepare(Path roundDirectory, String plotId) throws IOException {
+    static List<JudgeImage> prepare(Path roundDirectory, String plotId) throws IOException {
         Path roundRoot = roundDirectory.toRealPath();
         Path outputRoot = roundDirectory.resolve("out");
         Path outputDirectory = outputRoot.resolve(plotId);
@@ -24,23 +25,28 @@ final class RoundImages {
         rejectSymbolicLink(outputDirectory);
         List<Path> images = imagePaths(outputDirectory);
         rejectSymbolicLinks(images);
-        if (!isCompleteSafeImageSet(roundRoot, images)) {
-            Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
-            if (!Files.isRegularFile(voxelFile, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("Missing seven PNGs and voxel source for " + plotId);
-            }
-            VoxelPlot voxelPlot = VoxelPlot.read(voxelFile);
-            if (!plotId.equals(voxelPlot.plotId())) {
-                throw new IOException("Voxel plot_id does not match manifest plot " + plotId);
-            }
-            new VoxelRenderer().render(voxelPlot, outputDirectory);
-            images = imagePaths(outputDirectory);
-            rejectSymbolicLinks(images);
+        if (allRegularFiles(images)) {
+            return snapshotImages(roundRoot, images);
         }
-        if (!isCompleteSafeImageSet(roundRoot, images)) {
-            throw new IOException("Renderer did not produce seven PNGs for " + plotId);
+
+        Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
+        validateVoxelSource(roundRoot, voxelFile, plotId);
+        VoxelPlot voxelPlot = VoxelPlot.read(voxelFile);
+        if (!plotId.equals(voxelPlot.plotId())) {
+            throw new IOException("Voxel plot_id does not match manifest plot " + plotId);
         }
-        return List.copyOf(images);
+
+        Path temporaryOutput = Files.createTempDirectory("scenariocraft-judge-render-");
+        try {
+            new VoxelRenderer().render(voxelPlot, temporaryOutput);
+            List<Path> rendered = imagePaths(temporaryOutput);
+            if (!allRegularFiles(rendered)) {
+                throw new IOException("Renderer did not produce seven PNGs for " + plotId);
+            }
+            return snapshotImages(temporaryOutput.toRealPath(), rendered);
+        } finally {
+            deleteTree(temporaryOutput);
+        }
     }
 
     private static List<Path> imagePaths(Path outputDirectory) {
@@ -51,29 +57,29 @@ final class RoundImages {
         return images;
     }
 
-    private static boolean isCompleteSafeImageSet(Path roundRoot, List<Path> images)
+    private static List<JudgeImage> snapshotImages(Path allowedRoot, List<Path> images)
             throws IOException {
+        List<JudgeImage> snapshots = new ArrayList<>(images.size());
         for (Path image : images) {
-            if (!Files.isRegularFile(image, LinkOption.NOFOLLOW_LINKS)) {
-                return false;
-            }
-            Path realImage = image.toRealPath();
-            if (!realImage.startsWith(roundRoot)) {
-                throw new IOException("Judge image escapes the round directory: " + image);
-            }
-            Object linkCount;
-            try {
-                linkCount = Files.getAttribute(image, "unix:nlink", LinkOption.NOFOLLOW_LINKS);
-            } catch (UnsupportedOperationException exception) {
-                throw new IOException(
-                        "Filesystem cannot verify judge image link ownership: " + image,
-                        exception);
-            }
-            if (!(linkCount instanceof Number count) || count.longValue() != 1) {
-                throw new IOException("Hard-linked judge images are not allowed: " + image);
-            }
+            snapshots.add(JudgeImage.read(image, allowedRoot));
         }
-        return true;
+        return List.copyOf(snapshots);
+    }
+
+    private static boolean allRegularFiles(List<Path> images) {
+        return images.stream()
+                .allMatch(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
+    }
+
+    private static void validateVoxelSource(Path roundRoot, Path voxelFile, String plotId)
+            throws IOException {
+        if (!Files.isRegularFile(voxelFile, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Missing seven PNGs and voxel source for " + plotId);
+        }
+        if (!voxelFile.toRealPath().startsWith(roundRoot)) {
+            throw new IOException("Voxel source escapes the round directory: " + voxelFile);
+        }
+        JudgeImage.requireSingleLink(voxelFile);
     }
 
     private static void rejectSymbolicLinks(List<Path> paths) throws IOException {
@@ -85,6 +91,17 @@ final class RoundImages {
     private static void rejectSymbolicLink(Path path) throws IOException {
         if (Files.isSymbolicLink(path)) {
             throw new IOException("Symbolic links are not allowed in judge inputs: " + path);
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
         }
     }
 }

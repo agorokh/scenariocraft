@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -30,11 +29,11 @@ class OpenAiPersonaJudgeTest {
 
     @Test
     void requestUsesSevenImagesSharedRubricAndStrictReasonThenScoresSchema() throws Exception {
-        List<Path> images = new ArrayList<>();
+        List<JudgeImage> images = new ArrayList<>();
         for (int index = 0; index < 7; index++) {
             Path image = temporaryDirectory.resolve(index + ".png");
             Files.write(image, pngHeader(640, 480));
-            images.add(image);
+            images.add(JudgeImage.read(image, temporaryDirectory.toRealPath()));
         }
 
         String body = OpenAiPersonaJudge.requestBody(
@@ -128,6 +127,33 @@ class OpenAiPersonaJudgeTest {
         assertTrue(message.contains("Quota exhausted"));
         assertTrue(message.contains("request req_123"));
         assertFalse(message.contains("sk-secret123456"));
+        assertTrue(OpenAiPersonaJudge.isRetryableHttpStatus(429));
+        assertTrue(OpenAiPersonaJudge.isRetryableHttpStatus(503));
+        assertFalse(OpenAiPersonaJudge.isRetryableHttpStatus(401));
+    }
+
+    @Test
+    void createsModerationRequestAndFailsClosedOnMalformedResults() throws Exception {
+        JsonObject request = JsonParser.parseString(
+                OpenAiPersonaJudge.moderationRequestBody(
+                        "Your doorway is welcoming. Add roof texture next."))
+                .getAsJsonObject();
+
+        assertEquals("omni-moderation-latest", request.get("model").getAsString());
+        assertEquals(
+                "Your doorway is welcoming. Add roof texture next.",
+                request.get("input").getAsString());
+        assertFalse(OpenAiPersonaJudge.parseModerationFlag(
+                "{\"results\":[{\"flagged\":false}]}"));
+        assertTrue(OpenAiPersonaJudge.parseModerationFlag(
+                "{\"results\":[{\"flagged\":true}]}"));
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseModerationFlag("{\"results\":[]}"));
+        assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseModerationFlag(
+                        "{\"results\":[{\"categories\":{}}]}"));
     }
 
     @Test
@@ -135,29 +161,23 @@ class OpenAiPersonaJudgeTest {
         Path oversized = temporaryDirectory.resolve("oversized.png");
         try (FileChannel channel = FileChannel.open(
                 oversized, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-            channel.position(OpenAiPersonaJudge.MAX_IMAGE_BYTES);
+            channel.position(JudgeImage.MAX_BYTES);
             channel.write(ByteBuffer.wrap(new byte[] {0}));
         }
 
-        assertThrows(IOException.class, () -> OpenAiPersonaJudge.requestBody(
-                PERSONA,
-                "Build a cottage",
-                RUBRIC,
-                "p1",
-                Collections.nCopies(7, oversized)));
+        assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(oversized, temporaryDirectory.toRealPath()));
     }
 
     @Test
     void rejectsPngDimensionsAboveTheUploadLimit() throws Exception {
         Path hugeDimensions = temporaryDirectory.resolve("huge-dimensions.png");
-        Files.write(hugeDimensions, pngHeader(OpenAiPersonaJudge.MAX_IMAGE_DIMENSION + 1, 1));
+        Files.write(hugeDimensions, pngHeader(JudgeImage.MAX_DIMENSION + 1, 1));
 
-        assertThrows(IOException.class, () -> OpenAiPersonaJudge.requestBody(
-                PERSONA,
-                "Build a cottage",
-                RUBRIC,
-                "p1",
-                Collections.nCopies(7, hugeDimensions)));
+        assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(hugeDimensions, temporaryDirectory.toRealPath()));
     }
 
     private String validVerdict() {

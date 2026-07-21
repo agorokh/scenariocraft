@@ -1,7 +1,6 @@
 package io.github.agorokh.scenariocraft.judge;
 
 import java.io.PrintWriter;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -13,7 +12,7 @@ final class JudgeCouncil {
     static RoundResults judge(
             JudgeRound round,
             JudgeConfig config,
-            Map<String, List<Path>> images,
+            Map<String, List<JudgeImage>> images,
             PersonaJudge judge,
             PrintWriter diagnostics) throws JudgeException {
         List<RoundResults.ContestantResult> contestants = new ArrayList<>();
@@ -45,10 +44,15 @@ final class JudgeCouncil {
                     1, round.roundId(), round.task(), contestants,
                     null, true, quorumFailure);
         }
-        int expectedVerdictCount = contestants.getFirst().verdicts().size();
+        List<String> expectedPanel = contestants.getFirst().verdicts().stream()
+                .map(JudgeVerdict::persona)
+                .toList();
         if (contestants.stream()
-                .anyMatch(contestant -> contestant.verdicts().size() != expectedVerdictCount)) {
-            String reason = "No winner: contestants received unequal successful verdict counts.";
+                .map(contestant -> contestant.verdicts().stream()
+                        .map(JudgeVerdict::persona)
+                        .toList())
+                .anyMatch(panel -> !panel.equals(expectedPanel))) {
+            String reason = "No winner: contestants received unequal successful persona panels.";
             return new RoundResults(
                     1, round.roundId(), round.task(), contestants,
                     null, true, reason);
@@ -77,7 +81,7 @@ final class JudgeCouncil {
             JudgeRound round,
             String rubric,
             JudgeRound.Plot plot,
-            List<Path> images,
+            List<JudgeImage> images,
             List<String> failures,
             PrintWriter diagnostics) throws JudgeException {
         String lastFailure = null;

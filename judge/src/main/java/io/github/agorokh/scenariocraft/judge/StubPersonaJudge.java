@@ -1,12 +1,11 @@
 package io.github.agorokh.scenariocraft.judge;
 
-import java.nio.file.Path;
 import java.util.List;
 
 final class StubPersonaJudge implements PersonaJudge {
     @Override
     public JudgeVerdict judge(
-            Persona persona, String task, String rubric, String plotId, List<Path> images) {
+            Persona persona, String task, String rubric, String plotId, List<JudgeImage> images) {
         int base = "p1".equals(plotId) ? 8 : 6;
         int adjustment = Math.floorMod(persona.name().hashCode(), 3) - 1;
         int score = Math.max(1, Math.min(10, base + adjustment));

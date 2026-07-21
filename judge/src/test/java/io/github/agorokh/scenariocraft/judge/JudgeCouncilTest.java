@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,9 +104,27 @@ class JudgeCouncilTest {
 
         assertFalse(results.hasWinner());
         assertEquals(true, results.noWinner());
-        assertTrue(results.reason().contains("unequal successful verdict counts"));
+        assertTrue(results.reason().contains("unequal successful persona panels"));
         assertEquals(2, results.contestants().get(0).verdicts().size());
         assertEquals(3, results.contestants().get(1).verdicts().size());
+    }
+
+    @Test
+    void failsClosedWhenEqualSizedCouncilsContainDifferentPersonas() throws Exception {
+        PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
+            if (("p1".equals(plotId) && "Three".equals(persona.name()))
+                    || ("p2".equals(plotId) && "Two".equals(persona.name()))) {
+                throw new JudgeException("persona unavailable");
+            }
+            return verdict(persona.name(), "p1".equals(plotId) ? 8 : 6);
+        };
+
+        RoundResults results = run(judge);
+
+        assertFalse(results.hasWinner());
+        assertTrue(results.reason().contains("unequal successful persona panels"));
+        assertEquals(2, results.contestants().get(0).verdicts().size());
+        assertEquals(2, results.contestants().get(1).verdicts().size());
     }
 
     private RoundResults run(PersonaJudge judge) throws JudgeException {
@@ -116,13 +133,15 @@ class JudgeCouncilTest {
                 "round-20260721-193000",
                 "Build a cottage",
                 "battle_world",
-                List.of(new JudgeRound.Plot("p1", "Alex"),
-                        new JudgeRound.Plot("p2", "Sam")));
+                List.of(new JudgeRound.Plot(
+                                "p1", "Alex", List.of(0, 64, 0), List.of(33, 40, 33)),
+                        new JudgeRound.Plot(
+                                "p2", "Sam", List.of(48, 64, 0), List.of(33, 40, 33))));
         JudgeConfig config = new JudgeConfig(2, PERSONAS, RUBRIC);
         return JudgeCouncil.judge(
                 round,
                 config,
-                Map.of("p1", List.<Path>of(), "p2", List.<Path>of()),
+                Map.of("p1", List.<JudgeImage>of(), "p2", List.<JudgeImage>of()),
                 judge,
                 new PrintWriter(new StringWriter()));
     }
