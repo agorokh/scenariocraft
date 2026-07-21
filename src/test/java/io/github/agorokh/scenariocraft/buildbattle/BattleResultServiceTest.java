@@ -136,6 +136,33 @@ class BattleResultServiceTest {
     }
 
     @Test
+    void completedInFlightPollImmediatelyRetriesWhenItsIntervalElapsed() {
+        BattleResultReader reader =
+                new BattleResultReader() {
+                    @Override
+                    public Optional<BattleResult> latest() {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Optional<BattleResult> round(String roundId) {
+                        return Optional.empty();
+                    }
+                };
+        ServiceRig rig =
+                new ServiceRig(reader, RoundPhase.REVEAL, "round-20260721-193000", false);
+
+        rig.poll.get().run();
+        rig.poll.get().run();
+        assertEquals(1, rig.asyncReads.size());
+
+        rig.asyncReads.getFirst().run();
+
+        assertEquals(2, rig.asyncReads.size());
+        rig.service.close();
+    }
+
+    @Test
     void delayedRconAnnouncementCannotPresentAnInactiveRound() throws Exception {
         Path rounds = temporaryDirectory.resolve("rcon-rounds");
         Path previous = Files.createDirectories(rounds.resolve("round-20260721-190000"));

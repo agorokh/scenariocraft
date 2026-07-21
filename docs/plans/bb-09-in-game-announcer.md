@@ -52,6 +52,7 @@ session.
 | 2026-07-21 | Reduce every copied task to a fixed safe challenge label, bind delayed celebration particles to the announcing REVEAL round, and use `results-poll-ticks` as the single live interval. | Tasks and delayed effects cross the same presentation/lifecycle boundary as copied feedback; the checked-in server and smoke configuration already document tick-based polling. |
 | 2026-07-21 | Restore contiguous RCON packet writes and command-rejection checks, normalize malformed optional YAML into a configuration error, and reject symlinked requested round directories. | The merge reconciled two announcer implementations; the stronger protocol, optional-configuration, and filesystem boundary guarantees must survive that reconciliation. |
 | 2026-07-21 | Use one 64-character identifier contract across export, judge ingest, and plugin parsing, allowing multiple Floodgate prefixes but not whitespace prose; schedule the next result read on the configured tick boundary, preserve valid YAML timeouts beneath connection environment overrides, and keep a stable RCON smoke-failure token. | Producer and consumer validation must agree for underscore-normalized Bedrock gamertags, the maximum legal polling interval must permit a second read during REVEAL, and optional configuration compatibility must not weaken live RCON verification. |
+| 2026-07-21 | Decrement the result-poll interval while a read is in flight and retry immediately from completion when the interval elapsed; construct export metadata inside the controller's guarded export boundary. | Async latency must not push the only legal follow-up read beyond REVEAL, and identifier validation failure must be logged as export failure without aborting phase setup. |
 
 ## Surprises & Discoveries
 
@@ -94,6 +95,9 @@ session.
   and presentation now share one bounded no-whitespace identifier contract. The poll countdown
   also needed boundary semantics: a legal interval equal
   to REVEAL must schedule its second read on the final eligible tick rather than one tick later.
+- Poll timing also includes asynchronous occupancy: freezing the countdown while a disk read is
+  in flight moves the boundary retry past REVEAL. Completion now immediately requeues a due poll,
+  and export metadata validation is covered by the same failure boundary as export scheduling.
 - A general “cruel language” filter did not cover ordinary profanity, sexual-assault
   language, or Minecraft's section-sign formatting codes. These need explicit validation
   at the last player-facing trust boundary, and an all-failed verdict set needs an honest

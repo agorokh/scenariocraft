@@ -148,14 +148,14 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             pollingRoundId = expectedRoundId;
             ticksUntilPoll = 0L;
         }
-        if (pollReadInFlight.get()) {
-            return;
-        }
         if (ticksUntilPoll > 0L) {
             ticksUntilPoll--;
             if (ticksUntilPoll > 0L) {
                 return;
             }
+        }
+        if (pollReadInFlight.get()) {
+            return;
         }
         ticksUntilPoll = settings.pollTicks() - 1L;
         readAsync(
@@ -289,9 +289,17 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             if (failureRecipient != null) {
                 failureRecipient.sendMessage("The judging results could not be read safely right now.");
             }
+            retryDuePoll(readGate);
             return;
         }
         completion.accept(result);
+        retryDuePoll(readGate);
+    }
+
+    private void retryDuePoll(AtomicBoolean readGate) {
+        if (readGate == pollReadInFlight && ticksUntilPoll == 0L) {
+            pollDuringReveal();
+        }
     }
 
     private static String safeSubtitle(String task) {

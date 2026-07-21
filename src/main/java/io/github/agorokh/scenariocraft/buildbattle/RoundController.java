@@ -1145,37 +1145,36 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             logger.severe("SCENARIOCRAFT_EXPORT_FAILURE no task is available at REVEAL");
             return;
         }
-        int originY = Math.addExact(arena.floorY(), 1);
-        int plotHeight = settings.arena().wallHeight();
-        List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
-        Map<PlotBounds, Contestant> contestantsByPlot = new LinkedHashMap<>();
-        for (Contestant contestant : contestants.values()) {
-            contestantsByPlot.put(contestant.plot(), contestant);
-        }
-        for (int plotIndex = 0; plotIndex < plots.size(); plotIndex++) {
-            PlotBounds plot = plots.get(plotIndex);
-            Contestant contestant = contestantsByPlot.get(plot);
-            if (contestant == null && !settings.demoMode()) {
-                continue;
-            }
-            exportPlots.add(
-                    new RoundExportRequest.Plot(
-                            "p" + (plotIndex + 1),
-                            contestant == null
-                                    ? "ScenarioCraft_Sample_" + (plotIndex + 1)
-                                    : contestant.playerName(),
-                            plot.minX(),
-                            originY,
-                            plot.minZ(),
-                            plot.width(),
-                            plotHeight,
-                            plot.depth()));
-        }
         try {
+            int originY = Math.addExact(arena.floorY(), 1);
+            int plotHeight = settings.arena().wallHeight();
+            List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
+            Map<PlotBounds, Contestant> contestantsByPlot = new LinkedHashMap<>();
+            for (Contestant contestant : contestants.values()) {
+                contestantsByPlot.put(contestant.plot(), contestant);
+            }
+            for (int plotIndex = 0; plotIndex < plots.size(); plotIndex++) {
+                PlotBounds plot = plots.get(plotIndex);
+                Contestant contestant = contestantsByPlot.get(plot);
+                if (contestant == null && !settings.demoMode()) {
+                    continue;
+                }
+                exportPlots.add(
+                        new RoundExportRequest.Plot(
+                                "p" + (plotIndex + 1),
+                                contestant == null
+                                        ? "ScenarioCraft_Sample_" + (plotIndex + 1)
+                                        : contestant.playerName(),
+                                plot.minX(),
+                                originY,
+                                plot.minZ(),
+                                plot.width(),
+                                plotHeight,
+                                plot.depth()));
+            }
             roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
-            resultExportStarted = true;
             resultExportStarted = true;
         } catch (RuntimeException failure) {
             logger.log(Level.SEVERE, "SCENARIOCRAFT_EXPORT_FAILURE export did not start", failure);

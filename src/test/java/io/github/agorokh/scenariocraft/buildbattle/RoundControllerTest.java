@@ -1,6 +1,7 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -674,6 +675,19 @@ class RoundControllerTest {
         assertTrue(
                 rig.playerMessages.contains(
                         "Solo mode is on: your challenger is the bundled sample build!"));
+        rig.close();
+    }
+
+    @Test
+    void invalidExportPlayerNameDoesNotAbortRevealSetup() {
+        TestRig rig = new TestRig();
+        rig.playerName.set("You are a clown");
+
+        rig.advanceTo(RoundPhase.REVEAL);
+
+        assertDoesNotThrow(rig::runBlockTick);
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertTrue(rig.exportRequests.isEmpty());
         rig.close();
     }
 
@@ -2416,6 +2430,7 @@ class RoundControllerTest {
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
                 UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
+        private final AtomicReference<String> playerName = new AtomicReference<>("BuilderKid");
         private final UUID spectatorId =
                 UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
         private final World world;
@@ -2602,7 +2617,7 @@ class RoundControllerTest {
                             (ignored, method, arguments) ->
                                     switch (method.getName()) {
                                         case "getUniqueId" -> playerId;
-                                        case "getName" -> "BuilderKid";
+                                        case "getName" -> playerName.get();
                                         case "getGameMode" -> gameMode.get();
                                         case "getLocation" -> lastTeleport.get().clone();
                                         case "getWorld" -> lastTeleport.get().getWorld();
