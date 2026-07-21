@@ -23,6 +23,7 @@ class ArenaConfigLoaderTest {
         assertEquals(settings.tasks().size(), new HashSet<>(settings.tasks()).size());
         assertTrue(settings.exemptNames().isEmpty());
         assertTrue(settings.allowAnyStart());
+        assertEquals(20, settings.resultsPollTicks());
     }
 
     @Test
@@ -39,6 +40,22 @@ class ArenaConfigLoaderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> ArenaConfigLoader.load(excessivePlots));
+
+        YamlConfiguration invalidResultsPoll = packagedConfig();
+        invalidResultsPoll.set("results-poll-ticks", 0);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ArenaConfigLoader.load(invalidResultsPoll));
+    }
+
+    @Test
+    void existingConfigWithoutPollSettingUsesBackwardCompatibleDefault() {
+        YamlConfiguration existingConfig = packagedConfig();
+        existingConfig.set("results-poll-ticks", null);
+
+        BattleSettings settings = ArenaConfigLoader.load(existingConfig);
+
+        assertEquals(20, settings.resultsPollTicks());
     }
 
     @Test

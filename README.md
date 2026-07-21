@@ -106,6 +106,15 @@ affected player is safely at the hub.
 Alerts are also sent to the server console and to online players with the
 `scenariocraft.alerts` permission, which defaults to operators.
 
+Judge output is read from timestamped directories under
+`plugins/ScenarioCraft/rounds/`. During REVEAL, the plugin checks for a newly atomically
+published `results.txt` at the configured `results-poll-ticks` interval and announces its
+winner through titles, compact chat lines, and winner-plot particles. The judge can request
+the same deduplicated announcement over RCON; if RCON is down, the file poll remains the local
+fallback. Players can use `/battle results` to replay the latest result, including after the
+round leaves REVEAL. Malformed, oversized, symbolic-link, or raw-JSON input is rejected with a
+friendly message rather than displayed.
+
 A rejected console dispatch is retried once before it is treated as a failure. If saving a
 player-data recovery marker or the plugin-owned registry fails, the console and online
 operators receive a separate persistence alert; keep the player contained and have them

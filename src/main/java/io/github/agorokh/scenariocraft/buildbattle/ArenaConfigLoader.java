@@ -7,6 +7,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 public final class ArenaConfigLoader {
     private static final int DEBUG_PLOT_COUNT = 2;
     private static final int MAX_PLOT_COUNT = 8;
+    private static final int DEFAULT_RESULTS_POLL_TICKS = 20;
 
     private ArenaConfigLoader() {}
 
@@ -45,7 +46,17 @@ public final class ArenaConfigLoader {
                 timings,
                 tasks,
                 config.getStringList("exempt-names"),
-                config.getBoolean("allow-any-start"));
+                config.getBoolean("allow-any-start"),
+                positiveIntOrDefault(
+                        config, "results-poll-ticks", DEFAULT_RESULTS_POLL_TICKS));
+    }
+
+    private static int positiveIntOrDefault(
+            FileConfiguration config, String path, int defaultValue) {
+        if (!config.contains(path, true)) {
+            return defaultValue;
+        }
+        return positiveInt(config, path);
     }
 
     private static int positiveInt(FileConfiguration config, String path) {
