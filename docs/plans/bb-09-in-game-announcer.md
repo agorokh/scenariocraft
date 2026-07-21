@@ -99,7 +99,8 @@ session.
 - `BattleResultsReaderTest`, `ResultAnnouncementFormatterTest`, and
   `ResultAnnouncementServiceTest` cover the friendly no-results path, strict bounded text
   parsing, raw-JSON rejection/cleaning, 120-code-point chat lines, 64-code-point titles,
-  per-persona score/comment lines, one-shot deduplication, title delivery, and winner particles.
+  per-persona score/comment lines, single-flight replay reads, one-shot announcement
+  deduplication, title delivery, and winner particles.
 - `RconConfigTest`, `RconClientTest`, `RconResultAnnouncerTest`, and
   `JudgeApplicationTest.rconFailureAfterJudgingKeepsBothResultArtifactsAndSuccessStatus` cover
   env/`judge.yml` precedence, bounded configuration, one-write Source-RCON packets, real command
@@ -113,7 +114,8 @@ session.
   remained successful, both result artifacts remained non-empty, and diagnostics reported
   `RCON authentication failed` without printing either password.
 - The modified workflow parsed as YAML and its complete embedded Paper smoke program passed
-  `bash -n` after GitHub-expression substitution.
+  `bash -n` after GitHub-expression substitution; its RCON password is generated afresh at
+  runtime and is absent from committed configuration.
 - `/review` against `code_review.md` found no P1: judge and announcement logic have focused and
   real-server coverage, player-facing output is bounded and kid-appropriate, no raw JSON,
   inventory GUI, or block mutation was introduced, timings remain configurable, and no real
