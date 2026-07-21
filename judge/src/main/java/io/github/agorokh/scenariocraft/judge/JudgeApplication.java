@@ -67,7 +67,8 @@ final class JudgeApplication {
             } catch (IOException | RuntimeException announcementFailure) {
                 diagnostics.println(
                         "Results were saved, but the server announcement could not be sent: "
-                                + safeDiagnostic(announcementFailure));
+                                + safeDiagnostic(announcementFailure)
+                                + "; results remain available on disk.");
             }
             output.print(ResultsWriter.humanReadable(results));
             output.flush();
