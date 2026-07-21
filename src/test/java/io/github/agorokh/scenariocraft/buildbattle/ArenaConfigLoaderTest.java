@@ -55,6 +55,14 @@ class ArenaConfigLoaderTest {
                 new ResultAnnouncementSettings(1, 3, 10),
                 ArenaConfigLoader.loadResultAnnouncements(
                         configured, ArenaConfigLoader.load(configured)));
+
+        configured.set("results-poll-ticks", 21);
+        configured.set("reveal-linger-seconds", 1);
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        ArenaConfigLoader.loadResultAnnouncements(
+                                configured, ArenaConfigLoader.load(configured)));
     }
 
     @Test

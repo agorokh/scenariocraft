@@ -61,6 +61,11 @@ public final class ArenaConfigLoader {
 
     public static ResultAnnouncementSettings loadResultAnnouncements(
             FileConfiguration config, BattleSettings settings) {
+        int maximumPollTicks = Math.multiplyExact(settings.timings().revealLingerSeconds(), 20);
+        if (settings.resultsPollTicks() > maximumPollTicks) {
+            throw new IllegalArgumentException(
+                    "results-poll-ticks must not exceed the REVEAL duration");
+        }
         return new ResultAnnouncementSettings(
                 settings.resultsPollTicks(),
                 inRangeOrDefault(config, "results-celebration-bursts", 1, 10, 3),
