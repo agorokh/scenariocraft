@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +19,8 @@ class ArenaConfigLoaderTest {
 
         assertEquals(new ArenaSettings(33, 30, 64, 8, 4_000), settings.arena());
         assertEquals(new PhaseTimings(30, 60, 1_200, 900), settings.timings());
-        assertEquals(10, settings.tasks().size());
+        assertTrue(settings.tasks().size() >= 24);
+        assertEquals(settings.tasks().size(), new HashSet<>(settings.tasks()).size());
         assertTrue(settings.exemptNames().isEmpty());
         assertTrue(settings.allowAnyStart());
     }

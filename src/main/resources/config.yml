@@ -16,7 +16,7 @@ note-seconds: 60
 build-seconds: 1200
 reveal-linger-seconds: 900
 
-# Starter deck: short, kid-friendly prompts that work in a compact plot
+# Design-council deck: short, kid-friendly prompts that work in a compact plot
 tasks:
   - A dragon treehouse
   - A rocket-powered castle
@@ -28,6 +28,34 @@ tasks:
   - A pirate ship in the clouds
   - A robot pet playground
   - A secret garden library
+  - A candy volcano
+  - A dinosaur amusement park
+  - A spooky treehouse for friendly ghosts
+  - A giant turtle house
+  - A rainbow bridge to space
+  - A snowman hotel
+  - A tiny bee village in a flower garden
+  - A submarine for dolphins
+  - A lava-proof ice cream shop
+  - A castle carried by a giant chicken
+  - A secret base inside a giant book
+  - A farm on another planet
+  - A magical aquarium train station
+  - A superhero animal headquarters
+  - A dinosaur museum after dark
+  - A volcano science laboratory
+  - A giant kitchen for tiny chefs
+  - A lighthouse guarded by a friendly sea monster
+  - A train station for time travelers
+  - A winter festival on a frozen lake
+  - A superhero headquarters inside a mountain
+  - A giant board game brought to life
+  - A haunted toy shop
+  - A bee kingdom inside a flower
+  - A spaceship repair garage
+  - A desert oasis water park
+  - A crystal-lit city inside a cave
+  - A giant turtle carrying a village
 
 exempt-names: []
 allow-any-start: true
