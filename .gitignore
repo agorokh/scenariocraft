@@ -5,6 +5,8 @@ build/
 out/
 run/
 *.iml
+__pycache__/
+*.py[cod]
 
 # Local judge RCON configuration contains a server credential.
 judge.yml
