@@ -49,6 +49,11 @@ session.
   bounded retry path recovered, completed the round, and wrote a valid result without exposing
   the API key. This is useful acceptance evidence for the real model boundary rather than the
   deterministic dry-run path.
+- BB-09 PR #34 reached green CI with all threads resolved and a clean current-head Codex review
+  comment, but the review app did not emit the formal review object required by `resolve-pr`
+  after three configured cycles. The dependency resolver recorded escalation comment
+  `#5031442899`; BB-12 cannot capture integrated chat evidence through the normal base path
+  until that gate is restored and BB-09 merges.
 
 ## Acceptance evidence
 
