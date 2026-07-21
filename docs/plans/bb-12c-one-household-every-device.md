@@ -76,6 +76,9 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   port publishing. The smoke now replaces both port mappings with loopback-only bindings,
   distinguishes fixed container UDP 19132 from the configurable host port, verifies both
   live mappings before waiting, and retains trap-based stack and volume cleanup on every exit.
+- The first loopback-isolated CI run exposed a Docker Compose CLI detail: `compose port`
+  accepts a numeric private port and a separate `--protocol` flag, not the `25565/tcp`
+  notation used in Compose YAML. The live binding assertions now use the CLI form.
 
 ## Acceptance evidence
 

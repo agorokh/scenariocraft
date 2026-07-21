@@ -53,8 +53,8 @@ trap cleanup EXIT INT TERM
 
 compose up --build --detach paper
 
-test "$(compose port paper 25565/tcp)" = "127.0.0.1:25565"
-test "$(compose port paper "${container_bedrock_port}/udp")" = \
+test "$(compose port paper 25565 --protocol tcp)" = "127.0.0.1:25565"
+test "$(compose port paper "${container_bedrock_port}" --protocol udp)" = \
     "127.0.0.1:${bedrock_port}"
 
 deadline=$(( $(date +%s) + timeout_seconds ))
