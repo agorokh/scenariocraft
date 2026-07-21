@@ -37,6 +37,7 @@ session.
 | 2026-07-20 | Settle an already-arrived teleport during close without running its success callback. | A move can arrive after dispatch but before its delayed confirmation, but callback side effects such as entering BUILDING are no longer valid once shutdown begins; normal round restoration owns the remaining hub cleanup. |
 | 2026-07-20 | Isolate the real-Paper teleport probe from generated terrain and document inspection without a force-clear control. | The smoke should test the command path rather than block geometry, while manual registry deletion would violate the requirement to clear only after authoritative hub arrival and player-data persistence. |
 | 2026-07-20 | Keep round-start transport checks side-effect free and supervise an externally requested hub rescue as an owned delayed attempt. | Command registration is enough to fail a round before mutation, while every real relocation validates and dispatches the exact command; a pending player may reach only the hub and must still pass the normal confirmation and persistence boundary. |
+| 2026-07-20 | Resume an active contestant's phase only after recovery reaches the hub and durably clears. | Phase timers may continue while a player is pending; every phase move must route through hub recovery first, then apply the current phase so a BUILDING rejoin is not left uncontained at the hub. |
 
 ## Surprises & Discoveries
 
@@ -71,6 +72,11 @@ session.
   persisted players, and a non-atomic move fallback would contradict the issue's durability
   requirement. The applicable paths now have focused regression tests; the inapplicable ones
   are documented and receive visible evidence replies.
+- Subsequent current-head review found two more ordering gaps: an already-arrived delayed
+  attempt was checked against command availability before settlement, and active phase moves
+  could race ahead of durable hub recovery. Arrival now settles first, phase moves recover at
+  the hub before re-entry, and synchronous recovery no longer forces a redundant second start.
+  Enable-time malformed-registry recovery is also explicit in the operator runbook.
 
 ## Acceptance evidence
 
@@ -84,7 +90,7 @@ session.
   on-disk store reopen and successful hub retry.
 - `TeleportTransportTest` pins the exact namespaced, explicit-world, UUID-targeted production
   command including coordinates and rotation.
-- `make ci-fast` passed on Java 21 with 114 plugin tests and 13 renderer tests, all green.
+- `make ci-fast` passed on Java 21 with 120 plugin tests and 13 renderer tests, all green.
 - A local Paper 1.21.11 build 132 smoke run enabled ScenarioCraft, executed
   `minecraft:execute in minecraft:battle_world run minecraft:tp` against a marker entity,
   confirmed its authoritative destination, and shut down with all dimensions saved. The run
@@ -103,5 +109,5 @@ dispatch live in `TeleportTransport`, while durable pending UUIDs live in
 and confirmation task. The most important design correction was to make hub arrival a distinct
 terminal event: generic teleport success no longer clears recovery, and borders, Adventure
 mode, player data, and the atomic registry transition only in the order justified by an
-authoritative location. Local verification and review are complete; GitHub CI, external review,
-and merge remain delivery steps.
+authoritative location. Local verification and internal review are complete; current-head
+external review, CI, and merge remain delivery steps.

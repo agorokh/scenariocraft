@@ -693,7 +693,7 @@ class RoundControllerTest {
                         rig.spectator,
                         net.kyori.adventure.text.Component.empty()));
 
-        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        assertEquals(commandsBefore, rig.consoleCommands.size());
         rig.controller.stop(rig.player);
         rig.close();
     }
@@ -837,7 +837,7 @@ class RoundControllerTest {
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
         assertNull(rig.playerWorldBorder.get());
-        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
         assertEquals(0, rig.bossbarPlayers.get());
         assertTrue(
                 rig.playerMessages.stream()
@@ -910,7 +910,7 @@ class RoundControllerTest {
     }
 
     @Test
-    void activeContestantWithPendingRecoveryRejoinsAtHubNotPlot() {
+    void activeContestantRecoveryRejoinsThroughHubBeforeReturningToPlot() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
         rig.failTeleportDispatch.set(true);
@@ -928,8 +928,9 @@ class RoundControllerTest {
                         rig.player, net.kyori.adventure.text.Component.empty()));
 
         assertEquals(0.5, rig.lastTeleport.get().getX());
-        assertEquals(0.5, rig.lastTeleport.get().getZ());
-        assertNull(rig.playerWorldBorder.get());
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertNotNull(rig.playerWorldBorder.get());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
         assertFalse(rig.recoveryStore.contains(rig.playerId));
         rig.close();
     }
@@ -1611,14 +1612,26 @@ class RoundControllerTest {
     }
 
     @Test
-    void roundStartDoesNotAddAHealthProbeBeyondTheRequiredHubMove() {
+    void roundStartDoesNotProbeWhenRequiredHubArrivalIsAlreadySatisfied() {
         TestRig rig = new TestRig();
         int commandsBefore = rig.consoleCommands.size();
 
         rig.controller.start(rig.player);
 
         assertEquals(RoundPhase.PREPARING, rig.controller.phase());
-        assertEquals(commandsBefore + 1, rig.consoleCommands.size());
+        assertEquals(commandsBefore, rig.consoleCommands.size());
+        rig.close();
+    }
+
+    @Test
+    void roundStartContinuesAfterSynchronousHubRecoveryClear() {
+        TestRig rig = new TestRig();
+        rig.recoveryStore.add(rig.playerId);
+
+        rig.controller.start(rig.player);
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(RoundPhase.PREPARING, rig.controller.phase());
         rig.close();
     }
 
@@ -1631,8 +1644,8 @@ class RoundControllerTest {
         rig.runTimerTick();
 
         assertEquals(RoundPhase.IDLE, rig.controller.phase());
-        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
-        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.SURVIVAL, rig.gameMode.get());
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
         assertTrue(
                 rig.playerMessages.stream()
                         .anyMatch(message -> message.contains("could not move you safely")));
@@ -1842,9 +1855,69 @@ class RoundControllerTest {
 
         assertFalse(hubRescue.isCancelled());
         rig.lastTeleport.set(hub.clone());
+        rig.teleportCommandsAvailable.set(false);
         rig.runDelayedTasks();
         assertFalse(rig.recoveryStore.contains(rig.playerId));
         assertNull(rig.playerWorldBorder.get());
+        rig.teleportCommandsAvailable.set(true);
+        rig.close();
+    }
+
+    @Test
+    void phaseMoveRecoversPendingContestantAtHubBeforePlotEntry() {
+        TestRig rig = new TestRig();
+        rig.controller.start(rig.player);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+        rig.runBlockTick();
+        rig.runDelayedTasks();
+        assertEquals(RoundPhase.GATHERING, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.failTeleportDispatch.set(false);
+        rig.ignoreTeleportCommand.set(true);
+        rig.runTimerTick();
+        rig.runTimerTick();
+
+        assertEquals(RoundPhase.NOTE_PICK, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.consoleCommands.getLast().endsWith(" 0.5 1 0.5 0 0"));
+
+        rig.lastTeleport.set(new Location(rig.world, 0.5, 1.0, 0.5));
+        rig.ignoreTeleportCommand.set(false);
+        rig.runDelayedTasks();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(RoundPhase.BUILDING, rig.controller.phase());
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
+    void failedPendingRecoveryAbortsPlotEntryWithoutSoftlock() {
+        TestRig rig = new TestRig();
+        rig.controller.start(rig.player);
+        rig.lastTeleport.set(new Location(rig.world, 40.5, 1.0, 40.5));
+        rig.failTeleportDispatch.set(true);
+        rig.runBlockTick();
+        rig.runDelayedTasks();
+        assertEquals(RoundPhase.GATHERING, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.runTimerTick();
+        rig.runTimerTick();
+        rig.runDelayedTasks();
+
+        assertEquals(RoundPhase.IDLE, rig.controller.phase());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(
+                rig.messages.stream()
+                        .anyMatch(message -> message.contains("plots could not open safely")));
+        rig.failTeleportDispatch.set(false);
         rig.close();
     }
 

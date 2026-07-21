@@ -81,6 +81,10 @@ folder filesystem that supports same-directory atomic moves; unsupported storage
 and emits `SCENARIOCRAFT_RECOVERY_PERSISTENCE_FAILURE` rather than weakening the atomic-write
 guarantee. An operator command may move a pending player only to the configured hub; the
 controller supervises that arrival and performs the same saved, atomic clear sequence.
+If enable fails with `Could not load teleport recovery registry`, stop the server and back up
+the registry before editing it. Correct any malformed line to a UUID; move the file aside only
+after verifying that no listed player is still mid-recovery, then restart and confirm every
+affected player is safely at the hub.
 
 Alerts are also sent to the server console and to online players with the
 `scenariocraft.alerts` permission, which defaults to operators.

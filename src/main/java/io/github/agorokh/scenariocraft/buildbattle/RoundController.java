@@ -316,12 +316,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         List<Player> pendingRecoveryPlayers =
                 players.stream().filter(this::hasPendingTeleportRecovery).toList();
         if (!pendingRecoveryPlayers.isEmpty()) {
-            sender.sendMessage(
-                    "A builder is still returning safely to the hub. Please wait for a grown-up helper.");
             for (Player player : pendingRecoveryPlayers) {
                 retryStrandedExit(player);
             }
-            return;
+            if (players.stream().anyMatch(this::hasPendingTeleportRecovery)) {
+                sender.sendMessage(
+                        "A builder is still returning safely to the hub. Please wait for a grown-up helper.");
+                return;
+            }
         }
         if (!teleportTransport.isAvailable()) {
             reportTransportUnavailable(
@@ -463,9 +465,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         .has(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
         if (hasPendingTeleportRecovery(player)) {
             if (hadPendingInventory) {
-                restorePendingInventory(player);
+                restorePendingInventory(
+                        player, () -> resumeActiveContestant(player));
             } else {
-                retryStrandedExit(player);
+                retryStrandedExit(
+                        player, 0L, () -> resumeActiveContestant(player));
             }
             return;
         }
@@ -858,7 +862,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 event.setCancelled(true);
                 return;
             }
-            retryStrandedExit(event.getPlayer(), 1L);
+            retryStrandedExit(
+                    event.getPlayer(), 1L, () -> resumeActiveContestant(event.getPlayer()));
             return;
         }
         boolean plotContainmentActive =
@@ -1311,6 +1316,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void applyCurrentPhase(Player player, Contestant contestant) {
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
+        }
         clearRoundInventory(player);
         switch (phase()) {
             case PREPARING, GATHERING -> moveToHub(player, contestant);
@@ -1335,6 +1348,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveToHub(Player player, Contestant contestant) {
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
+        }
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
                 player,
@@ -1360,6 +1381,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void moveToPlot(Player player, Contestant contestant) {
         if (awaitingPlotEntries) {
             pendingPlotEntries.add(player.getUniqueId());
+        }
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player,
+                    0L,
+                    () -> resumeActiveContestant(player),
+                    () -> failPendingPlotEntry(player));
+            return;
         }
         clearRoundInventory(player);
         if (!isInsideAssignedPlot(player, contestant)) {
@@ -1419,6 +1448,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void moveContestantToTour(Player player, Contestant contestant) {
+        if (hasPendingTeleportRecovery(player)) {
+            retryStrandedExit(
+                    player, 0L, () -> resumeActiveContestant(player));
+            return;
+        }
         clearRoundInventory(player);
         player.setGameMode(GameMode.ADVENTURE);
         teleport(
@@ -1781,6 +1815,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         Player player = attempt.player();
         Location destination = attempt.destination();
+        if (playerReached(player, destination)) {
+            finishTeleportSuccess(attempt);
+            return;
+        }
         if (!teleportTransport.isAvailable()) {
             reportTeleportFailure(
                     attempt,
@@ -1993,10 +2031,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void retryStrandedExit(Player player) {
-        retryStrandedExit(player, 0L);
+        retryStrandedExit(player, 0L, () -> {}, () -> {});
     }
 
-    private void retryStrandedExit(Player player, long delayTicks) {
+    private void retryStrandedExit(
+            Player player, long delayTicks, Runnable afterRecovery) {
+        retryStrandedExit(player, delayTicks, afterRecovery, () -> {});
+    }
+
+    private void retryStrandedExit(
+            Player player,
+            long delayTicks,
+            Runnable afterRecovery,
+            Runnable afterFailure) {
         GameMode recoveredGameMode =
                 recoveryGameModes.getOrDefault(
                         player.getUniqueId(), player.getGameMode());
@@ -2013,6 +2060,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                 "Cleared recovered hub marker for "
                                         + player.getName()
                                         + " after confirming they were already safe.");
+                        afterRecovery.run();
                     });
             return;
         }
@@ -2028,16 +2076,39 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                             "Confirmed recovered hub return for "
                                                     + player.getName()
                                                     + ".");
+                                    afterRecovery.run();
                                 });
         Runnable onFailure =
                 () -> {
                     player.setGameMode(GameMode.ADVENTURE);
                     markStrandedForRecovery(player);
+                    afterFailure.run();
                 };
         if (delayTicks > 0L) {
             teleportAfter(player, destination, onSuccess, onFailure, delayTicks);
         } else {
             teleport(player, destination, onSuccess, onFailure);
+        }
+    }
+
+    private void failPendingPlotEntry(Player player) {
+        if (phase() != RoundPhase.NOTE_PICK || !awaitingPlotEntries) {
+            return;
+        }
+        pendingPlotEntries.remove(player.getUniqueId());
+        plotEntryFailed = true;
+        if (!movingContestantsToPlots) {
+            abortAfterPlotEntryFailure();
+        }
+    }
+
+    private void resumeActiveContestant(Player player) {
+        Contestant contestant = contestants.get(player.getUniqueId());
+        if (!closed
+                && player.isOnline()
+                && contestant != null
+                && phase() != RoundPhase.IDLE) {
+            applyCurrentPhase(player, contestant);
         }
     }
 
@@ -2217,6 +2288,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void restorePendingInventory(Player player) {
+        restorePendingInventory(player, () -> {});
+    }
+
+    private void restorePendingInventory(
+            Player player, Runnable afterRecovery) {
         PersistentDataContainer data = player.getPersistentDataContainer();
         byte[] encoded =
                 data.get(inventorySnapshotKey, PersistentDataType.BYTE_ARRAY);
@@ -2253,6 +2329,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                                                     + player.getName()
                                                     + ".");
                                 }
+                                afterRecovery.run();
                             });
                 },
                 () -> {
