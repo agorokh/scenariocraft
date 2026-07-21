@@ -21,6 +21,8 @@ final class BattleResultParser {
     static final int MAX_CONTESTANTS = 8;
     static final int MAX_FEEDBACK_PER_CONTESTANT = 8;
     private static final Pattern CONTESTANT = Pattern.compile("(.{1,80}) \\((p[1-9][0-9]{0,2})\\)");
+    private static final Pattern PLAYER_IDENTIFIER =
+            Pattern.compile("[._*#~+\\-]?[A-Za-z0-9_]{1,16}");
     private static final Pattern FEEDBACK =
             Pattern.compile("  (.{1,64}): [0-9]+(?:\\.[0-9]{1,2})? — (.{1,500})");
     private static final Pattern WINNER =
@@ -205,7 +207,11 @@ final class BattleResultParser {
     }
 
     private static String identifierText(String value, int maximumLength, String label) {
-        return structuralText(value, maximumLength, label);
+        String normalized = structuralText(value, maximumLength, label);
+        if (!PLAYER_IDENTIFIER.matcher(normalized).matches()) {
+            throw invalid(label + " is not a valid player identifier");
+        }
+        return normalized;
     }
 
     private static String structuralText(String value, int maximumLength, String label) {

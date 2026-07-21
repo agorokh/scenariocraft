@@ -47,6 +47,7 @@ session.
 | 2026-07-21 | Gate published-ID discovery on the current controller export having started, and require exactly one terminal result record after all contestants. | REVEAL begins before wall removal/export, so the exporter can still expose the prior round during that gap; copied files also must not override contradictory winner state through record ordering. |
 | 2026-07-21 | Accept the judge contract's full 512-character task length in copied results and clamp only at presentation. | A task that exports and judges successfully must not become unreadable solely because the plugin used a narrower trust-boundary length. |
 | 2026-07-21 | Structurally validate raw copied comments, reduce them to the fixed allowlisted strength sentence, then language-check only the rendered sentence; treat player names as identifiers, skip corrupt latest-result candidates, and deduplicate announcements by parsed content rather than round ID. | Safe rewriting makes the raw tail non-presented data, legal player identifiers are not prose, one corrupt new artifact must not disable replay, and a corrected file for the active round must be able to replace an early version. |
+| 2026-07-21 | Restrict copied player fields to Java identifiers or the common single-prefix Floodgate/Geyser form, including underscore-normalized Bedrock gamertags. | Player names are rendered directly and can become winner titles; structural text checks alone permit abusive prose, while a Java-only pattern would break the repository's Bedrock-first constraint. |
 
 ## Surprises & Discoveries
 
@@ -112,6 +113,9 @@ session.
 - Replay resilience is per candidate, not only per directory scan: a malformed newest result
   is skipped so an older valid result remains available. Announcement idempotence is based on
   the parsed result value, allowing a corrected same-round artifact to announce once more.
+- Player fields require identifier syntax because they are displayed verbatim. The accepted
+  shape covers Java names and a single safe Floodgate prefix with the documented underscore-
+  normalized Bedrock name, while rejecting spaces and sentence-like copied values.
 
 ## Acceptance evidence
 
@@ -157,6 +161,9 @@ session.
 - Current-head configured-reviewer regressions prove denylisted raw tails are discarded before
   rendering, legal player identifiers remain readable, a malformed newest result falls back
   to an older valid result, and corrected same-round content announces after the early result.
+- Player-identifier regression preserves both a Java name that resembles prose-policy wording
+  and a dot-prefixed Bedrock name, while rejecting an abusive sentence in contestant/winner
+  position.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

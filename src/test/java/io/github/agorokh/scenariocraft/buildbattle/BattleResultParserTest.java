@@ -197,6 +197,31 @@ class BattleResultParserTest {
 
         assertEquals("Trash", result.contestants().getFirst().player());
         assertEquals("Trash", result.winner().orElseThrow().player());
+
+        BattleResult bedrock =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: A moon base for cats
+
+                        .Bedrock_Kid (p1)
+                          Captain Comet: 9.00 — The bright roof is welcoming.
+                        Winner: .Bedrock_Kid with 9.00
+                        """);
+        assertEquals(".Bedrock_Kid", bedrock.contestants().getFirst().player());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        parser.parse(
+                                """
+                                Round: round-20260721-193000
+                                Task: A moon base for cats
+
+                                You should hurt yourself (p1)
+                                  Captain Comet: 9.00 — The bright roof is welcoming.
+                                Winner: You should hurt yourself with 9.00
+                                """));
     }
 
     @Test
