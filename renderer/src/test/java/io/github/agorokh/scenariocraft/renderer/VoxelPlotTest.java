@@ -17,6 +17,9 @@ class VoxelPlotTest {
         VoxelPlot plot = VoxelPlot.read(fixture("worked-example.voxels.json"));
 
         assertEquals("p1", plot.plotId());
+        assertEquals(100, plot.originX());
+        assertEquals(64, plot.originY());
+        assertEquals(200, plot.originZ());
         assertEquals("minecraft:oak_planks", plot.blockIdAt(1, 0, 0));
         assertEquals("minecraft:air", plot.blockIdAt(0, 0, 0));
         assertEquals("minecraft:air", plot.blockIdAt(1, 0, 1));
@@ -77,6 +80,18 @@ class VoxelPlotTest {
                 {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
                  "palette":["minecraft:air","  "],"blocks":[]}
                 """);
+    }
+
+    @Test
+    void rejectsPaletteEntriesOutsideTheFrozenBlockIdSchema() throws Exception {
+        assertInvalid("malformed-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air","not a block id"],"blocks":[]}
+                """);
+        assertInvalid("oversized-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air","minecraft:%s"],"blocks":[]}
+                """.formatted("a".repeat(VoxelPlot.MAX_PALETTE_ENTRY_LENGTH)));
     }
 
     private void assertInvalid(String name, String json) throws Exception {

@@ -6,6 +6,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 /** Loads Build Battle settings from config.yml and rejects unusable values early. */
 public final class ArenaConfigLoader {
     private static final int DEBUG_PLOT_COUNT = 2;
+    private static final int MAX_PLOT_COUNT = 8;
 
     private ArenaConfigLoader() {}
 
@@ -15,7 +16,7 @@ public final class ArenaConfigLoader {
                         positiveInt(config, "plot-size"),
                         positiveInt(config, "wall-height"),
                         positiveInt(config, "plot-spacing"),
-                        atLeast(config, "max-plots", DEBUG_PLOT_COUNT),
+                        inRange(config, "max-plots", DEBUG_PLOT_COUNT, MAX_PLOT_COUNT),
                         positiveInt(config, "blocks-per-tick"));
         PhaseTimings timings =
                 new PhaseTimings(
@@ -49,6 +50,15 @@ public final class ArenaConfigLoader {
 
     private static int positiveInt(FileConfiguration config, String path) {
         return atLeast(config, path, 1);
+    }
+
+    private static int inRange(
+            FileConfiguration config, String path, int minimum, int maximum) {
+        int value = atLeast(config, path, minimum);
+        if (value > maximum) {
+            throw new IllegalArgumentException(path + " must be at most " + maximum);
+        }
+        return value;
     }
 
     private static int atLeast(FileConfiguration config, String path, int minimum) {

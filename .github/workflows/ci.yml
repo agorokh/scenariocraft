@@ -35,6 +35,18 @@ jobs:
       - name: Build and test
         run: make ci-fast
 
+      - name: Run judge fixture offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x judge/build/install/judge/bin/judge
+          cp -R judge/src/test/resources/fixtures/runtime \
+            "${RUNNER_TEMP}/judge-runtime"
+          SCENARIOCRAFT_JUDGE_CONFIG_DIR="${GITHUB_WORKSPACE}/judge" \
+            judge/build/install/judge/bin/judge \
+              --round "${RUNNER_TEMP}/judge-runtime/rounds/round-20260721-193000" \
+              --dry-run
+
       - name: Stage tested plugin jar
         shell: bash
         run: |
