@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,17 @@ import org.junit.jupiter.api.io.TempDir;
 
 class TeleportRecoveryStoreTest {
     @TempDir Path temporaryDirectory;
+
+    @Test
+    void openingEmptyStoreProbesAndMaterializesAtomicRegistry() throws IOException {
+        Path registry = temporaryDirectory.resolve("pending-recovery.txt");
+
+        TeleportRecoveryStore store = TeleportRecoveryStore.open(registry);
+
+        assertTrue(Files.isRegularFile(registry));
+        assertEquals(List.of(), Files.readAllLines(registry));
+        assertEquals(Set.of(), store.pendingPlayers());
+    }
 
     @Test
     void additionsAndRemovalsSurviveStoreReopen() {

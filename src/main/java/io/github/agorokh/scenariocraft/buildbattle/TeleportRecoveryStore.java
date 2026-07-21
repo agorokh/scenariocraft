@@ -36,8 +36,11 @@ public final class TeleportRecoveryStore {
                     }
                 }
             }
-            return new TeleportRecoveryStore(absolutePath, entries);
-        } catch (IOException | IllegalArgumentException failure) {
+            TeleportRecoveryStore store =
+                    new TeleportRecoveryStore(absolutePath, entries);
+            store.writeAtomically(entries);
+            return store;
+        } catch (IOException | IllegalArgumentException | IllegalStateException failure) {
             throw new IllegalStateException(
                     "Could not load teleport recovery registry " + absolutePath, failure);
         }

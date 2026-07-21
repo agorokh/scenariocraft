@@ -534,6 +534,12 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
         player.setGameMode(GameMode.ADVENTURE);
         buildBossBar.removePlayer(player);
+        if (hasPendingTeleportRecovery(player)) {
+            event.setRespawnLocation(hubLocation());
+            retryStrandedExit(
+                    player, 1L, () -> resumeActiveContestant(player));
+            return;
+        }
         if (!isUsablePlot(contestant)) {
             Location hub = hubLocation();
             event.setRespawnLocation(hub);

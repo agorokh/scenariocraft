@@ -1677,6 +1677,40 @@ class RoundControllerTest {
     }
 
     @Test
+    void pendingBuildingRespawnRecoversAtHubBeforePlotReentry() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+        rig.recoveryStore.add(rig.playerId);
+        rig.ignoreTeleportCommand.set(true);
+        PlayerRespawnEvent respawn = respawnEvent(rig);
+        int commandsBeforeRespawn = rig.consoleCommands.size();
+
+        rig.controller.onPlayerRespawn(respawn);
+
+        assertEquals(0.5, respawn.getRespawnLocation().getX());
+        assertEquals(0.5, respawn.getRespawnLocation().getZ());
+        assertEquals(GameMode.ADVENTURE, rig.gameMode.get());
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        while (rig.consoleCommands.size() == commandsBeforeRespawn) {
+            assertFalse(rig.delayedTasks.isEmpty());
+            rig.runNextDelayedTask();
+        }
+        assertTrue(rig.consoleCommands.getLast().endsWith(" 0.5 1 0.5 0 0"));
+        assertTrue(rig.recoveryStore.contains(rig.playerId));
+
+        rig.lastTeleport.set(respawn.getRespawnLocation().clone());
+        rig.ignoreTeleportCommand.set(false);
+        rig.runDelayedTasks();
+
+        assertFalse(rig.recoveryStore.contains(rig.playerId));
+        assertEquals(-2.5, rig.lastTeleport.get().getZ());
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        assertNotNull(rig.playerWorldBorder.get());
+        rig.close();
+    }
+
+    @Test
     void unusableRespawnPlotFallsBackToDurableHubRecovery() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.BUILDING);
