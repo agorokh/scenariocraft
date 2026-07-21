@@ -98,7 +98,8 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         settings.resultsPollTicks());
         BattleCommand battleCommand =
                 new BattleCommand(settings, roundController, resultAnnouncements);
-        Objects.requireNonNull(getCommand("battle"), "battle command missing from plugin.yml")
+        Objects.requireNonNull(
+                        getCommand("speedbuild"), "speedbuild command missing from plugin.yml")
                 .setExecutor(battleCommand);
 
         if (settings.demoMode()) {
@@ -109,7 +110,7 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                 .info(
                         "Loaded "
                                 + settings.tasks().size()
-                                + " Build Battle tasks; plot size "
+                                + " Speed Build tasks; plot size "
                                 + settings.arena().plotSize()
                                 + ", spacing "
                                 + settings.arena().plotSpacing()

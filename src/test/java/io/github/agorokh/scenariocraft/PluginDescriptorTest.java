@@ -13,7 +13,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 class PluginDescriptorTest {
     @Test
-    void descriptorDeclaresEntryPointAndBattleCommand() throws IOException {
+    void descriptorDeclaresEntryPointAndSpeedBuildCommandWithLegacyAliases() throws IOException {
         try (InputStream descriptor =
                 PluginDescriptorTest.class.getClassLoader().getResourceAsStream("plugin.yml")) {
             assertNotNull(descriptor, "plugin.yml must be packaged as a resource");
@@ -24,7 +24,8 @@ class PluginDescriptorTest {
                     yaml.contains(
                             "main: io.github.agorokh.scenariocraft.ScenarioCraftPlugin"));
             assertTrue(yaml.contains("api-version: '1.21.11'"));
-            assertTrue(yaml.contains("  battle:"));
+            assertTrue(yaml.contains("  speedbuild:"));
+            assertTrue(yaml.contains("      - battle"));
             assertTrue(yaml.contains("      - buildbattle"));
             assertTrue(yaml.contains("      - bb"));
             assertTrue(yaml.contains("  scenariocraft.alerts:"));

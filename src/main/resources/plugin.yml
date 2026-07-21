@@ -6,10 +6,11 @@ api-version: '1.21.11'
 author: ScenarioCraft contributors
 website: https://github.com/agorokh/scenariocraft
 commands:
-  battle:
-    description: Controls the current ScenarioCraft Build Battle round.
+  speedbuild:
+    description: Controls the current ScenarioCraft Speed Build round.
     usage: /<command> start|stop|results
     aliases:
+      - battle
       - buildbattle
       - bb
 permissions:

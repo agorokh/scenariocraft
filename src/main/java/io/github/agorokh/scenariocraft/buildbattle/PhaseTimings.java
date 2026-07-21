@@ -1,6 +1,6 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
-/** Configuration-backed durations consumed by the Build Battle round controller. */
+/** Configuration-backed durations consumed by the Speed Build round controller. */
 public record PhaseTimings(
         int gatherSeconds, int noteSeconds, int buildSeconds, int revealLingerSeconds) {
     public PhaseTimings {

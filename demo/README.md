@@ -6,7 +6,7 @@ Run these exact steps from a clean machine with Docker Compose and Minecraft Jav
 2. `export OPENAI_API_KEY='<your OpenAI API key>'`
 3. `docker compose up --build`
 4. Join `localhost:25565` in Minecraft.
-5. Run `/battle start` in chat.
+5. Run `/speedbuild start` in chat.
 
 The local demo intentionally uses Paper 1.21.11 in offline mode so a submission judge can
 join without account-server setup. Do not expose it to an untrusted network. RCON is enabled
