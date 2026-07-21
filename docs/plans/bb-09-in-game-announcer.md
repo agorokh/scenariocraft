@@ -78,6 +78,10 @@ session.
   prior battle. The exporter now returns the active round ID, the controller exposes it to the
   announcement service, and async completion revalidates both phase and round ID before any
   player-facing effect.
+- The first active-round implementation correctly made the old synthetic future-dated smoke
+  fixture ineligible, exposing that the smoke no longer modeled the production contract. The
+  smoke now waits for the real active export, overlays deterministic judge inputs into that
+  exact directory, and verifies RCON, polling deduplication, and replay against its dynamic ID.
 
 ## Acceptance evidence
 

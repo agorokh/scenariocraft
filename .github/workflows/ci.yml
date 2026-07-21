@@ -171,13 +171,10 @@ jobs:
             -e 's/^results-poll-ticks: .*/results-poll-ticks: 1/' \
             "${server_dir}/plugins/ScenarioCraft/config.yml"
           rm "${server_dir}/plugins/ScenarioCraft/config.yml.bak"
-          fixture_round="${server_dir}/plugins/ScenarioCraft/rounds/round-20991231-235959"
+          fixture_source="${server_dir}/judge-fixture"
           cp -R \
             judge/src/test/resources/fixtures/runtime/rounds/round-20260721-193000 \
-            "${fixture_round}"
-          jq '.round_id = "round-20991231-235959"' \
-            "${fixture_round}/manifest.json" >"${fixture_round}/manifest.json.tmp"
-          mv "${fixture_round}/manifest.json.tmp" "${fixture_round}/manifest.json"
+            "${fixture_source}"
           printf 'eula=true\n' >"${server_dir}/eula.txt"
           printf '%s\n' \
             'allow-nether=false' \
@@ -341,7 +338,30 @@ jobs:
               exit 1
             fi
 
-            judge_round="$1/plugins/ScenarioCraft/rounds/round-20991231-235959"
+            active_round_id=""
+            for ((attempt = 0; attempt < 60; attempt++)); do
+              if active_round_id="$(
+                grep -Eo \
+                  "plugins/ScenarioCraft/rounds/round-[0-9]{8}-[0-9]{6}" \
+                  logs/latest.log | tail -n 1 | awk -F/ "{print \$NF}"
+              )" &&
+                [[ "${active_round_id}" =~ ^round-[0-9]{8}-[0-9]{6}$ ]]; then
+                break
+              fi
+              kill -0 "${server_pid}" 2>/dev/null || break
+              sleep 1
+            done
+            if [[ ! "${active_round_id}" =~ ^round-[0-9]{8}-[0-9]{6}$ ]]; then
+              printf "Active round export did not complete before judging.\n" >&2
+              tail -n 100 logs/latest.log >&2 || true
+              exit 1
+            fi
+            judge_round="$1/plugins/ScenarioCraft/rounds/${active_round_id}"
+            cp -R "$1/judge-fixture/." "${judge_round}/"
+            jq --arg round_id "${active_round_id}" \
+              '.round_id = $round_id' \
+              "${judge_round}/manifest.json" >"${judge_round}/manifest.json.tmp"
+            mv "${judge_round}/manifest.json.tmp" "${judge_round}/manifest.json"
             SCENARIOCRAFT_JUDGE_CONFIG_DIR="$2" \
               SCENARIOCRAFT_RCON_HOST=127.0.0.1 \
               SCENARIOCRAFT_RCON_PORT="$4" \
@@ -358,7 +378,7 @@ jobs:
             announcement_seen=0
             for ((attempt = 0; attempt < 30; attempt++)); do
               if grep -q \
-                "SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959" \
+                "SCENARIOCRAFT_RESULTS_ANNOUNCED ${active_round_id}" \
                 logs/latest.log; then
                 announcement_seen=1
                 break
@@ -412,7 +432,7 @@ jobs:
               exit 1
             fi
             if test "$(grep -c \
-              "SCENARIOCRAFT_RESULTS_ANNOUNCED round-20991231-235959" \
+              "SCENARIOCRAFT_RESULTS_ANNOUNCED ${active_round_id}" \
               logs/latest.log)" -ne 1; then
               printf "RCON and polling produced duplicate announcements.\n" >&2
               exit 1
