@@ -56,8 +56,9 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 
 - `python3 scripts/site_check.py --check-external`: `SITE_CHECK_OK` and
   `SITE_EXTERNAL_LINKS_OK`; all local resources, anchors, and allowlisted GitHub links resolve.
-- `python3 -m unittest discover -s site -p 'test_*.py'`: three safety regressions pass for
-  explicit HTTPS GitHub links, `site/` path containment, and redirect allowlisting.
+- `python3 -m unittest discover -s scripts -p 'test_*.py'`: four safety regressions pass for
+  explicit HTTPS GitHub links, `site/` path containment, redirect allowlisting, and remote
+  `<base href>` rejection.
 - Browser metrics at 1280 px and 375 px: document scroll width exactly equals viewport width;
   hero, all seven steps, judge stage, home panel, and recipe stay inside the mobile viewport;
   all four images load at their natural sizes with non-empty alt text.
