@@ -35,6 +35,7 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 | 2026-07-21 | State that the Docker bridge overlay does not provide console LAN discovery. | Published UDP accepts direct Bedrock connections but does not relay Geyser's broadcast from the container bridge to the physical LAN. |
 | 2026-07-21 | Pin Geyser and ViaVersion by exact Modrinth version ID, bound Floodgate download retries, and split repository-document assertions into `docs-check`. | Current-head review showed that floating betas, an unbounded setup download, and cross-domain `site-check` assertions could hide runtime drift or erode target contracts. |
 | 2026-07-21 | Seed and maintain `auth-type: floodgate` in the writable plugin volume before Paper starts, and add a Linux hosted-CI overlay boot plus RakNet probe. | The manual post-start edit/restart was brittle, while Compose rendering alone did not prove plugin download, Paper startup, Geyser binding, or host-plane UDP. |
+| 2026-07-21 | Apply a smoke-only Compose override that binds Java and Bedrock ports to `127.0.0.1`, and allow 30 minutes for the cold hosted path. | CI needs host-plane UDP proof without briefly exposing the offline-mode game server, and the bounded 300-second readiness wait must fit after image pulls, compilation, and plugin downloads. |
 
 ## Surprises & Discoveries
 
@@ -71,6 +72,10 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   retained `online`. The initializer and runtime smoke now target and assert the nested key.
   A repeat boot generated the Floodgate key and returned the Speed Build RakNet pong without
   a manual edit or restart.
+- Current-head review caught that the hosted smoke inherited the operator demo's all-interface
+  port publishing. The smoke now replaces both port mappings with loopback-only bindings,
+  distinguishes fixed container UDP 19132 from the configurable host port, verifies both
+  live mappings before waiting, and retains trap-based stack and volume cleanup on every exit.
 
 ## Acceptance evidence
 
@@ -87,8 +92,9 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   `ViaVersion-5.11.1-SNAPSHOT.jar` in a fresh data volume.
 - Hosted Linux CI runs `make bedrock-compose-smoke`, which builds and starts the real Paper
   overlay, verifies nested `java.auth-type: floodgate` and the generated Floodgate key,
-  waits for Geyser to bind UDP 19132, receives the Speed Build RakNet pong through the
-  published host port, and removes the isolated stack and volumes.
+  verifies that Java and Bedrock are bound only to host loopback, waits for Geyser to bind
+  container UDP 19132, receives the Speed Build RakNet pong through the configurable
+  loopback host port, and removes the isolated stack and volumes.
 - `demo/check-bedrock.sh` parsed a protocol-valid local RakNet pong fixture and printed
   `SCENARIOCRAFT_BEDROCK_OK` with the fixture's Speed Build MOTD.
 - A fresh isolated Compose-volume smoke downloaded Geyser 2.11.0-b1200, ViaVersion

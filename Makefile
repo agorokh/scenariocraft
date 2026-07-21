@@ -31,6 +31,7 @@ docs-check:
 	grep -Fq 'Docker Desktop on macOS' demo/README.md
 	test -x demo/check-bedrock.sh
 	test -x demo/smoke-bedrock-compose.sh
+	test -f docker-compose.smoke.yml
 
 bedrock-compose-check:
 	./demo/test-bedrock-compose.sh

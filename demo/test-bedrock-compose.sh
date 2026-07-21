@@ -22,6 +22,12 @@ env -u SCENARIOCRAFT_BEDROCK_PORT \
     docker compose -f docker-compose.yml -f docker-compose.bedrock.yml \
     config --format json >"${contract_dir}/compose.json"
 
+SCENARIOCRAFT_BEDROCK_PORT=19133 \
+OPENAI_API_KEY=bedrock-compose-contract-only \
+    docker compose -f docker-compose.yml -f docker-compose.bedrock.yml \
+    -f docker-compose.smoke.yml \
+    config --format json >"${contract_dir}/smoke-compose.json"
+
 jq -e '
     def floodgate_url:
       "https://download.geysermc.org/v2/projects/floodgate/versions/2.2.5/builds/138/downloads/spigot";
@@ -48,5 +54,19 @@ jq -e '
       .target == 19132 and .published == "19132" and .protocol == "udp"
     )
 ' "${contract_dir}/compose.json" >/dev/null
+
+jq -e '
+    (.services.paper.ports | length) == 2 and
+    any(
+      .services.paper.ports[];
+      .target == 25565 and .published == "25565" and .protocol == "tcp" and
+      .host_ip == "127.0.0.1"
+    ) and
+    any(
+      .services.paper.ports[];
+      .target == 19132 and .published == "19133" and .protocol == "udp" and
+      .host_ip == "127.0.0.1"
+    )
+' "${contract_dir}/smoke-compose.json" >/dev/null
 
 echo "SCENARIOCRAFT_BEDROCK_COMPOSE_OK"
