@@ -1,6 +1,8 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayInputStream;
@@ -11,6 +13,23 @@ import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
 
 class DemoSampleBuildTest {
+    @Test
+    void packagedRocketFitsTheDockerDemoArena() throws Exception {
+        DemoSampleBuild sample;
+        try (var input =
+                DemoSampleBuildTest.class
+                        .getClassLoader()
+                        .getResourceAsStream("demo/sample-build.blocks")) {
+            assertNotNull(input);
+            sample = DemoSampleBuild.load(input);
+        }
+
+        assertFalse(sample.isEmpty());
+        assertEquals(
+                15,
+                sample.placeIn(new PlotBounds(-10, 10, -10, 10), -61, 20).size());
+    }
+
     @Test
     void parsesAndPlacesResourceFillsRelativeToThePlotCenter() throws Exception {
         DemoSampleBuild sample = sample("STONE -1 1 0 0 -2 2\nSEA_LANTERN 0 0 1 3 0 0\n");

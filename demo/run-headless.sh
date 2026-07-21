@@ -38,10 +38,11 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 started="$(date +%s)"
+started_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ${compose} --project-name "${project}" up --build --detach
 
 deadline=$((started + timeout_seconds))
-while ! ${compose} --project-name "${project}" logs paper 2>&1 \
+while ! ${compose} --project-name "${project}" logs --since "${started_iso}" paper 2>&1 \
         | grep -q 'SCENARIOCRAFT_DEMO_ARENA_READY'; do
     if [ "$(date +%s)" -ge "${deadline}" ]; then
         echo "Timed out waiting for the demo arena." >&2
@@ -54,7 +55,7 @@ done
 ${compose} --project-name "${project}" exec -T paper rcon-cli 'battle start'
 
 while true; do
-    logs="$(${compose} --project-name "${project}" logs paper judge 2>&1)"
+    logs="$(${compose} --project-name "${project}" logs --since "${started_iso}" paper judge 2>&1)"
     if printf '%s\n' "${logs}" | grep -q 'SCENARIOCRAFT_DEMO_JUDGED' \
             && printf '%s\n' "${logs}" | grep -q 'SCENARIOCRAFT_RESULTS_ANNOUNCED'; then
         break

@@ -16,8 +16,18 @@ while true; do
         for manifest in "${rounds}"/round-*/manifest.json; do
             [ -f "${manifest}" ] || continue
             round="${manifest%/manifest.json}"
-            [ ! -e "${round}/.judge-attempted" ] || continue
-            : > "${round}/.judge-attempted"
+            [ ! -s "${round}/results.txt" ] || continue
+            attempts_file="${round}/.judge-attempts"
+            attempts=0
+            if [ -s "${attempts_file}" ]; then
+                attempts="$(tr -d '\r\n' < "${attempts_file}")"
+            fi
+            case "${attempts}" in
+                0|1|2) ;;
+                *) continue ;;
+            esac
+            attempts=$((attempts + 1))
+            printf '%s\n' "${attempts}" > "${attempts_file}"
             if [ "${SCENARIOCRAFT_DEMO_DRY_RUN:-false}" = "true" ]; then
                 /opt/scenariocraft/judge/bin/judge --round "${round}" --dry-run || true
             else
@@ -26,7 +36,8 @@ while true; do
             if [ -s "${round}/results.txt" ]; then
                 echo "SCENARIOCRAFT_DEMO_JUDGED $(basename "${round}")"
             else
-                echo "SCENARIOCRAFT_DEMO_JUDGE_FAILURE $(basename "${round}")" >&2
+                echo "SCENARIOCRAFT_DEMO_JUDGE_FAILURE $(basename "${round}") attempt=${attempts}/3" >&2
+                sleep 10
             fi
         done
     fi
