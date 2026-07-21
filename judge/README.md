@@ -18,7 +18,8 @@ per-attempt timeout; set `SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS` to a positive int
 override it. HTTP connections default to 10 seconds; set
 `SCENARIOCRAFT_JUDGE_CONNECT_TIMEOUT_SECONDS` to override that timeout separately.
 Every live kid-facing comment must also pass OpenAI moderation before it can enter a result.
-A moderation error or flagged comment fails closed and uses the persona's single retry.
+Transient moderation errors retry once against the same generated verdict; a flagged comment
+fails closed immediately without regenerating or rechecking unsafe text.
 
 The CLI requires a Unix-like filesystem that reports the `unix:nlink` file attribute for
 round inputs. This is an intentional fail-closed provenance boundary: filesystems that cannot
