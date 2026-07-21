@@ -2,7 +2,7 @@
 
 Issue: #32
 Owner: Codex
-Status: In progress
+Status: Blocked on supplied logo asset
 
 ## Purpose
 
@@ -15,10 +15,10 @@ give Build Week judges a one-minute path to understanding the game without insta
 
 - [x] Define the smallest end-to-end slice.
 - [ ] Inspect and preserve the supplied logo assets under `assets/branding/`.
-- [ ] Produce traceable renderer imagery and implement all seven story steps.
-- [ ] Add the Pages deployment workflow and README header link.
+- [x] Produce traceable renderer imagery and implement all seven story steps.
+- [x] Add the Pages deployment workflow and README header link.
 - [ ] Verify zero external requests, mobile readability, source traceability, and local CI.
-- [ ] Enable workflow-based GitHub Pages and verify the live deployment.
+- [x] Enable workflow-based GitHub Pages; live verification follows merge-time deployment.
 - [ ] Complete `/review` against `code_review.md` and resolve P1 findings.
 - [ ] Record the retrospective.
 
@@ -34,14 +34,36 @@ give Build Week judges a one-minute path to understanding the game without insta
 ## Surprises & Discoveries
 
 - The requested `~/Downloads/speed-build-logo.png` glob did not resolve during initial
-  discovery. A broader filename search is in progress before any branding implementation.
+  discovery. Searches of Downloads, the user's home directory, Spotlight, recent Chronicle
+  state, and connected Chrome state did not recover the file. The original asset must be
+  restored or attached; substituting a newly invented logo would violate the issue.
 - The operator's original checkout contains unrelated work on another branch, so #32 uses a
   separate clean worktree based on `origin/main` rather than disturbing those files.
+- The desktop shell does not select its installed Java automatically. Setting
+  `JAVA_HOME=/opt/homebrew/opt/openjdk@21` exposes Java 21.0.11 for renderer and CI runs.
+- The in-app browser was unavailable, so responsive screenshot evidence must be captured from
+  the public Pages URL after deployment.
+- `/review` found one P1 and no other findings: the missing canonical logo makes `site-check`,
+  the Pages staging copy, the README image, and the page hero fail. That finding remains open
+  until the supplied file is available.
 
 ## Acceptance evidence
 
-To be completed with renderer commands and hashes, self-containment checks, responsive browser
-screenshots, local CI output, GitHub Actions status, Pages API state, and the verified live URL.
+- Pages API: `POST /repos/agorokh/scenariocraft/pages` succeeded with
+  `build_type: workflow`, `public: true`, and HTTPS enabled.
+- Renderer regression:
+  `./gradlew :renderer:test --tests 'io.github.agorokh.scenariocraft.renderer.VoxelRendererTest'`
+  passed under Java 21.
+- Demo fixture SHA-256:
+  `e1fbe884fb463a0ec8e8986b169fa12ad9d8114e498e84ac10c950ffbbe0c557`.
+- Page render SHA-256 values: isometric
+  `afb8d7f7103c17ed2c29cd88cafa2e5caaaf1266beab0eb7d13dab72a9ac8676`, cutaway
+  `576ecf174d97a88ab4ad298c1d1e271f3844b95085619549edd36204ab5c9720`, and plan
+  `e557947a5768e6e5244860fbfa387a47a8465c30699ad40570d94a21ae6b782a`.
+- Static scans find exactly seven step articles and no remote `src`, `href`, CSS `@import`,
+  or remote CSS `url()` resource.
+- Full `make ci-fast`, GitHub CI, Pages deployment, responsive screenshots, and live URL
+  verification remain pending on the missing logo.
 
 ## Retrospective
 
