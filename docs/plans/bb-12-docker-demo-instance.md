@@ -1,0 +1,106 @@
+# ExecPlan: BB-12 Docker demo instance
+
+Issue: #14
+Owner: Codex session 019f833e-e103-75d0-b2b6-4abfd1270517
+Status: In progress
+
+## Purpose
+
+Deliver a clean-machine Docker path that lets a human judge start ScenarioCraft, join a
+ready arena, run a complete Build Battle alone in under ten minutes, and see the verdict in
+Minecraft chat. This needs an ExecPlan because it crosses the Paper server, plugin runtime,
+renderer/judge process, Docker packaging, bootstrap data, and operator documentation.
+
+## Progress
+
+- [x] Define the smallest end-to-end slice.
+- [x] Implement with tests.
+- [ ] Capture the remaining literal one-human-player evidence. The fresh-volume headless
+      dry-run now proves the integrated Paper announcement path; live-key and human-client
+      evidence remain.
+- [x] Complete `/review` and resolve P1 findings.
+- [ ] Record the retrospective.
+
+Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
+session.
+
+## Decision Log
+
+| Date | Decision | Why |
+| --- | --- | --- |
+| 2026-07-20 | Package the Paper server and judge from this repository and orchestrate them with Docker Compose. | The issue requires one reproducible project-owned path and forbids assuming host tools beyond Docker. |
+| 2026-07-20 | Make the OpenAI key a required Compose interpolation and keep it environment-only. | Startup must fail clearly when the key is absent, without copying credentials into files or images. |
+| 2026-07-20 | Build solo mode around one real contestant plus a bundled sample second plot. | A single Devpost judge must exercise the normal export, judging, and announcement path instead of a reduced mock-only flow. |
+| 2026-07-20 | Treat `main` as the delivery base while BB-09 PR #34 remains an external dependency. | Issue #14 does not name a non-default base; the delivery procedure requires the repository default in that case. Integration evidence will be captured only after the announcer dependency is available. |
+| 2026-07-21 | Integrate merged BB-09 before completing the demo success gate. | Its RCON-triggered announcement produces the Paper log marker that `make demo` verifies; the gate now reflects a real producer rather than an unreachable dependency. |
+| 2026-07-21 | Give the judge only the dedicated `rounds` volume. | The judge can read inputs and publish results without access to the live plugin JAR or configuration. |
+
+## Surprises & Discoveries
+
+- BB-09 is implemented in PR #34 with green CI but was not merged when this plan started.
+  Issue #14 can build its isolated Docker and solo-mode slices on `main`, but final verdict
+  announcement evidence depends on that PR reaching the base branch.
+- The first real Compose smoke mounted server data and plugin data as separate named volumes.
+  Paper correctly wrote rounds under the plugin volume, but the judge initially watched the
+  shadowed `server-data/plugins` path. Mounting the plugin volume directly into the judge made
+  the ownership boundary explicit and produced a two-plot verdict on the next watcher start.
+- The host has Docker but no Java runtime and exposes Compose as `docker-compose`, not the
+  newer subcommand. Local CI therefore ran in the pinned Java 21 Gradle image; the documented
+  `docker compose` form was separately copy-paste validated through the installed Compose
+  plugin binary.
+- The first live OpenAI pass returned schema-invalid output twice for one persona. The judge's
+  bounded retry path recovered, completed the round, and wrote a valid result without exposing
+  the API key. This is useful acceptance evidence for the real model boundary rather than the
+  deterministic dry-run path.
+- BB-09 PR #34 reached green CI with all threads resolved and a clean current-head Codex review
+  comment, but the review app did not emit the formal review object required by `resolve-pr`
+  after three configured cycles. The dependency resolver recorded escalation comment
+  `#5031442899`; BB-12 cannot capture integrated chat evidence through the normal base path
+  until that gate is restored and BB-09 merges.
+- While that review was pending, `main` merged the active-arena mutation policy in PR #36 and
+  refactored the controller paths touched by demo mode. The merge retained both the policy's
+  dedicated listener and the bundled sample placement/export behavior; the combined Java 21
+  `make ci-fast` gate passed before the conflict resolution was committed.
+- External review found that the initial retry loop interpreted every transient judge failure as
+  terminal and that the judge had the full plugin volume mounted. The resolver now waits for
+  the third (exhausted) retry and isolates the shared round directory in its own named volume.
+- A fresh named `rounds` volume is root-owned by Docker. The existing root-run secrets service
+  initializes it for Paper and judge UID 1000 before either dependent service starts.
+- The demo originally shortened REVEAL to five minutes, which could end before the live
+  judge's bounded retry budget. It now retains the production 900-second window so a late
+  verdict can still be announced through the normal RCON and poll paths.
+- The headless timeout now also supervises the initial Compose build/start command rather than
+  beginning only after it returns, so a stalled clean-machine image build cannot run forever.
+
+## Acceptance evidence
+
+- `env -u OPENAI_API_KEY docker-compose config` exited 1 with
+  `OPENAI_API_KEY is required; export it before starting ScenarioCraft`.
+- A fresh Docker-volume smoke booted Paper 1.21.11, enabled ScenarioCraft, and logged
+  `SCENARIOCRAFT_DEMO_ARENA_READY` after 27,189 mutations at the configured 6,000-block
+  per-tick budget.
+- Headless RCON `/battle start` entered PREPARING at 06:18:48 UTC, exported two bundled
+  sample plots at 06:20:22 UTC, and the dry-run judge wrote `results.txt` with a winner.
+- A fresh-volume live-key Compose probe loaded `OPENAI_API_KEY` from the ignored main-checkout
+  `.env`, reached `SCENARIOCRAFT_DEMO_ARENA_READY` in 97 seconds, started a headless round,
+  and wrote a real OpenAI-backed verdict for `round-20260721-072451` in 272 seconds total
+  (175 seconds after arena readiness). The probe removed its containers and named volumes.
+- The one-player controller regression exports `BuilderKid` as p1 and
+  `ScenarioCraft Sample 2` as p2 through the normal voxel contract.
+- `make ci-fast` passed in the Java 21 Gradle container; draft PR #37's build and real-Paper
+  smoke checks passed for implementation commit `112ce73`.
+- `/review` against `code_review.md` found no P1: the sample build is placed through the
+  configured batched editor, export changes have regressions, player text is kid-appropriate,
+  and the Compose/images contain no committed credential.
+- After merging current `main`, the combined active-arena policy and demo-mode controller/test
+  suite passed `make ci-fast` under Java 21.
+- Fresh-volume `make demo-dry-run` passed in 126 seconds after the BB-09 integration. It
+  exported the round through the isolated `rounds` volume, wrote a bundled dry-run verdict,
+  and observed `SCENARIOCRAFT_RESULTS_ANNOUNCED` in Paper before printing
+  `SCENARIOCRAFT_DEMO_SUCCESS`.
+- Pending: the literal one-human-player chat check and a fresh live-key run on the integrated
+  announcer path.
+
+## Retrospective
+
+Pending completion.
