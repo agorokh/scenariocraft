@@ -8,9 +8,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -28,7 +33,7 @@ class OpenAiPersonaJudgeTest {
         List<Path> images = new ArrayList<>();
         for (int index = 0; index < 7; index++) {
             Path image = temporaryDirectory.resolve(index + ".png");
-            Files.write(image, new byte[] {(byte) 0x89, 0x50, 0x4e, 0x47, (byte) index});
+            Files.write(image, pngHeader(640, 480));
             images.add(image);
         }
 
@@ -125,11 +130,53 @@ class OpenAiPersonaJudgeTest {
         assertFalse(message.contains("sk-secret123456"));
     }
 
+    @Test
+    void rejectsOversizedImagesBeforeReadingThemIntoMemory() throws Exception {
+        Path oversized = temporaryDirectory.resolve("oversized.png");
+        try (FileChannel channel = FileChannel.open(
+                oversized, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            channel.position(OpenAiPersonaJudge.MAX_IMAGE_BYTES);
+            channel.write(ByteBuffer.wrap(new byte[] {0}));
+        }
+
+        assertThrows(IOException.class, () -> OpenAiPersonaJudge.requestBody(
+                PERSONA,
+                "Build a cottage",
+                RUBRIC,
+                "p1",
+                Collections.nCopies(7, oversized)));
+    }
+
+    @Test
+    void rejectsPngDimensionsAboveTheUploadLimit() throws Exception {
+        Path hugeDimensions = temporaryDirectory.resolve("huge-dimensions.png");
+        Files.write(hugeDimensions, pngHeader(OpenAiPersonaJudge.MAX_IMAGE_DIMENSION + 1, 1));
+
+        assertThrows(IOException.class, () -> OpenAiPersonaJudge.requestBody(
+                PERSONA,
+                "Build a cottage",
+                RUBRIC,
+                "p1",
+                Collections.nCopies(7, hugeDimensions)));
+    }
+
     private String validVerdict() {
         return """
                 {"persona":"Professor Fixture","reasoning":"The cottage fits the task.",
                 "scores":{"theme_fit":7,"creativity":8,"effort":6,"detail":9},
                 "comment":"Your doorway is welcoming. Add roof texture next."}
                 """;
+    }
+
+    private byte[] pngHeader(int width, int height) {
+        return ByteBuffer.allocate(24)
+                .put(new byte[] {
+                    (byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a
+                })
+                .putInt(13)
+                .put(new byte[] {'I', 'H', 'D', 'R'})
+                .putInt(width)
+                .putInt(height)
+                .array();
     }
 }

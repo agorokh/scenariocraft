@@ -36,6 +36,7 @@ session.
 | 2026-07-20 | Write partial verdicts but set `no_winner: true` and return non-zero whenever any contestant has fewer than configured `min_judges` valid verdicts after one retry per persona. | The round must fail closed rather than quietly ranking builds from unequal or one-person councils. |
 | 2026-07-21 | Treat model output, response lifecycle state, and round image paths as untrusted inputs: reject cruel or strength-free comments, non-completed responses, symbolic links, and plot-ID mismatches. | Judge output is player-facing and image payloads leave the machine, so validation must fail closed before either publishing text or uploading bytes. |
 | 2026-07-21 | Make the persona/rubric directory configurable with `SCENARIOCRAFT_JUDGE_CONFIG_DIR`, while preserving `judge/` as the repository-root default. | Operators can launch the installed CLI outside the repository root without weakening the frozen filenames or duplicating BB-10 content. |
+| 2026-07-21 | Reject terminal-control and Unicode-format characters in manifest display fields, and cap uploaded PNGs at 10 MiB and 4096 pixels per dimension after validating their headers. | Manifest text is printed to a terminal and image bytes are fully encoded for every judge attempt; explicit bounds prevent terminal injection and unbounded heap use. |
 
 ## Surprises & Discoveries
 
@@ -54,6 +55,9 @@ session.
 - BB-10 merged while this PR was under review. Integrating current `main` made its production
   `judge/personas.yml` and `judge/rubric.md` available, so the shape and drift guard now runs
   against the real content as well as the isolated fixture.
+- A reviewer-guide comment posted after the first green repair head identified two additional
+  input-boundary risks: terminal control characters in manifest display text and unbounded
+  image reads. Both required a second repair head and a reset of the current-head review gate.
 
 ## Acceptance evidence
 
@@ -88,6 +92,8 @@ session.
   paths, and the merged production persona/rubric contract.
 - The post-repair `make ci-fast` gate and the workflow-equivalent installed judge dry run both
   passed on Java 21; the dry run retained the expected `8.75` / `6.75` means and Alex winner.
+- Additional focused tests pass for ANSI/Unicode terminal-control rejection and for oversized
+  or over-dimension PNG rejection before OpenAI request construction.
 
 ## Retrospective
 

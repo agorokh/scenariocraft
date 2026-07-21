@@ -27,6 +27,8 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
         if (task == null || task.isBlank() || world == null || world.isBlank()) {
             throw new IllegalArgumentException("manifest task and world must be non-blank");
         }
+        requireSafeText(task, "manifest task");
+        requireSafeText(world, "manifest world");
         if (plots.isEmpty()) {
             throw new IllegalArgumentException("manifest must contain at least one plot");
         }
@@ -101,6 +103,20 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
         return value.getAsJsonArray();
     }
 
+    private static void requireSafeText(String value, String name) {
+        if (value.codePoints().anyMatch(JudgeRound::isUnsafeTextCodePoint)) {
+            throw new IllegalArgumentException(name + " contains unsafe control characters");
+        }
+    }
+
+    private static boolean isUnsafeTextCodePoint(int codePoint) {
+        int type = Character.getType(codePoint);
+        return Character.isISOControl(codePoint)
+                || type == Character.FORMAT
+                || type == Character.LINE_SEPARATOR
+                || type == Character.PARAGRAPH_SEPARATOR;
+    }
+
     record Plot(String plotId, String player) {
         Plot {
             if (plotId == null || !plotId.matches("[A-Za-z0-9][A-Za-z0-9_-]*")) {
@@ -109,6 +125,7 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
             if (player == null || player.isBlank()) {
                 throw new IllegalArgumentException("player must be non-blank");
             }
+            requireSafeText(player, "player");
         }
     }
 }

@@ -12,7 +12,9 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
@@ -22,6 +24,8 @@ import java.util.regex.Pattern;
 
 final class OpenAiPersonaJudge implements PersonaJudge {
     static final String MODEL = "gpt-5.6";
+    static final long MAX_IMAGE_BYTES = 10L * 1024 * 1024;
+    static final int MAX_IMAGE_DIMENSION = 4096;
     private static final URI RESPONSES_ENDPOINT =
             URI.create("https://api.openai.com/v1/responses");
     private static final Gson JSON = new Gson();
@@ -119,10 +123,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                 + "\n\nPersona voice data:\n" + persona.voice()));
         Base64.Encoder encoder = Base64.getEncoder();
         for (Path image : images) {
-            byte[] bytes = Files.readAllBytes(image);
-            if (bytes.length == 0) {
-                throw new IOException("Judge image is empty: " + image.getFileName());
-            }
+            byte[] bytes = readImage(image);
             JsonObject imageInput = new JsonObject();
             imageInput.addProperty("type", "input_image");
             imageInput.addProperty(
@@ -146,6 +147,39 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         text.add("format", format);
         request.add("text", text);
         return JSON.toJson(request);
+    }
+
+    private static byte[] readImage(Path image) throws IOException {
+        long size = Files.size(image);
+        if (size <= 0 || size > MAX_IMAGE_BYTES) {
+            throw new IOException("Judge image size is outside the allowed range: "
+                    + image.getFileName());
+        }
+        byte[] bytes;
+        try (var input = Files.newInputStream(image, LinkOption.NOFOLLOW_LINKS)) {
+            bytes = input.readNBytes((int) MAX_IMAGE_BYTES + 1);
+        }
+        if (bytes.length > MAX_IMAGE_BYTES) {
+            throw new IOException("Judge image exceeds the byte limit: " + image.getFileName());
+        }
+        if (bytes.length < 24
+                || (bytes[0] & 0xff) != 0x89
+                || bytes[1] != 'P' || bytes[2] != 'N' || bytes[3] != 'G'
+                || bytes[4] != 0x0d || bytes[5] != 0x0a
+                || bytes[6] != 0x1a || bytes[7] != 0x0a
+                || bytes[12] != 'I' || bytes[13] != 'H'
+                || bytes[14] != 'D' || bytes[15] != 'R') {
+            throw new IOException("Judge image is not a valid PNG: " + image.getFileName());
+        }
+        ByteBuffer dimensions = ByteBuffer.wrap(bytes, 16, 8);
+        int width = dimensions.getInt();
+        int height = dimensions.getInt();
+        if (width <= 0 || height <= 0
+                || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+            throw new IOException("Judge image dimensions are outside the allowed range: "
+                    + image.getFileName());
+        }
+        return bytes;
     }
 
     static JudgeVerdict parseResponse(String responseBody, String expectedPersona)
