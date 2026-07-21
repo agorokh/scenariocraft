@@ -40,7 +40,7 @@ The plugin jar is written to `build/libs/`.
 
 ## Build Battle operator notes
 
-During an active Build Battle, ScenarioCraft protects the entire configured
+During an active Speed Build, ScenarioCraft protects the entire configured
 `battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, block fading
 and leaf decay, decorative-entity interactions, and entity-driven/block-form changes until
 the controller returns to `IDLE`.
