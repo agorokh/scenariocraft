@@ -25,23 +25,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Verify workflow-based Pages is enabled
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Configure Pages
+        id: configure_pages
+        continue-on-error: true
+        uses: actions/configure-pages@v6
+
+      - name: Explain Pages configuration failure
+        if: steps.configure_pages.outcome == 'failure'
         shell: bash
         run: |
-          set -euo pipefail
-          if ! build_type="$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .build_type)"; then
-            echo "::error title=GitHub Pages setup required::Set Settings > Pages > Build and deployment > Source to GitHub Actions, confirm the github-pages environment allows deployments, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
-            exit 1
-          fi
-          if [[ "${build_type}" != "workflow" ]]; then
-            echo "::error title=GitHub Pages source is ${build_type}::Set Settings > Pages > Build and deployment > Source to GitHub Actions, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
-            exit 1
-          fi
-
-      - name: Configure Pages
-        uses: actions/configure-pages@v6
+          echo "::error title=GitHub Pages setup required::Set Settings > Pages > Build and deployment > Source to GitHub Actions, confirm the github-pages environment allows deployments, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+          exit 1
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
@@ -57,4 +51,12 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v5
+
+      - name: Explain Pages deployment failure
+        if: steps.deployment.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::error title=GitHub Pages deployment failed::Confirm the github-pages environment allows deployments and Settings > Pages > Build and deployment > Source is GitHub Actions, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+          exit 1

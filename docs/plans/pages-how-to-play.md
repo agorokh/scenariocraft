@@ -33,7 +33,7 @@ give Build Week judges a one-minute path to understanding the game without insta
 | 2026-07-20 | Deploy the literal `site/` directory with the official Pages artifact and deploy actions. | It preserves the issue's requested source layout and avoids a generated-site toolchain or external dependencies. |
 | 2026-07-20 | Derive the final page system from the supplied 1535x1024 logo: acid grass green, warm dirt and gold, purple-black deepslate, italic angular type, beveled depth, asymmetric horizontal trails, and a white field. | These are the actual recurring cues in the design council's image; using them directly keeps the page in the same visual language rather than merely using generic pixel styling. |
 | 2026-07-20 | Keep the canonical logo inside `site/assets/branding/` and upload `site/` directly. | The authored page must work from the repository without a workflow-only staging copy, while the README can reference the same canonical file. |
-| 2026-07-20 | Preflight the repository's Pages build type before artifact upload. | A targeted workflow error can point operators to the durable README runbook instead of leaving a generic deployment 404 as the first diagnostic. |
+| 2026-07-20 | Convert Pages action failures into targeted errors that link the publishing runbook. | Using the actions' actual outcomes avoids a second API permission dependency while replacing generic configuration and deployment failures with concrete operator remediation. |
 
 ## Surprises & Discoveries
 
@@ -54,8 +54,11 @@ give Build Week judges a one-minute path to understanding the game without insta
   broke even though workflow staging made the deployed artifact appear complete. Moving the
   canonical file into the literal site tree removed that hidden build-time dependency.
 - The follow-up reviewer accepted the self-contained tree but found the README-only Pages
-  recovery path too late in the failure sequence. The workflow now verifies `build_type=workflow`
-  before upload and reports the exact repository settings to restore.
+  recovery path too late in the failure sequence. The workflow now reports the exact repository
+  settings to restore when either the configure or deploy action fails.
+- The final reviewer questioned coupling the renderer regression to `site/`. That coupling is
+  intentional: the acceptance contract byte-compares renderer output with the exact images the
+  page ships. Duplicating or skipping the goldens would let the published assets drift unnoticed.
 
 ## Acceptance evidence
 
