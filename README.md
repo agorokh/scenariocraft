@@ -10,7 +10,7 @@
 
 ScenarioCraft turns our kids' game ideas into playable family rituals: they invent a scenario,
 we shape it into a spec together, an AI coding agent builds it, and an AI panel referees the
-match while we play. Build Battle is reference scenario #1, not the product. The product is
+match while we play. Speed Build is reference scenario #1, not the product. The product is
 the repeatable, kid-legible, parent-guidable, agent-buildable, warmly judged loop that can
 welcome whatever scenario comes up in the car next week.
 
@@ -27,7 +27,12 @@ welcome whatever scenario comes up in the car next week.
 Their design feedback is product input. Relevant choices are recorded as “Decisions by the
 design council” without publishing any child's name.
 
-## First scenario: Build Battle
+## Decisions by the design council
+
+- The 10-year-old game designer, logo designer, and UX lead renamed the first scenario from
+  Build Battle to **Speed Build**.
+
+## First scenario: Speed Build
 
 Contestants receive a secret build prompt, create in private plots, tour the finished builds,
 and hear a warm three-persona AI panel score every entry against one shared rubric.
@@ -41,7 +46,7 @@ no game logic yet.
 2. `export OPENAI_API_KEY='<your OpenAI API key>'`
 3. `docker compose up --build`
 4. Join `localhost:25565` in Minecraft Java 1.21.x.
-5. Run `/battle start` in chat.
+5. Run `/speedbuild start` in chat. `/battle` and `/bb` remain available for existing servers.
 
 The demo uses Paper 1.21.11 in offline mode and is intended only for a trusted local network.
 RCON stays inside the Compose network and uses a generated password. With one human player,
@@ -59,7 +64,7 @@ keep **Pages > Build and deployment > Source** set to **GitHub Actions**, and th
 `github-pages` environment must allow Pages deployments. If deployment reports `Get Pages
 site failed` or a 404, restore those settings and rerun the workflow.
 
-## Build Battle operator notes
+## Speed Build operator notes
 
 During an active Speed Build, ScenarioCraft protects the entire configured
 `battle_world`: it contains explosions, pistons, dispensers, fire, fluid flow, block fading

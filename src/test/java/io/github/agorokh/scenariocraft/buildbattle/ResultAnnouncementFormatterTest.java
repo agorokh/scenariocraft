@@ -44,7 +44,7 @@ class ResultAnnouncementFormatterTest {
         ResultAnnouncementFormatter.Announcement announcement =
                 ResultAnnouncementFormatter.format(result);
 
-        assertEquals("Build Battle results", announcement.title());
+        assertEquals("Speed Build results", announcement.title());
         assertTrue(announcement.chatLines().contains(
                 "No winner yet — every build showed imagination. The judges will take another look."));
         assertFalse(announcement.chatLines().stream()
