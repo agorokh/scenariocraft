@@ -47,6 +47,8 @@ removes both artifacts if either write fails.
 Voxel palette/block entry limits are enforced by a streaming preflight before Gson builds a tree.
 Supplementary-plane format controls are rejected, and top-level as well as nested Responses
 refusals fail the persona attempt closed.
+Fallback palette entries must be namespace-form block IDs no longer than 256 characters, and PNG
+validation rejects images with more than 1,024 chunks before raster decoding.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

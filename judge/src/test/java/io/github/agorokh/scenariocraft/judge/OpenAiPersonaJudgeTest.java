@@ -299,6 +299,33 @@ class OpenAiPersonaJudgeTest {
                 () -> JudgeImage.read(invalidRaster, temporaryDirectory.toRealPath()));
     }
 
+    @Test
+    void rejectsPathologicalPngChunkCountsBeforeRasterDecode() throws Exception {
+        Path chunkFlood = temporaryDirectory.resolve("chunk-flood.png");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            output.write(new byte[] {
+                (byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a
+            });
+            byte[] header = ByteBuffer.allocate(13)
+                    .putInt(1).putInt(1)
+                    .put((byte) 8).put((byte) 2)
+                    .put((byte) 0).put((byte) 0).put((byte) 0)
+                    .array();
+            writeChunk(output, "IHDR", header);
+            for (int index = 0; index < JudgeImage.MAX_CHUNKS; index++) {
+                writeChunk(output, "tEXt", new byte[0]);
+            }
+        }
+        Files.write(chunkFlood, bytes.toByteArray());
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(chunkFlood, temporaryDirectory.toRealPath()));
+
+        assertTrue(exception.getMessage().contains("too many PNG chunks"));
+    }
+
     private String validVerdict() {
         return """
                 {"persona":"Professor Fixture","reasoning":"The cottage fits the task.",

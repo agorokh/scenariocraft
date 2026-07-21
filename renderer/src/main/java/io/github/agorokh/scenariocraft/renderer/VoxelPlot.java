@@ -12,11 +12,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public final class VoxelPlot {
     public static final int MAX_DIMENSION = 256;
     public static final int MAX_BLOCKS = 1_000_000;
     public static final int MAX_PALETTE_ENTRIES = 4096;
+    public static final int MAX_PALETTE_ENTRY_LENGTH = 256;
+    private static final Pattern BLOCK_ID =
+            Pattern.compile("^[a-z0-9._-]+:[a-z0-9/._-]+$");
     private final String plotId;
     private final int originX;
     private final int originY;
@@ -164,8 +168,11 @@ public final class VoxelPlot {
                 || !"minecraft:air".equals(document.palette.getFirst())) {
             throw new IllegalArgumentException("palette[0] must be minecraft:air");
         }
-        if (document.palette.stream().anyMatch(value -> value == null || value.isBlank())) {
-            throw new IllegalArgumentException("palette entries must be non-blank strings");
+        if (document.palette.stream().anyMatch(value -> value == null
+                || value.length() > MAX_PALETTE_ENTRY_LENGTH
+                || !BLOCK_ID.matcher(value).matches())) {
+            throw new IllegalArgumentException(
+                    "palette entries must be bounded namespace-form block IDs");
         }
         if (document.blocks == null) {
             throw new IllegalArgumentException("blocks must be a JSON array of integers");

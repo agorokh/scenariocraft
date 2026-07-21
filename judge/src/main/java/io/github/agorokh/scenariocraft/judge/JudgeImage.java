@@ -15,6 +15,7 @@ final class JudgeImage {
     static final long MAX_BYTES = 10L * 1024 * 1024;
     static final int MAX_DIMENSION = 4096;
     static final long MAX_PIXELS = 2048L * 2048L;
+    static final int MAX_CHUNKS = 1024;
 
     private final String fileName;
     private final byte[] bytes;
@@ -124,7 +125,11 @@ final class JudgeImage {
         boolean sawEnd = false;
         int width = 0;
         int height = 0;
+        int chunkCount = 0;
         while (png.hasRemaining()) {
+            if (++chunkCount > MAX_CHUNKS) {
+                throw new IOException("Judge image contains too many PNG chunks: " + fileName);
+            }
             if (png.remaining() < 12) {
                 throw invalidPng(fileName);
             }

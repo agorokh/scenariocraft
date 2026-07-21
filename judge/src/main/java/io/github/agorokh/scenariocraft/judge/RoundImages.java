@@ -162,7 +162,7 @@ final class RoundImages {
             while (reader.hasNext()) {
                 String name = reader.nextName();
                 if ("palette".equals(name)) {
-                    countArray(reader, VoxelPlot.MAX_PALETTE_ENTRIES, "palette");
+                    validatePaletteArray(reader);
                 } else if ("blocks".equals(name)) {
                     countArray(reader, VoxelPlot.MAX_BLOCKS, "blocks");
                 } else {
@@ -176,6 +176,23 @@ final class RoundImages {
         } catch (IllegalStateException exception) {
             throw new IOException("Invalid voxel JSON", exception);
         }
+    }
+
+    private static void validatePaletteArray(JsonReader reader) throws IOException {
+        reader.beginArray();
+        int count = 0;
+        while (reader.hasNext()) {
+            if (++count > VoxelPlot.MAX_PALETTE_ENTRIES) {
+                throw new IOException("Voxel palette exceeds the entry limit");
+            }
+            if (reader.peek() != JsonToken.STRING) {
+                throw new IOException("Voxel palette must contain strings");
+            }
+            if (reader.nextString().length() > VoxelPlot.MAX_PALETTE_ENTRY_LENGTH) {
+                throw new IOException("Voxel palette entry exceeds the length limit");
+            }
+        }
+        reader.endArray();
     }
 
     private static void countArray(JsonReader reader, int maximum, String name)

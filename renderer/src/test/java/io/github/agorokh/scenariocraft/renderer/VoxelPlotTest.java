@@ -82,6 +82,18 @@ class VoxelPlotTest {
                 """);
     }
 
+    @Test
+    void rejectsPaletteEntriesOutsideTheFrozenBlockIdSchema() throws Exception {
+        assertInvalid("malformed-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air","not a block id"],"blocks":[]}
+                """);
+        assertInvalid("oversized-palette.voxels.json", """
+                {"schema":1,"plot_id":"bad","origin":[0,0,0],"size":[0,0,0],
+                 "palette":["minecraft:air","minecraft:%s"],"blocks":[]}
+                """.formatted("a".repeat(VoxelPlot.MAX_PALETTE_ENTRY_LENGTH)));
+    }
+
     private void assertInvalid(String name, String json) throws Exception {
         Path input = temporaryDirectory.resolve(name);
         Files.writeString(input, json);

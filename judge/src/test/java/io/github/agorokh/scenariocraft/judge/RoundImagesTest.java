@@ -130,6 +130,19 @@ class RoundImagesTest {
     }
 
     @Test
+    void rejectsOversizedPaletteEntriesDuringStreamingPreflight() throws Exception {
+        Files.writeString(temporaryDirectory.resolve("p1.voxels.json"), """
+                {"schema":1,"plot_id":"p1","origin":[100,64,200],"size":[0,0,0],
+                 "palette":["minecraft:air","minecraft:%s"],"blocks":[]}
+                """.formatted("a".repeat(VoxelPlot.MAX_PALETTE_ENTRY_LENGTH)));
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
+
+        assertTrue(exception.getMessage().contains("palette entry exceeds the length limit"));
+    }
+
+    @Test
     void dryRunPreparationRejectsCorruptPngSets() throws Exception {
         Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
         for (String name : RoundImages.NAMES) {
