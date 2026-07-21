@@ -20,6 +20,11 @@ override it. HTTP connections default to 10 seconds; set
 Every live kid-facing comment must also pass OpenAI moderation before it can enter a result.
 A moderation error or flagged comment fails closed and uses the persona's single retry.
 
+The CLI requires a Unix-like filesystem that reports the `unix:nlink` file attribute for
+round inputs. This is an intentional fail-closed provenance boundary: filesystems that cannot
+prove an image or voxel source has a single owning path are not supported. Copy the round to a
+local APFS, ext4, or other Unix-attribute filesystem before judging it.
+
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the
 directory containing those two files. BB-10 owns the production content. Each round must

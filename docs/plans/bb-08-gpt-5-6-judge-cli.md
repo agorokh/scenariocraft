@@ -41,6 +41,7 @@ session.
 | 2026-07-21 | Snapshot each validated PNG into immutable judge memory before either dry-run or live judging, compare successful persona identities rather than only counts, and validate every schema-v1 manifest field. | A stable byte snapshot closes the path-validation/upload race and gives dry-run the same PNG gate; equal-sized but different panels are still incomparable; partial manifests must never reach winner publication. |
 | 2026-07-21 | Replace the brittle positive-word requirement with structural two-sentence guidance plus strict hostile/negative-language rejection, classify retryable HTTP statuses, and configure connect timeout separately. | Concrete praise has unbounded valid wording, while kid safety still needs a conservative fail-closed shape; deterministic 4xx responses should not be retried; every operational timeout must be configurable. |
 | 2026-07-21 | Require every live comment to pass `omni-moderation-latest` after local structural validation and before publication. | The issue still permits exactly one GPT-5.6 vision request per persona, while the official moderation endpoint provides a semantic, fail-closed safety boundary that a finite word list cannot. |
+| 2026-07-21 | Document Unix `nlink` support as a runtime requirement instead of weakening the hard-link provenance gate on unsupported filesystems. | Silently skipping an unavailable ownership check would reopen the input-substitution path; operators need an explicit recovery path that preserves the fail-closed boundary. |
 
 ## Surprises & Discoveries
 
