@@ -191,6 +191,35 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void manualReplayReadDoesNotSuppressRconAnnouncement() {
+        BattleResult active =
+                new BattleResultParser()
+                        .parse(BattleResultRepositoryTest.validResult("round-20260721-193000"));
+        BattleResultReader reader =
+                new BattleResultReader() {
+                    @Override
+                    public Optional<BattleResult> latest() {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Optional<BattleResult> round(String roundId) {
+                        return Optional.of(active);
+                    }
+                };
+        ServiceRig rig =
+                new ServiceRig(reader, RoundPhase.REVEAL, "round-20260721-193000", false);
+
+        rig.service.showLatest(sender(new ArrayList<>()));
+        rig.service.announceRound("round-20260721-193000", sender(new ArrayList<>()));
+
+        assertEquals(2, rig.asyncReads.size());
+        rig.asyncReads.get(1).run();
+        assertEquals(1, rig.titles.size());
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();

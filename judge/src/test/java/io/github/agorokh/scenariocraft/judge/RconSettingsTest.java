@@ -20,7 +20,7 @@ class RconSettingsTest {
     }
 
     @Test
-    void environmentCanConfigureRconAndOverridesJudgeYaml() throws Exception {
+    void environmentTrioOverridesJudgeYamlAndUsesDefaultTimeouts() throws Exception {
         Path config = temporaryDirectory.resolve("judge.yml");
         Files.writeString(
                 config,
@@ -44,8 +44,8 @@ class RconSettingsTest {
 
         assertEquals("127.0.0.1", settings.host());
         assertEquals(25_580, settings.port());
-        assertEquals(Duration.ofSeconds(4), settings.connectTimeout());
-        assertEquals(Duration.ofSeconds(6), settings.readTimeout());
+        assertEquals(Duration.ofSeconds(5), settings.connectTimeout());
+        assertEquals(Duration.ofSeconds(5), settings.readTimeout());
     }
 
     @Test
@@ -68,6 +68,44 @@ class RconSettingsTest {
         assertEquals(25_580, settings.port());
         assertEquals(Duration.ofSeconds(3), settings.connectTimeout());
         assertEquals(Duration.ofSeconds(7), settings.readTimeout());
+    }
+
+    @Test
+    void legacyEnvironmentTrioIgnoresMalformedJudgeYaml() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(config, "rcon: [not valid");
+
+        RconSettings settings =
+                RconSettings.load(
+                                config,
+                                Map.of(
+                                        "SCENARIOCRAFT_RCON_HOST", "127.0.0.1",
+                                        "SCENARIOCRAFT_RCON_PORT", "25580",
+                                        "SCENARIOCRAFT_RCON_PASSWORD", "environment-example",
+                                        "SCENARIOCRAFT_RCON_TIMEOUT_SECONDS", "3"))
+                        .orElseThrow();
+
+        assertEquals(Duration.ofSeconds(3), settings.connectTimeout());
+        assertEquals(Duration.ofSeconds(3), settings.readTimeout());
+    }
+
+    @Test
+    void legacyYamlTimeoutIsAccepted() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(
+                config,
+                """
+                rcon:
+                  host: yaml-host
+                  port: 25575
+                  password: example-value
+                  timeout-seconds: 9
+                """);
+
+        RconSettings settings = RconSettings.load(config, Map.of()).orElseThrow();
+
+        assertEquals(Duration.ofSeconds(9), settings.connectTimeout());
+        assertEquals(Duration.ofSeconds(9), settings.readTimeout());
     }
 
     @Test

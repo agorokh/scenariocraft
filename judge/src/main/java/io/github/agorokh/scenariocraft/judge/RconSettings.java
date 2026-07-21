@@ -22,13 +22,12 @@ record RconSettings(
     static final int MAX_CONFIG_BYTES = 64 * 1024;
     private static final Set<String> KEYS =
             Set.of("host", "port", "password", "connect_timeout_seconds", "read_timeout_seconds");
-    private static final Set<String> ENVIRONMENT_KEYS =
+    private static final Set<String> LEGACY_KEYS = Set.of("host", "port", "password", "timeout-seconds");
+    private static final Set<String> CONNECTION_ENVIRONMENT_KEYS =
             Set.of(
                     "SCENARIOCRAFT_RCON_HOST",
                     "SCENARIOCRAFT_RCON_PORT",
-                    "SCENARIOCRAFT_RCON_PASSWORD",
-                    "SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS",
-                    "SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS");
+                    "SCENARIOCRAFT_RCON_PASSWORD");
 
     RconSettings {
         if (host == null || host.isBlank() || host.length() > 255 || host.chars().anyMatch(Character::isWhitespace)) {
@@ -49,7 +48,7 @@ record RconSettings(
         Map<?, ?> yaml = Map.of();
         boolean fileConfigured = Files.exists(path, LinkOption.NOFOLLOW_LINKS);
         boolean environmentComplete =
-                ENVIRONMENT_KEYS.stream().allMatch(environment::containsKey);
+                CONNECTION_ENVIRONMENT_KEYS.stream().allMatch(environment::containsKey);
         if (fileConfigured && !environmentComplete) {
             if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
                 throw new IOException("judge.yml must be a regular file");
@@ -83,31 +82,27 @@ record RconSettings(
                 throw new IllegalArgumentException("judge.yml rcon must contain a mapping");
             }
             Set<String> actual = rcon.keySet().stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet());
-            if (!actual.equals(KEYS)) {
-                throw new IllegalArgumentException("judge.yml rcon must contain exactly: " + KEYS);
+            if (!actual.equals(KEYS) && !actual.equals(LEGACY_KEYS)) {
+                throw new IllegalArgumentException(
+                        "judge.yml rcon must contain either the current or legacy timeout keys");
             }
             yaml = rcon;
         }
         boolean environmentConfigured =
-                ENVIRONMENT_KEYS.stream().anyMatch(key -> environment.containsKey(key));
+                CONNECTION_ENVIRONMENT_KEYS.stream().anyMatch(key -> environment.containsKey(key))
+                        || environment.containsKey("SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS")
+                        || environment.containsKey("SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS")
+                        || environment.containsKey("SCENARIOCRAFT_RCON_TIMEOUT_SECONDS");
         if (!fileConfigured && !environmentConfigured) {
             return Optional.empty();
         }
         String host = stringValue(environment, "SCENARIOCRAFT_RCON_HOST", yaml, "host", "127.0.0.1");
         int port = integerValue(environment, "SCENARIOCRAFT_RCON_PORT", yaml, "port", 25_575);
         String password = stringValue(environment, "SCENARIOCRAFT_RCON_PASSWORD", yaml, "password", null);
-        int connectSeconds = integerValue(
-                environment,
-                "SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS",
-                yaml,
-                "connect_timeout_seconds",
-                5);
-        int readSeconds = integerValue(
-                environment,
-                "SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS",
-                yaml,
-                "read_timeout_seconds",
-                5);
+        int connectSeconds = timeoutValue(
+                environment, "SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS", yaml, "connect_timeout_seconds");
+        int readSeconds = timeoutValue(
+                environment, "SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS", yaml, "read_timeout_seconds");
         return Optional.of(
                 new RconSettings(
                         host,
@@ -115,6 +110,17 @@ record RconSettings(
                         password,
                         Duration.ofSeconds(connectSeconds),
                         Duration.ofSeconds(readSeconds)));
+    }
+
+    private static int timeoutValue(
+            Map<String, String> environment, String environmentName, Map<?, ?> yaml, String yamlName) {
+        if (environment.containsKey(environmentName)) {
+            return integerValue(environment, environmentName, Map.of(), yamlName, 5);
+        }
+        if (environment.containsKey("SCENARIOCRAFT_RCON_TIMEOUT_SECONDS")) {
+            return integerValue(environment, "SCENARIOCRAFT_RCON_TIMEOUT_SECONDS", Map.of(), yamlName, 5);
+        }
+        return integerValue(environment, environmentName, yaml, yaml.containsKey(yamlName) ? yamlName : "timeout-seconds", 5);
     }
 
     private static String stringValue(

@@ -148,7 +148,8 @@ class JudgeApplicationTest {
         assertTrue(Files.isRegularFile(round.resolve("results.txt")));
         assertTrue(diagnostics.toString().contains("Results were saved"));
         assertTrue(diagnostics.toString().contains("results remain available on disk"));
-        assertTrue(diagnostics.toString().contains("connection refused"));
+        assertTrue(diagnostics.toString().contains("RCON transport failure"));
+        assertTrue(!diagnostics.toString().contains("connection refused"));
     }
 
     private Path copyFixtureRuntime() throws Exception {

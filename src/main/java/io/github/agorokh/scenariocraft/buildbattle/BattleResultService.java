@@ -33,6 +33,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private final Function<String, Optional<Location>> winnerLocation;
     private final Logger logger;
     private final AtomicBoolean commandReadInFlight = new AtomicBoolean();
+    private final AtomicBoolean announcementReadInFlight = new AtomicBoolean();
     private final AtomicBoolean pollReadInFlight = new AtomicBoolean();
     private final BukkitTask pollingTask;
     private BattleResult announcedResult;
@@ -126,7 +127,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                     sender.sendMessage("ScenarioCraft announced " + roundId + ".");
                 },
                 sender,
-                commandReadInFlight);
+                announcementReadInFlight);
     }
 
     private void pollDuringReveal() {

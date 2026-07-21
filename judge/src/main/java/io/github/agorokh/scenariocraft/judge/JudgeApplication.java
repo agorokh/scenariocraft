@@ -8,9 +8,21 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class JudgeApplication {
     static final long MAX_ROUND_IMAGE_BYTES = 32L * 1024 * 1024;
+    private static final Set<String> SAFE_RCON_DIAGNOSTICS =
+            Set.of(
+                    "RCON authentication failed",
+                    "RCON authentication returned an unexpected request id",
+                    "RCON command returned an unexpected request id",
+                    "RCON server rejected the announcement command",
+                    "RCON hostname resolved to no addresses",
+                    "RCON hostname resolution was interrupted",
+                    "RCON hostname resolution failed",
+                    "RCON returned an invalid packet length",
+                    "RCON response is missing terminators");
 
     int run(
             Path roundDirectory,
@@ -83,9 +95,9 @@ final class JudgeApplication {
 
     private static String safeDiagnostic(Exception failure) {
         String message = failure.getMessage();
-        if (message == null || message.isBlank()) {
-            return failure.getClass().getSimpleName();
+        if (message != null && SAFE_RCON_DIAGNOSTICS.contains(message)) {
+            return message;
         }
-        return message.replaceAll("[\\r\\n\\t]+", " ").strip();
+        return failure instanceof IOException ? "RCON transport failure" : "RCON announcement failure";
     }
 }
