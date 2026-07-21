@@ -57,6 +57,14 @@ headless verification and cleanup details.
 Missing `OPENAI_API_KEY` stops Compose immediately with an instruction to export it; the key
 is passed from the shell environment and is never stored in the Compose file or image.
 
+## One household, every device
+
+Different kids can bring an Xbox, iPad, Windows Bedrock client, or Java PC to one kid-safe
+Speed Build server that still feels like a real online game. The same secret prompt, timers,
+and warm AI panel judge every build the same way, whatever device its builder uses. See the
+[demo runbook](demo/README.md#bedrock-on-linux) for the opt-in Bedrock bridge and its honest
+platform limits.
+
 ## Publishing the How to Play page
 
 The `Deploy Pages` workflow uploads the literal `site/` directory. Repository Settings must

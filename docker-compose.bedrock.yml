@@ -1,0 +1,9 @@
+services:
+  paper:
+    environment:
+      MODRINTH_PROJECTS: geyser,viaversion
+      MODRINTH_ALLOWED_VERSION_TYPE: beta
+      MODRINTH_DEFAULT_VERSION_TYPE: beta
+      PLUGINS: https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot
+    ports:
+      - "${SCENARIOCRAFT_BEDROCK_PORT:-19132}:19132/udp"

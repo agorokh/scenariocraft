@@ -287,6 +287,27 @@ main { overflow: hidden; }
   color: var(--ink-muted);
 }
 
+.household-story {
+  width: min(900px, calc(100% - 3rem));
+  margin: 0 auto var(--space-7);
+  padding: var(--space-5);
+  background: var(--paper-soft);
+  border: var(--border-card);
+  border-left: 12px solid var(--grass);
+  border-radius: var(--corner-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.household-story h2 {
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-md);
+}
+
+.household-story p:last-child {
+  margin-bottom: 0;
+  color: var(--ink-muted);
+}
+
 .story {
   margin: 0;
   padding: 0;
