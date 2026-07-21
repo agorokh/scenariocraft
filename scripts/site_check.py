@@ -13,12 +13,13 @@ from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
-SITE_ROOT = Path(__file__).resolve().parent
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
+SITE_ROOT = REPOSITORY_ROOT / "site"
 INDEX = SITE_ROOT / "index.html"
 STYLES = SITE_ROOT / "styles.css"
-REPOSITORY_ROOT = SITE_ROOT.parent
 ALLOWED_LINK_HOSTS = {"github.com"}
 REMOTE_RESOURCE_ATTRIBUTES = {"src", "srcset", "poster"}
+NAVIGATION_HREF_TAGS = {"a", "area"}
 PROTECTED_TEXT = (
     "name & logo by our 10-year-old designer, working with ChatGPT",
     "NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.",
@@ -59,19 +60,19 @@ class PageParser(HTMLParser):
             self.tooltip_count += 1
         if tag == "img":
             self.image_alts.append(values.get("alt"))
-        if tag == "a" and (href := values.get("href")):
-            self.links.append(href)
+        if href := values.get("href"):
+            if tag in NAVIGATION_HREF_TAGS:
+                self.links.append(href)
+            elif is_remote(href):
+                self.remote_resources.append(href)
+            else:
+                self.local_resources.append(href)
         for attribute in REMOTE_RESOURCE_ATTRIBUTES:
             if value := values.get(attribute):
                 if is_remote(value):
                     self.remote_resources.append(value)
                 else:
                     self.local_resources.append(value)
-        if tag == "link" and (href := values.get("href")):
-            if is_remote(href):
-                self.remote_resources.append(href)
-            else:
-                self.local_resources.append(href)
 
     def handle_data(self, data: str) -> None:
         self.text.append(data)

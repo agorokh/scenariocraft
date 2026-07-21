@@ -54,7 +54,7 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 
 ## Acceptance evidence
 
-- `python3 site/check.py --check-external`: `SITE_CHECK_OK` and
+- `python3 scripts/site_check.py --check-external`: `SITE_CHECK_OK` and
   `SITE_EXTERNAL_LINKS_OK`; all local resources, anchors, and allowlisted GitHub links resolve.
 - `python3 -m unittest discover -s site -p 'test_*.py'`: three safety regressions pass for
   explicit HTTPS GitHub links, `site/` path containment, and redirect allowlisting.
