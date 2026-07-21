@@ -26,6 +26,7 @@ prove an image or voxel source has a single owning path are not supported. Copy 
 local APFS, ext4, or other Unix-attribute filesystem before judging it.
 Voxel fallback files are capped at 16 MiB, OpenAI response bodies at 1 MiB, and prior result
 artifacts are removed before each attempt so a hard failure cannot expose a stale winner.
+PNG inputs must contain a complete, CRC-valid chunk stream with image data and a terminal IEND.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

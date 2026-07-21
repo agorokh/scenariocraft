@@ -8,6 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
@@ -17,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.CRC32;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -33,7 +36,7 @@ class OpenAiPersonaJudgeTest {
         List<JudgeImage> images = new ArrayList<>();
         for (int index = 0; index < 7; index++) {
             Path image = temporaryDirectory.resolve(index + ".png");
-            Files.write(image, pngHeader(640, 480));
+            Files.write(image, completePng(640, 480));
             images.add(JudgeImage.read(image, temporaryDirectory.toRealPath()));
         }
 
@@ -184,11 +187,29 @@ class OpenAiPersonaJudgeTest {
     @Test
     void rejectsPngDimensionsAboveTheUploadLimit() throws Exception {
         Path hugeDimensions = temporaryDirectory.resolve("huge-dimensions.png");
-        Files.write(hugeDimensions, pngHeader(JudgeImage.MAX_DIMENSION + 1, 1));
+        Files.write(hugeDimensions, completePng(JudgeImage.MAX_DIMENSION + 1, 1));
 
         assertThrows(
                 IOException.class,
                 () -> JudgeImage.read(hugeDimensions, temporaryDirectory.toRealPath()));
+    }
+
+    @Test
+    void rejectsTruncatedPngHeaderWithoutImageDataOrEndChunk() throws Exception {
+        Path truncated = temporaryDirectory.resolve("truncated.png");
+        Files.write(truncated, ByteBuffer.allocate(24)
+                .put(new byte[] {
+                    (byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a
+                })
+                .putInt(13)
+                .put(new byte[] {'I', 'H', 'D', 'R'})
+                .putInt(1)
+                .putInt(1)
+                .array());
+
+        assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(truncated, temporaryDirectory.toRealPath()));
     }
 
     private String validVerdict() {
@@ -199,15 +220,36 @@ class OpenAiPersonaJudgeTest {
                 """;
     }
 
-    private byte[] pngHeader(int width, int height) {
-        return ByteBuffer.allocate(24)
-                .put(new byte[] {
-                    (byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a
-                })
-                .putInt(13)
-                .put(new byte[] {'I', 'H', 'D', 'R'})
-                .putInt(width)
-                .putInt(height)
-                .array();
+    private byte[] completePng(int width, int height) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            output.write(new byte[] {
+                (byte) 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a
+            });
+            byte[] header = ByteBuffer.allocate(13)
+                    .putInt(width)
+                    .putInt(height)
+                    .put((byte) 8)
+                    .put((byte) 2)
+                    .put((byte) 0)
+                    .put((byte) 0)
+                    .put((byte) 0)
+                    .array();
+            writeChunk(output, "IHDR", header);
+            writeChunk(output, "IDAT", new byte[] {0x78, 0x01, 0x01});
+            writeChunk(output, "IEND", new byte[0]);
+        }
+        return bytes.toByteArray();
+    }
+
+    private void writeChunk(DataOutputStream output, String type, byte[] data) throws IOException {
+        byte[] typeBytes = type.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        CRC32 checksum = new CRC32();
+        checksum.update(typeBytes);
+        checksum.update(data);
+        output.writeInt(data.length);
+        output.write(typeBytes);
+        output.write(data);
+        output.writeInt((int) checksum.getValue());
     }
 }

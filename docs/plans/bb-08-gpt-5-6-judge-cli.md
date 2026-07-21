@@ -43,6 +43,7 @@ session.
 | 2026-07-21 | Require every live comment to pass `omni-moderation-latest` after local structural validation and before publication. | The issue still permits exactly one GPT-5.6 vision request per persona, while the official moderation endpoint provides a semantic, fail-closed safety boundary that a finite word list cannot. |
 | 2026-07-21 | Document Unix `nlink` support as a runtime requirement instead of weakening the hard-link provenance gate on unsupported filesystems. | Silently skipping an unavailable ownership check would reopen the input-substitution path; operators need an explicit recovery path that preserves the fail-closed boundary. |
 | 2026-07-21 | Snapshot voxel JSON behind a 16 MiB cap, cap OpenAI response bodies at 1 MiB, and remove prior result artifacts before reading a new round. | Every heap-facing input needs a bound, and a hard failure must not leave a previous winner looking current. |
+| 2026-07-21 | Validate the full bounded PNG chunk stream, including CRCs, non-empty IDAT, and terminal IEND, rather than treating a valid signature/IHDR prefix as a complete image. | A truncated or corrupted file must fail before it becomes an OpenAI image payload in either live or dry-run mode. |
 
 ## Surprises & Discoveries
 

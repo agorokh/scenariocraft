@@ -7,6 +7,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
+import java.util.zip.CRC32;
 
 final class JudgeImage {
     static final long MAX_BYTES = 10L * 1024 * 1024;
@@ -87,7 +88,7 @@ final class JudgeImage {
     }
 
     private static void validatePng(byte[] bytes, Path fileName) throws IOException {
-        if (bytes.length < 24
+        if (bytes.length < 57
                 || (bytes[0] & 0xff) != 0x89
                 || bytes[1] != 'P' || bytes[2] != 'N' || bytes[3] != 'G'
                 || bytes[4] != 0x0d || bytes[5] != 0x0a
@@ -96,13 +97,65 @@ final class JudgeImage {
                 || bytes[14] != 'D' || bytes[15] != 'R') {
             throw new IOException("Judge image is not a valid PNG: " + fileName);
         }
-        ByteBuffer dimensions = ByteBuffer.wrap(bytes, 16, 8);
-        int width = dimensions.getInt();
-        int height = dimensions.getInt();
+        ByteBuffer png = ByteBuffer.wrap(bytes);
+        png.position(8);
+        boolean sawHeader = false;
+        boolean sawImageData = false;
+        boolean sawEnd = false;
+        int width = 0;
+        int height = 0;
+        while (png.hasRemaining()) {
+            if (png.remaining() < 12) {
+                throw invalidPng(fileName);
+            }
+            int length = png.getInt();
+            if (length < 0 || length > png.remaining() - 8) {
+                throw invalidPng(fileName);
+            }
+            byte[] type = new byte[4];
+            png.get(type);
+            int dataStart = png.position();
+            CRC32 checksum = new CRC32();
+            checksum.update(type);
+            checksum.update(png.slice(dataStart, length));
+            png.position(dataStart + length);
+            long expectedChecksum = Integer.toUnsignedLong(png.getInt());
+            if (checksum.getValue() != expectedChecksum) {
+                throw invalidPng(fileName);
+            }
+            String chunkType = new String(type, java.nio.charset.StandardCharsets.US_ASCII);
+            if (!sawHeader) {
+                if (!"IHDR".equals(chunkType) || length != 13) {
+                    throw invalidPng(fileName);
+                }
+                width = ByteBuffer.wrap(bytes, dataStart, 8).getInt();
+                height = ByteBuffer.wrap(bytes, dataStart + 4, 4).getInt();
+                sawHeader = true;
+            } else if ("IHDR".equals(chunkType)) {
+                throw invalidPng(fileName);
+            } else if ("IDAT".equals(chunkType)) {
+                if (length == 0 || sawEnd) {
+                    throw invalidPng(fileName);
+                }
+                sawImageData = true;
+            } else if ("IEND".equals(chunkType)) {
+                if (length != 0 || !sawImageData || png.hasRemaining()) {
+                    throw invalidPng(fileName);
+                }
+                sawEnd = true;
+            }
+        }
+        if (!sawHeader || !sawImageData || !sawEnd) {
+            throw invalidPng(fileName);
+        }
         if (width <= 0 || height <= 0
                 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
             throw new IOException("Judge image dimensions are outside the allowed range: "
                     + fileName);
         }
+    }
+
+    private static IOException invalidPng(Path fileName) {
+        return new IOException("Judge image is not a complete valid PNG: " + fileName);
     }
 }
