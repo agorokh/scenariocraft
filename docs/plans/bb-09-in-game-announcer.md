@@ -39,6 +39,7 @@ session.
 | 2026-07-21 | Skip `judge.yml` entirely when the environment supplies the complete RCON trio. | Environment overrides must remain usable when an optional local configuration file is stale, malformed, or inaccessible. |
 | 2026-07-21 | Use the async read/main-thread delivery boundary for RCON-triggered announcements as well as polling and player replay. | Every path reads the same potentially shared results directory; the transport that initiates a read does not make synchronous filesystem work safe on Paper's main thread. |
 | 2026-07-21 | Bind REVEAL polling and RCON announcements to the round ID returned when the active export starts. | After restart, the newest completed directory may belong to the prior battle while the current snapshot is still being written; global-newest selection can celebrate a stale winner in the new arena. |
+| 2026-07-21 | Coalesce concurrent `/battle results` reads with a single-flight gate and generate the smoke-test RCON password at runtime. | A player macro must not create an unbounded asynchronous I/O queue, and even an ephemeral credential must not be committed in workflow source. |
 
 ## Surprises & Discoveries
 
@@ -86,6 +87,10 @@ session.
   `$round_id` broke out of the outer single-quoted `bash -c` program and expanded under
   `set -u`. The jq filter now stays inside double quotes with an escaped dollar, and final
   assertions independently recover the dynamic ID from the server log.
+- Final review caught two operational edges outside the happy path: asynchronous replay alone
+  did not bound how many reads players could enqueue, and a fixed CI-only RCON password still
+  violated the repository's no-credentials-in-source policy. Replay is now single-flight with
+  a friendly retry message, and the smoke creates a fresh password for each runner invocation.
 
 ## Acceptance evidence
 

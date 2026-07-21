@@ -137,7 +137,7 @@ class ResultAnnouncementServiceTest {
     }
 
     @Test
-    void replayWithoutAResultSendsTheFriendlyMessage() {
+    void concurrentReplaysAreCoalescedAndTheGateReopensAfterCompletion() {
         List<String> messages = new ArrayList<>();
         List<Runnable> asynchronousTasks = new ArrayList<>();
         List<Runnable> serverTasks = new ArrayList<>();
@@ -186,13 +186,22 @@ class ResultAnnouncementServiceTest {
                 20L);
 
         service.replayLatest(sender);
-        assertTrue(messages.isEmpty());
+        service.replayLatest(sender);
+        assertEquals(1, asynchronousTasks.size());
+        assertEquals(
+                List.of("The judges are already checking results — try again in a moment!"),
+                messages);
         asynchronousTasks.removeFirst().run();
-        assertTrue(messages.isEmpty());
+        assertEquals(1, serverTasks.size());
         serverTasks.removeFirst().run();
+        service.replayLatest(sender);
 
         assertEquals(
-                List.of("No judge results yet — check back after the reveal!"), messages);
+                List.of(
+                        "The judges are already checking results — try again in a moment!",
+                        "No judge results yet — check back after the reveal!"),
+                messages);
+        assertEquals(1, asynchronousTasks.size());
     }
 
     private record FixedPhaseRound(RoundPhase phase, String roundId) implements BattleRound {

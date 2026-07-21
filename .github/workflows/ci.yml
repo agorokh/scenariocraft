@@ -175,6 +175,8 @@ jobs:
           cp -R \
             judge/src/test/resources/fixtures/runtime/rounds/round-20260721-193000 \
             "${fixture_source}"
+          rcon_smoke_password="$(openssl rand -hex 32)"
+          test -n "${rcon_smoke_password}"
           printf 'eula=true\n' >"${server_dir}/eula.txt"
           printf '%s\n' \
             'allow-nether=false' \
@@ -183,7 +185,7 @@ jobs:
             'level-type=minecraft:flat' \
             'online-mode=false' \
             "rcon.port=${RCON_SMOKE_PORT}" \
-            'rcon.password=scenariocraft-ci-rcon' \
+            "rcon.password=${rcon_smoke_password}" \
             'simulation-distance=2' \
             'spawn-monsters=false' \
             'view-distance=2' >"${server_dir}/server.properties"
@@ -365,7 +367,7 @@ jobs:
             SCENARIOCRAFT_JUDGE_CONFIG_DIR="$2" \
               SCENARIOCRAFT_RCON_HOST=127.0.0.1 \
               SCENARIOCRAFT_RCON_PORT="$4" \
-              SCENARIOCRAFT_RCON_PASSWORD=scenariocraft-ci-rcon \
+              SCENARIOCRAFT_RCON_PASSWORD="$5" \
               SCENARIOCRAFT_RCON_TIMEOUT_SECONDS=5 \
               "$3" --round "${judge_round}" --dry-run \
                 >judge-rcon-success.out 2>judge-rcon-success.err
@@ -443,7 +445,8 @@ jobs:
             "${server_dir}" \
             "${GITHUB_WORKSPACE}/judge" \
             "${RUNNER_TEMP}/plugin-artifact/judge/bin/judge" \
-            "${RCON_SMOKE_PORT}"
+            "${RCON_SMOKE_PORT}" \
+            "${rcon_smoke_password}"
           server_status=$?
           set -e
           sleep 2

@@ -23,6 +23,8 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
             "No judge results yet — check back after the reveal!";
     private static final String READ_FAILURE_MESSAGE =
             "The latest judge results need a grown-up helper to check the results file.";
+    private static final String REPLAY_IN_PROGRESS_MESSAGE =
+            "The judges are already checking results — try again in a moment!";
 
     private final BattleRound round;
     private final Plugin plugin;
@@ -32,6 +34,7 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
     private final Function<String, Location> celebrationLocation;
     private final BukkitTask pollTask;
     private final AtomicBoolean pollInFlight = new AtomicBoolean();
+    private final AtomicBoolean replayInFlight = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private String announcedFingerprint;
     private String loggedReadFailure;
@@ -75,10 +78,15 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         if (closed.get()) {
             return;
         }
+        if (!replayInFlight.compareAndSet(false, true)) {
+            sender.sendMessage(REPLAY_IN_PROGRESS_MESSAGE);
+            return;
+        }
         try {
             server.getScheduler()
                     .runTaskAsynchronously(plugin, () -> readLatestForReplay(sender));
         } catch (RuntimeException failure) {
+            replayInFlight.set(false);
             logReadFailure(failure);
             sender.sendMessage(READ_FAILURE_MESSAGE);
         }
@@ -95,11 +103,13 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         try {
             server.getScheduler().runTask(plugin, () -> completeReplay(sender, completed));
         } catch (RuntimeException failure) {
+            replayInFlight.set(false);
             logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
         }
     }
 
     private void completeReplay(CommandSender sender, ReadResult result) {
+        replayInFlight.set(false);
         if (closed.get()) {
             return;
         }
