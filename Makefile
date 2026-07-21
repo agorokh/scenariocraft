@@ -15,4 +15,5 @@ ci-fast: site-check
 	./gradlew build --no-daemon
 
 site-check:
+	python3 -m unittest discover -s site -p 'test_*.py'
 	python3 site/check.py

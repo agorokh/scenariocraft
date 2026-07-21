@@ -47,11 +47,17 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
   with no failed contrast audit.
 - No public YouTube demo URL exists in the repository or its issue/PR history. The submission
   file and shot list flag that operator-owned recording/upload step instead of inventing a link.
+- Current-head review found that the optional live-link path could attempt a protocol-relative
+  URL, follow a GitHub redirect to a non-allowlisted host, or accept an existing local resource
+  outside `site/`. Explicit scheme/host validation, a redirect guard, containment checks, and
+  three standard-library regression tests now close those holes.
 
 ## Acceptance evidence
 
 - `python3 site/check.py --check-external`: `SITE_CHECK_OK` and
   `SITE_EXTERNAL_LINKS_OK`; all local resources, anchors, and allowlisted GitHub links resolve.
+- `python3 -m unittest discover -s site -p 'test_*.py'`: three safety regressions pass for
+  explicit HTTPS GitHub links, `site/` path containment, and redirect allowlisting.
 - Browser metrics at 1280 px and 375 px: document scroll width exactly equals viewport width;
   hero, all seven steps, judge stage, home panel, and recipe stay inside the mobile viewport;
   all four images load at their natural sizes with non-empty alt text.

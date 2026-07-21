@@ -10,7 +10,7 @@ import re
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 SITE_ROOT = Path(__file__).resolve().parent
@@ -81,6 +81,35 @@ def is_remote(value: str) -> bool:
     return urlparse(value).scheme in {"http", "https"} or value.startswith("//")
 
 
+def external_link_problem(value: str) -> str | None:
+    parsed = urlparse(value)
+    if value.startswith("//") or (parsed.netloc and not parsed.scheme):
+        return "protocol-relative links are not allowed"
+    if parsed.scheme not in {"http", "https"}:
+        return f"unsupported external-link scheme: {parsed.scheme or '<none>'}"
+    if parsed.hostname not in ALLOWED_LINK_HOSTS:
+        return f"external link host is not allowlisted: {parsed.hostname or '<none>'}"
+    return None
+
+
+def contained_target(root: Path, value: str) -> Path | None:
+    root = root.resolve()
+    target = (root / urlparse(value).path).resolve()
+    if target == root or root in target.parents:
+        return target
+    return None
+
+
+class AllowlistedRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, file_pointer, code, message, headers, new_url):
+        problem = external_link_problem(new_url)
+        if problem:
+            raise HTTPError(new_url, code, f"redirect rejected: {problem}", headers, None)
+        return super().redirect_request(
+            request, file_pointer, code, message, headers, new_url
+        )
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.split())
 
@@ -107,21 +136,23 @@ def validate_page() -> tuple[list[str], list[str]]:
         errors.append(f"duplicate HTML ids: {', '.join(duplicates)}")
     for href in parser.links:
         parsed = urlparse(href)
-        if parsed.scheme in {"http", "https"}:
-            if parsed.hostname not in ALLOWED_LINK_HOSTS:
-                errors.append(f"external link host is not allowlisted: {href}")
-        elif href.startswith("#"):
+        if href.startswith("#"):
             if href[1:] not in parser.ids:
                 errors.append(f"missing local anchor target: {href}")
+        elif parsed.scheme or parsed.netloc or href.startswith("//"):
+            if problem := external_link_problem(href):
+                errors.append(f"invalid external link {href!r}: {problem}")
         else:
-            target = (SITE_ROOT / parsed.path).resolve()
-            if SITE_ROOT not in target.parents and target != SITE_ROOT:
+            target = contained_target(SITE_ROOT, href)
+            if target is None:
                 errors.append(f"local link escapes site directory: {href}")
             elif not target.exists():
                 errors.append(f"missing local link target: {href}")
     for resource in parser.local_resources:
-        target = (SITE_ROOT / urlparse(resource).path).resolve()
-        if not target.is_file():
+        target = contained_target(SITE_ROOT, resource)
+        if target is None:
+            errors.append(f"local resource escapes site directory: {resource}")
+        elif not target.is_file():
             errors.append(f"missing local resource: {resource}")
     if parser.remote_resources:
         errors.append(f"page would request remote resources: {parser.remote_resources}")
@@ -146,16 +177,22 @@ def validate_page() -> tuple[list[str], list[str]]:
 
 def check_external_links(links: list[str]) -> list[str]:
     errors: list[str] = []
+    opener = build_opener(AllowlistedRedirectHandler())
     for link in sorted({link for link in links if is_remote(link)}):
+        if problem := external_link_problem(link):
+            errors.append(f"external link was not fetched: {link}: {problem}")
+            continue
         request = Request(link, headers={"User-Agent": "ScenarioCraft-site-check/1.0"})
         try:
-            with urlopen(request, timeout=20) as response:
+            with opener.open(request, timeout=20) as response:
                 if response.status >= 400:
                     errors.append(f"external link returned {response.status}: {link}")
         except HTTPError as error:
             errors.append(f"external link returned {error.code}: {link}")
         except URLError as error:
             errors.append(f"external link failed: {link}: {error.reason}")
+        except ValueError as error:
+            errors.append(f"external link was invalid: {link}: {error}")
     return errors
 
 
