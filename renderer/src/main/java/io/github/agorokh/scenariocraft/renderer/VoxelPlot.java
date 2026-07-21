@@ -14,16 +14,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class VoxelPlot {
+    private static final int MAX_DIMENSION = 256;
+    private static final int MAX_BLOCKS = 1_000_000;
+    private static final int MAX_PALETTE_ENTRIES = 4096;
     private final String plotId;
+    private final int originX;
+    private final int originY;
+    private final int originZ;
     private final int sizeX;
     private final int sizeY;
     private final int sizeZ;
     private final List<String> palette;
     private final int[] blocks;
 
-    private VoxelPlot(String plotId, int sizeX, int sizeY, int sizeZ,
+    private VoxelPlot(String plotId, int originX, int originY, int originZ,
+                      int sizeX, int sizeY, int sizeZ,
                       List<String> palette, int[] blocks) {
         this.plotId = plotId;
+        this.originX = originX;
+        this.originY = originY;
+        this.originZ = originZ;
         this.sizeX = sizeX;
         this.sizeY = sizeY;
         this.sizeZ = sizeZ;
@@ -47,10 +57,10 @@ public final class VoxelPlot {
         Document document = new Document();
         document.schema = requireInteger(root, "schema");
         document.plot_id = requireString(root, "plot_id");
-        document.origin = requireIntegerArray(root, "origin");
-        document.size = requireIntegerArray(root, "size");
-        document.palette = requireStringArray(root, "palette");
-        document.blocks = requireIntegerArray(root, "blocks");
+        document.origin = requireIntegerArray(root, "origin", 3);
+        document.size = requireIntegerArray(root, "size", 3);
+        document.palette = requireStringArray(root, "palette", MAX_PALETTE_ENTRIES);
+        document.blocks = requireIntegerArray(root, "blocks", MAX_BLOCKS);
         return document;
     }
 
@@ -80,8 +90,11 @@ public final class VoxelPlot {
         return element.getAsString();
     }
 
-    private static int[] requireIntegerArray(JsonObject root, String name) {
+    private static int[] requireIntegerArray(JsonObject root, String name, int maxEntries) {
         JsonArray array = requireArray(root, name);
+        if (array.size() > maxEntries) {
+            throw new IllegalArgumentException(name + " exceeds the entry limit");
+        }
         int[] values = new int[array.size()];
         for (int index = 0; index < array.size(); index++) {
             JsonElement element = array.get(index);
@@ -103,8 +116,12 @@ public final class VoxelPlot {
         return values;
     }
 
-    private static List<String> requireStringArray(JsonObject root, String name) {
+    private static List<String> requireStringArray(
+            JsonObject root, String name, int maxEntries) {
         JsonArray array = requireArray(root, name);
+        if (array.size() > maxEntries) {
+            throw new IllegalArgumentException(name + " exceeds the entry limit");
+        }
         List<String> values = new ArrayList<>(array.size());
         for (JsonElement element : array) {
             if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
@@ -139,8 +156,9 @@ public final class VoxelPlot {
         int sizeX = document.size[0];
         int sizeY = document.size[1];
         int sizeZ = document.size[2];
-        if (sizeX < 0 || sizeY < 0 || sizeZ < 0) {
-            throw new IllegalArgumentException("size values must be non-negative");
+        if (sizeX < 0 || sizeY < 0 || sizeZ < 0
+                || sizeX > MAX_DIMENSION || sizeY > MAX_DIMENSION || sizeZ > MAX_DIMENSION) {
+            throw new IllegalArgumentException("size values are outside the supported range");
         }
         if (document.palette == null || document.palette.isEmpty()
                 || !"minecraft:air".equals(document.palette.getFirst())) {
@@ -158,7 +176,7 @@ public final class VoxelPlot {
         } catch (ArithmeticException exception) {
             throw new IllegalArgumentException("size volume is too large", exception);
         }
-        if (expected > Integer.MAX_VALUE || document.blocks.length != expected) {
+        if (expected > MAX_BLOCKS || document.blocks.length != expected) {
             throw new IllegalArgumentException(
                     "blocks length must equal size[0] * size[1] * size[2]");
         }
@@ -167,11 +185,16 @@ public final class VoxelPlot {
                 throw new IllegalArgumentException("blocks contains an invalid palette index");
             }
         }
-        return new VoxelPlot(document.plot_id, sizeX, sizeY, sizeZ,
+        return new VoxelPlot(document.plot_id,
+                document.origin[0], document.origin[1], document.origin[2],
+                sizeX, sizeY, sizeZ,
                 document.palette, document.blocks);
     }
 
     public String plotId() { return plotId; }
+    public int originX() { return originX; }
+    public int originY() { return originY; }
+    public int originZ() { return originZ; }
     public int sizeX() { return sizeX; }
     public int sizeY() { return sizeY; }
     public int sizeZ() { return sizeZ; }

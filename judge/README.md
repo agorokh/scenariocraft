@@ -31,6 +31,10 @@ Each seven-image set is capped at 16 MiB total. Manifests are capped at 1 MiB, 1
 512 task characters, 128 world characters, and 64 player-name characters.
 Persona and rubric files are each capped at 64 KiB; persona count and prompt-field lengths are
 also bounded before any OpenAI request is constructed.
+Round snapshots are capped at 32 MiB total. Fallback voxels must match the manifest origin and
+size and stay within renderer palette, block-count, dimension, and volume limits. PNG raster
+data is decoded before acceptance. Verdict reasoning is capped at 4,000 characters and the
+kid-facing comment at 500 characters.
 
 The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
 by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the

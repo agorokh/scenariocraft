@@ -45,6 +45,20 @@ class JudgeVerdictTest {
     }
 
     @Test
+    void rejectsObservationWithoutAConcreteStrengthAndOversizedText() {
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "I saw your build. Add a roof next."));
+        assertThrows(IllegalArgumentException.class, () -> verdict(
+                "The roof is strong " + "x".repeat(JudgeVerdict.MAX_COMMENT_LENGTH)
+                        + ". Add a chimney next."));
+        assertThrows(IllegalArgumentException.class, () -> new JudgeVerdict(
+                "Professor Fixture",
+                "x".repeat(JudgeVerdict.MAX_REASONING_LENGTH + 1),
+                SCORES,
+                "The roof is strong. Add a chimney next."));
+    }
+
+    @Test
     void rejectsMultilineComments() {
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof has a strong shape.\nAdd more blocks next."));

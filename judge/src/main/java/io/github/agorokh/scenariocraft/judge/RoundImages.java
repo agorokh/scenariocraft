@@ -21,7 +21,8 @@ final class RoundImages {
 
     private RoundImages() {}
 
-    static List<JudgeImage> prepare(Path roundDirectory, String plotId) throws IOException {
+    static List<JudgeImage> prepare(Path roundDirectory, JudgeRound.Plot plot) throws IOException {
+        String plotId = plot.plotId();
         Path roundRoot = roundDirectory.toRealPath();
         Path outputRoot = roundDirectory.resolve("out");
         Path outputDirectory = outputRoot.resolve(plotId);
@@ -44,6 +45,13 @@ final class RoundImages {
             VoxelPlot voxelPlot = VoxelPlot.read(stableVoxelFile);
             if (!plotId.equals(voxelPlot.plotId())) {
                 throw new IOException("Voxel plot_id does not match manifest plot " + plotId);
+            }
+            if (!plot.origin().equals(List.of(
+                    voxelPlot.originX(), voxelPlot.originY(), voxelPlot.originZ()))
+                    || !plot.size().equals(List.of(
+                            voxelPlot.sizeX(), voxelPlot.sizeY(), voxelPlot.sizeZ()))) {
+                throw new IOException(
+                        "Voxel origin or size does not match manifest plot " + plotId);
             }
             Path renderedOutput = temporaryOutput.resolve("output");
             new VoxelRenderer().render(voxelPlot, renderedOutput);

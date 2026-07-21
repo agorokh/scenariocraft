@@ -27,7 +27,7 @@ class RoundImagesTest {
                 temporaryDirectory.resolve("p1.voxels.json"),
                 StandardCopyOption.REPLACE_EXISTING);
 
-        List<JudgeImage> images = RoundImages.prepare(temporaryDirectory, "p1");
+        List<JudgeImage> images = RoundImages.prepare(temporaryDirectory, plot());
 
         assertEquals(7, images.size());
         assertTrue(images.stream().allMatch(image -> image.bytes().length > 24));
@@ -40,7 +40,7 @@ class RoundImagesTest {
         Files.createSymbolicLink(output.resolve("iso-ne.png"), target);
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("Symbolic links are not allowed"));
     }
@@ -52,7 +52,7 @@ class RoundImagesTest {
         Files.writeString(temporaryDirectory.resolve("p1.voxels.json"), voxels);
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("does not match manifest plot p1"));
     }
@@ -69,7 +69,7 @@ class RoundImagesTest {
         }
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("Hard-linked judge inputs are not allowed"));
     }
@@ -83,7 +83,7 @@ class RoundImagesTest {
         Files.createLink(temporaryDirectory.resolve("p1.voxels.json"), external);
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("Hard-linked judge inputs are not allowed"));
     }
@@ -98,7 +98,7 @@ class RoundImagesTest {
         }
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("outside the allowed range"));
     }
@@ -111,7 +111,7 @@ class RoundImagesTest {
         }
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("valid PNG"));
     }
@@ -129,13 +129,34 @@ class RoundImagesTest {
         }
 
         IOException exception = assertThrows(
-                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, plot()));
 
         assertTrue(exception.getMessage().contains("aggregate byte limit"));
+    }
+
+    @Test
+    void rejectsFallbackVoxelsFromAnotherArenaGeometry() throws Exception {
+        Files.copy(
+                workedExample(),
+                temporaryDirectory.resolve("p1.voxels.json"),
+                StandardCopyOption.REPLACE_EXISTING);
+        JudgeRound.Plot wrongGeometry = new JudgeRound.Plot(
+                "p1", "Alex", List.of(0, 64, 0), List.of(2, 2, 2));
+
+        IOException exception = assertThrows(
+                IOException.class,
+                () -> RoundImages.prepare(temporaryDirectory, wrongGeometry));
+
+        assertTrue(exception.getMessage().contains("origin or size does not match"));
     }
 
     private Path workedExample() {
         return Path.of(System.getProperty("scenariocraft.repoRoot"))
                 .resolve("src/test/resources/fixtures/worked-example.voxels.json");
+    }
+
+    private JudgeRound.Plot plot() {
+        return new JudgeRound.Plot(
+                "p1", "Alex", List.of(100, 64, 200), List.of(2, 2, 2));
     }
 }

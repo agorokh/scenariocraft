@@ -1,6 +1,8 @@
 package io.github.agorokh.scenariocraft.judge;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import javax.imageio.ImageIO;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -62,6 +64,10 @@ final class JudgeImage {
 
     byte[] bytes() {
         return bytes;
+    }
+
+    int size() {
+        return bytes.length;
     }
 
     static void requireSingleLink(Path path) throws IOException {
@@ -152,6 +158,15 @@ final class JudgeImage {
                 || width > MAX_DIMENSION || height > MAX_DIMENSION) {
             throw new IOException("Judge image dimensions are outside the allowed range: "
                     + fileName);
+        }
+        try {
+            var decoded = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (decoded == null || decoded.getWidth() != width || decoded.getHeight() != height) {
+                throw invalidPng(fileName);
+            }
+        } catch (RuntimeException exception) {
+            throw new IOException("Judge image raster could not be decoded: " + fileName,
+                    exception);
         }
     }
 

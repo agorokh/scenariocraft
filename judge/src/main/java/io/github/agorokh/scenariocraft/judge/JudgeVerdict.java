@@ -5,6 +5,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 record JudgeVerdict(String persona, String reasoning, Scores scores, String comment) {
+    static final int MAX_REASONING_LENGTH = 4000;
+    static final int MAX_COMMENT_LENGTH = 500;
     private static final Pattern SENTENCE_END = Pattern.compile("[.!?]+(?=\\s+|$)");
     private static final Pattern INITIALISM = Pattern.compile("(?:[A-Za-z]\\.){2,}");
     private static final Pattern CRUEL_LANGUAGE = Pattern.compile(
@@ -23,6 +25,19 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
                     + "next|one next step|place|to make|try|tuck|use|you can|you could|"
                     + "your next step|.{1,60}\\btip is to)\\b",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern BUILD_FEATURE = Pattern.compile(
+            "\\b(?:arch|bridge|build|chimney|color|colour|detail|design|door|doorway|"
+                    + "flag|floor|foundation|garden|idea|lighting|outline|palette|path|"
+                    + "pattern|proportion|roof|room|shape|silhouette|structure|support|"
+                    + "texture|tower|trim|wall|window) s?\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.COMMENTS);
+    private static final Pattern POSITIVE_EFFECT = Pattern.compile(
+            "\\b(?:anchors?|balanced|beautiful|bold|bright|charming|clear|clever|"
+                    + "colorful|colourful|cozy|creative|creates?|delightful|detailed|"
+                    + "draws?|excellent|fantastic|fits?|frames?|gives?|good|great|"
+                    + "impressive|inviting|leads?|lovely|makes?|neat|recognizable|solid|"
+                    + "stands? out|strong|sturdy|supports?|tidy|warm|welcoming|works?)\\b",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> ABBREVIATIONS = Set.of(
             "dr.", "e.g.", "etc.", "i.e.", "mr.", "mrs.", "ms.", "prof.", "vs.");
 
@@ -30,7 +45,8 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
         if (persona == null || persona.isBlank()) {
             throw new IllegalArgumentException("persona must be non-blank");
         }
-        if (reasoning == null || reasoning.isBlank()) {
+        if (reasoning == null || reasoning.isBlank()
+                || reasoning.length() > MAX_REASONING_LENGTH) {
             throw new IllegalArgumentException("reasoning must be non-blank");
         }
         if (scores == null) {
@@ -44,7 +60,8 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
     }
 
     private static void validateComment(String text) {
-        if (text == null || text.isBlank() || text.chars().anyMatch(JudgeVerdict::isUnsafeControl)) {
+        if (text == null || text.isBlank() || text.length() > MAX_COMMENT_LENGTH
+                || text.chars().anyMatch(JudgeVerdict::isUnsafeControl)) {
             throw new IllegalArgumentException("comment must contain safe single-line text");
         }
         String normalized = text.strip();
@@ -73,6 +90,10 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
         String secondSentence = normalized.substring(firstSentenceEnd).strip();
         if (IMPROVEMENT_START.matcher(firstSentence).find()) {
             throw new IllegalArgumentException("comment must name a genuine strength first");
+        }
+        if (!BUILD_FEATURE.matcher(firstSentence).find()
+                || !POSITIVE_EFFECT.matcher(firstSentence).find()) {
+            throw new IllegalArgumentException("comment must name a concrete strength first");
         }
         if (!CONSTRUCTIVE_START.matcher(secondSentence).find()) {
             throw new IllegalArgumentException("comment must end with constructive guidance");

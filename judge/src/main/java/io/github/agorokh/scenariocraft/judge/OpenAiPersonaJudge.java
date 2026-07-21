@@ -381,6 +381,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         JsonObject reasoning = new JsonObject();
         reasoning.addProperty("type", "string");
         reasoning.addProperty("minLength", 1);
+        reasoning.addProperty("maxLength", JudgeVerdict.MAX_REASONING_LENGTH);
         properties.add("reasoning", reasoning);
 
         JsonObject scores = new JsonObject();
@@ -401,6 +402,7 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         JsonObject comment = new JsonObject();
         comment.addProperty("type", "string");
         comment.addProperty("minLength", 1);
+        comment.addProperty("maxLength", JudgeVerdict.MAX_COMMENT_LENGTH);
         properties.add("comment", comment);
 
         schema.add("properties", properties);

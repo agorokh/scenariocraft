@@ -10,6 +10,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
@@ -124,13 +126,13 @@ class OpenAiPersonaJudgeTest {
     void sanitizesUsefulApiErrorDetailsWithoutEchoingSecrets() {
         String message = OpenAiPersonaJudge.httpErrorMessage(
                 429,
-                "{\"error\":{\"message\":\"Quota exhausted for sk-secret123456\"}}",
+                "{\"error\":{\"message\":\"Quota exhausted for key-fixture_redaction\"}}",
                 "req_123",
-                "sk-secret123456");
+                "key-fixture_redaction");
 
         assertTrue(message.contains("Quota exhausted"));
         assertTrue(message.contains("request req_123"));
-        assertFalse(message.contains("sk-secret123456"));
+        assertFalse(message.contains("key-fixture_redaction"));
         assertTrue(OpenAiPersonaJudge.isRetryableHttpStatus(429));
         assertTrue(OpenAiPersonaJudge.isRetryableHttpStatus(503));
         assertFalse(OpenAiPersonaJudge.isRetryableHttpStatus(401));
@@ -212,6 +214,16 @@ class OpenAiPersonaJudgeTest {
                 () -> JudgeImage.read(truncated, temporaryDirectory.toRealPath()));
     }
 
+    @Test
+    void rejectsCrcValidChunksWithUndecodableImageData() throws Exception {
+        Path invalidRaster = temporaryDirectory.resolve("invalid-raster.png");
+        Files.write(invalidRaster, structuralPng(1, 1));
+
+        assertThrows(
+                IOException.class,
+                () -> JudgeImage.read(invalidRaster, temporaryDirectory.toRealPath()));
+    }
+
     private String validVerdict() {
         return """
                 {"persona":"Professor Fixture","reasoning":"The cottage fits the task.",
@@ -221,6 +233,15 @@ class OpenAiPersonaJudgeTest {
     }
 
     private byte[] completePng(int width, int height) throws IOException {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        if (!ImageIO.write(image, "png", bytes)) {
+            throw new IOException("PNG writer is unavailable");
+        }
+        return bytes.toByteArray();
+    }
+
+    private byte[] structuralPng(int width, int height) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (DataOutputStream output = new DataOutputStream(bytes)) {
             output.write(new byte[] {

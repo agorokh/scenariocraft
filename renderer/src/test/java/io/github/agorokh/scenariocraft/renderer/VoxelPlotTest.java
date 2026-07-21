@@ -17,6 +17,9 @@ class VoxelPlotTest {
         VoxelPlot plot = VoxelPlot.read(fixture("worked-example.voxels.json"));
 
         assertEquals("p1", plot.plotId());
+        assertEquals(100, plot.originX());
+        assertEquals(64, plot.originY());
+        assertEquals(200, plot.originZ());
         assertEquals("minecraft:oak_planks", plot.blockIdAt(1, 0, 0));
         assertEquals("minecraft:air", plot.blockIdAt(0, 0, 0));
         assertEquals("minecraft:air", plot.blockIdAt(1, 0, 1));

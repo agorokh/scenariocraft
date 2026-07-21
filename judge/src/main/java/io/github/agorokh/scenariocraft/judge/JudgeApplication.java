@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 
 final class JudgeApplication {
+    static final long MAX_ROUND_IMAGE_BYTES = 32L * 1024 * 1024;
+
     int run(
             Path roundDirectory,
             Path personasPath,
@@ -25,8 +27,16 @@ final class JudgeApplication {
             JudgeRound round = JudgeRound.read(roundDirectory.resolve("manifest.json"));
             JudgeConfig config = JudgeConfig.load(personasPath, rubricPath);
             Map<String, List<JudgeImage>> images = new LinkedHashMap<>();
+            long totalImageBytes = 0;
             for (JudgeRound.Plot plot : round.plots()) {
-                images.put(plot.plotId(), RoundImages.prepare(roundDirectory, plot.plotId()));
+                List<JudgeImage> plotImages = RoundImages.prepare(roundDirectory, plot);
+                totalImageBytes = Math.addExact(
+                        totalImageBytes,
+                        plotImages.stream().mapToLong(JudgeImage::size).sum());
+                if (totalImageBytes > MAX_ROUND_IMAGE_BYTES) {
+                    throw new IOException("Round images exceed the aggregate byte limit");
+                }
+                images.put(plot.plotId(), plotImages);
             }
             RoundResults results =
                     JudgeCouncil.judge(round, config, images, judge, diagnostics);
