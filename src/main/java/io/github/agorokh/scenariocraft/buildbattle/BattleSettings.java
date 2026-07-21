@@ -9,14 +9,35 @@ public record BattleSettings(
         List<String> tasks,
         List<String> exemptNames,
         boolean allowAnyStart,
-        boolean demoMode) {
+        boolean demoMode,
+        int resultsPollTicks) {
     public BattleSettings(
             ArenaSettings arena,
             PhaseTimings timings,
             List<String> tasks,
             List<String> exemptNames,
             boolean allowAnyStart) {
-        this(arena, timings, tasks, exemptNames, allowAnyStart, false);
+        this(arena, timings, tasks, exemptNames, allowAnyStart, false, 20);
+    }
+
+    public BattleSettings(
+            ArenaSettings arena,
+            PhaseTimings timings,
+            List<String> tasks,
+            List<String> exemptNames,
+            boolean allowAnyStart,
+            boolean demoMode) {
+        this(arena, timings, tasks, exemptNames, allowAnyStart, demoMode, 20);
+    }
+
+    public BattleSettings(
+            ArenaSettings arena,
+            PhaseTimings timings,
+            List<String> tasks,
+            List<String> exemptNames,
+            boolean allowAnyStart,
+            int resultsPollTicks) {
+        this(arena, timings, tasks, exemptNames, allowAnyStart, false, resultsPollTicks);
     }
 
     public BattleSettings {
@@ -24,6 +45,9 @@ public record BattleSettings(
         timings = java.util.Objects.requireNonNull(timings, "timings");
         tasks = List.copyOf(tasks);
         exemptNames = List.copyOf(exemptNames);
+        if (resultsPollTicks < 1) {
+            throw new IllegalArgumentException("resultsPollTicks must be positive");
+        }
     }
 
     public boolean canStart(String senderName, boolean operator) {

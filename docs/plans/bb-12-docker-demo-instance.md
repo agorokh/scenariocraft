@@ -15,8 +15,9 @@ renderer/judge process, Docker packaging, bootstrap data, and operator documenta
 
 - [x] Define the smallest end-to-end slice.
 - [x] Implement with tests.
-- [ ] Capture the issue's acceptance evidence. Dry-run and live-key judge evidence are
-      complete; integrated chat-announcement and one-human evidence remain.
+- [ ] Capture the remaining literal one-human-player evidence. The fresh-volume headless
+      dry-run now proves the integrated Paper announcement path; live-key and human-client
+      evidence remain.
 - [x] Complete `/review` and resolve P1 findings.
 - [ ] Record the retrospective.
 
@@ -31,6 +32,8 @@ session.
 | 2026-07-20 | Make the OpenAI key a required Compose interpolation and keep it environment-only. | Startup must fail clearly when the key is absent, without copying credentials into files or images. |
 | 2026-07-20 | Build solo mode around one real contestant plus a bundled sample second plot. | A single Devpost judge must exercise the normal export, judging, and announcement path instead of a reduced mock-only flow. |
 | 2026-07-20 | Treat `main` as the delivery base while BB-09 PR #34 remains an external dependency. | Issue #14 does not name a non-default base; the delivery procedure requires the repository default in that case. Integration evidence will be captured only after the announcer dependency is available. |
+| 2026-07-21 | Integrate merged BB-09 before completing the demo success gate. | Its RCON-triggered announcement produces the Paper log marker that `make demo` verifies; the gate now reflects a real producer rather than an unreachable dependency. |
+| 2026-07-21 | Give the judge only the dedicated `rounds` volume. | The judge can read inputs and publish results without access to the live plugin JAR or configuration. |
 
 ## Surprises & Discoveries
 
@@ -58,6 +61,11 @@ session.
   refactored the controller paths touched by demo mode. The merge retained both the policy's
   dedicated listener and the bundled sample placement/export behavior; the combined Java 21
   `make ci-fast` gate passed before the conflict resolution was committed.
+- External review found that the initial retry loop interpreted every transient judge failure as
+  terminal and that the judge had the full plugin volume mounted. The resolver now waits for
+  the third (exhausted) retry and isolates the shared round directory in its own named volume.
+- A fresh named `rounds` volume is root-owned by Docker. The existing root-run secrets service
+  initializes it for Paper and judge UID 1000 before either dependent service starts.
 
 ## Acceptance evidence
 
@@ -81,8 +89,12 @@ session.
   and the Compose/images contain no committed credential.
 - After merging current `main`, the combined active-arena policy and demo-mode controller/test
   suite passed `make ci-fast` under Java 21.
-- Pending after BB-09 integration: `make demo` must also observe
-  `SCENARIOCRAFT_RESULTS_ANNOUNCED`, followed by the literal one-human-player chat check.
+- Fresh-volume `make demo-dry-run` passed in 126 seconds after the BB-09 integration. It
+  exported the round through the isolated `rounds` volume, wrote a bundled dry-run verdict,
+  and observed `SCENARIOCRAFT_RESULTS_ANNOUNCED` in Paper before printing
+  `SCENARIOCRAFT_DEMO_SUCCESS`.
+- Pending: the literal one-human-player chat check and a fresh live-key run on the integrated
+  announcer path.
 
 ## Retrospective
 

@@ -78,6 +78,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
     private final RoundExporter roundExporter;
+    private String activeResultRoundId;
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
     private final DemoSampleBuild demoSampleBuild;
@@ -199,7 +200,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 logger,
                 randomIndex,
                 taskBookPlacer,
-                ignored -> {},
+                ignored -> "round-19700101-000000",
                 new TeleportTransport(plugin.getServer()),
                 TeleportRecoveryStore.inMemory(),
                 DemoSampleBuild.empty());
@@ -343,6 +344,33 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return state.phase();
     }
 
+    /** Returns the current plot center used for a short winner-particle celebration. */
+    public Location resultCelebrationLocation(String plotId) {
+        if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
+            return null;
+        }
+        int plotNumber;
+        try {
+            plotNumber = Integer.parseInt(plotId.substring(1));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        if (plotNumber > plots.size()) {
+            return null;
+        }
+        PlotBounds plot = plots.get(plotNumber - 1);
+        return new Location(
+                arena.world(),
+                plot.centerX() + 0.5,
+                arena.floorY() + 3.0,
+                plot.centerZ() + 0.5);
+    }
+
+    @Override
+    public java.util.Optional<String> activeResultRoundId() {
+        return java.util.Optional.ofNullable(activeResultRoundId);
+    }
+
     ActiveArenaMutationListener mutationListener() {
         return mutationListener;
     }
@@ -369,6 +397,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "The last build is still being packed up safely — just a moment!");
             return;
         }
+        activeResultRoundId = null;
 
         List<Player> players =
                 server.getOnlinePlayers().stream()
@@ -1080,6 +1109,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void exportRound() {
+        activeResultRoundId = null;
         if (currentTask == null) {
             logger.severe("SCENARIOCRAFT_EXPORT_FAILURE no task is available at REVEAL");
             return;
@@ -1111,7 +1141,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             plot.depth()));
         }
         try {
-            roundExporter.export(
+            activeResultRoundId = roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
         } catch (RuntimeException failure) {

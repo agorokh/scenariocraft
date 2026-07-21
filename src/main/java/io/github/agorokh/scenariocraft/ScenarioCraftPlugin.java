@@ -11,6 +11,7 @@ import io.github.agorokh.scenariocraft.buildbattle.DemoSampleBuild;
 import io.github.agorokh.scenariocraft.buildbattle.PlotBounds;
 import io.github.agorokh.scenariocraft.buildbattle.PlotGeometry;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
+import io.github.agorokh.scenariocraft.buildbattle.ResultAnnouncementService;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
 import io.github.agorokh.scenariocraft.buildbattle.SecretChestPosition;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportRecoveryStore;
@@ -29,6 +30,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class ScenarioCraftPlugin extends JavaPlugin {
     private BatchedBlockEditor blockEditor;
     private RoundController roundController;
+    private ResultAnnouncementService resultAnnouncements;
 
     @Override
     public void onEnable() {
@@ -88,7 +90,14 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         teleportTransport,
                         recoveryStore,
                         demoSampleBuild);
-        BattleCommand battleCommand = new BattleCommand(settings, roundController);
+        resultAnnouncements =
+                ResultAnnouncementService.forPlugin(
+                        this,
+                        roundController,
+                        roundController::resultCelebrationLocation,
+                        settings.resultsPollTicks());
+        BattleCommand battleCommand =
+                new BattleCommand(settings, roundController, resultAnnouncements);
         Objects.requireNonNull(getCommand("battle"), "battle command missing from plugin.yml")
                 .setExecutor(battleCommand);
 
@@ -170,6 +179,9 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (resultAnnouncements != null) {
+            resultAnnouncements.close();
+        }
         if (roundController != null) {
             roundController.close();
         }

@@ -60,7 +60,7 @@ while true; do
             && printf '%s\n' "${logs}" | grep -q 'SCENARIOCRAFT_RESULTS_ANNOUNCED'; then
         break
     fi
-    if printf '%s\n' "${logs}" | grep -q 'SCENARIOCRAFT_DEMO_JUDGE_FAILURE'; then
+    if printf '%s\n' "${logs}" | grep -q 'SCENARIOCRAFT_DEMO_JUDGE_FAILURE .*attempt=3/3'; then
         printf '%s\n' "${logs}" >&2
         exit 1
     fi

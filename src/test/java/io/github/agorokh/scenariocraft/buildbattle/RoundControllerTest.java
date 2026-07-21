@@ -617,6 +617,9 @@ class RoundControllerTest {
         rig.runBlockTick();
 
         assertEquals(1, rig.exportRequests.size());
+        assertEquals(
+                java.util.Optional.of("round-20260721-193000"),
+                rig.controller.activeResultRoundId());
         RoundExportRequest request = rig.exportRequests.getFirst();
         assertEquals("A dragon treehouse", request.task());
         assertEquals(ArenaWorldService.WORLD_NAME, request.world());
@@ -654,6 +657,23 @@ class RoundControllerTest {
         assertTrue(
                 rig.playerMessages.contains(
                         "Solo mode is on: your challenger is the bundled sample build!"));
+        rig.close();
+    }
+
+    @Test
+    void winnerCelebrationResolvesTheExportedPlotCenter() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.REVEAL);
+
+        Location celebration = rig.controller.resultCelebrationLocation("p1");
+
+        assertNotNull(celebration);
+        assertTrue(rig.world == celebration.getWorld());
+        assertEquals(0.5, celebration.getX());
+        assertEquals(3.0, celebration.getY());
+        assertEquals(-2.5, celebration.getZ());
+        assertNull(rig.controller.resultCelebrationLocation("p3"));
+        assertNull(rig.controller.resultCelebrationLocation("winner"));
         rig.close();
     }
 
@@ -707,7 +727,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {});
+                        ignored -> "round-20260721-193000");
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(2, rig.inventoryContents.get().length);
@@ -756,7 +776,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {});
+                        ignored -> "round-20260721-193000");
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(0.5, rig.lastTeleport.get().getX());
@@ -2030,7 +2050,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {},
+                        ignored -> "round-20260721-193000",
                         new TeleportTransport(rig.server),
                         reopenedStore);
 
@@ -2794,7 +2814,8 @@ class RoundControllerTest {
                             List.of("A dragon treehouse"),
                             List.of("Parent"),
                             true,
-                            demoMode);
+                            demoMode,
+                            20);
             arena = new ArenaWorld(world, floorY);
             editor =
                     new BatchedBlockEditor(plugin, world, 1_000, Logger.getAnonymousLogger());
@@ -2816,10 +2837,11 @@ class RoundControllerTest {
                             },
                             new RoundExporter() {
                                 @Override
-                                public void export(RoundExportRequest request) {
+                                public String export(RoundExportRequest request) {
                                     exportRequests.add(request);
                                     exportBusy.set(true);
                                     exportReading.set(true);
+                                    return "round-20260721-193000";
                                 }
 
                                 @Override

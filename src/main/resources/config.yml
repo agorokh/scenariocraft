@@ -15,6 +15,8 @@ gather-seconds: 30
 note-seconds: 60
 build-seconds: 1200
 reveal-linger-seconds: 900
+# Frequency for checking newly published judge results while the round is in REVEAL
+results-poll-ticks: 20
 
 # Design-council deck: short, kid-friendly prompts that work in a compact plot
 tasks:

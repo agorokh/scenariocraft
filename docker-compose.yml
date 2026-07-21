@@ -4,6 +4,7 @@ services:
     command: ["/demo/create-rcon-secret.sh"]
     volumes:
       - demo-secrets:/run/scenariocraft
+      - rounds:/rounds
       - ./demo/create-rcon-secret.sh:/demo/create-rcon-secret.sh:ro
 
   plugin:
@@ -40,6 +41,7 @@ services:
     volumes:
       - server-data:/data
       - plugins:/data/plugins
+      - rounds:/data/plugins/ScenarioCraft/rounds
       - demo-secrets:/run/scenariocraft:ro
     healthcheck:
       test: ["CMD", "mc-health"]
@@ -65,10 +67,11 @@ services:
       SCENARIOCRAFT_RCON_PORT: "25575"
       SCENARIOCRAFT_RCON_TIMEOUT_SECONDS: "10"
     volumes:
-      - plugins:/plugins
+      - rounds:/plugins/ScenarioCraft/rounds
       - demo-secrets:/run/scenariocraft:ro
 
 volumes:
   demo-secrets:
   plugins:
+  rounds:
   server-data:
