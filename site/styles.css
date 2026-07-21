@@ -290,8 +290,9 @@ main { overflow: hidden; }
 .weekend-beat {
   margin-top: var(--space-4);
   padding: var(--space-3) var(--space-4);
-  background: var(--paper-soft);
-  border-left: 8px solid var(--grass-bright);
+  background: linear-gradient(90deg, var(--grass-bright) 0 8px, var(--paper-soft) 8px);
+  border: var(--border-card);
+  border-radius: var(--corner-card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -299,9 +300,8 @@ main { overflow: hidden; }
   width: min(900px, calc(100% - 3rem));
   margin: 0 auto var(--space-7);
   padding: var(--space-5);
-  background: var(--paper-soft);
+  background: linear-gradient(90deg, var(--grass) 0 12px, var(--paper-soft) 12px);
   border: var(--border-card);
-  border-left: 12px solid var(--grass);
   border-radius: var(--corner-card);
   box-shadow: var(--shadow-sm);
 }
