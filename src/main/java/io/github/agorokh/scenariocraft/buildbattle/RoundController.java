@@ -106,6 +106,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private boolean plotEntryFailed;
     private boolean awaitingPlotEntries;
     private String resultRoundId;
+    private boolean resultExportStarted;
 
     public RoundController(
             Plugin plugin,
@@ -304,6 +305,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         if (phase() != RoundPhase.REVEAL) {
             return Optional.empty();
         }
+        if (!resultExportStarted) {
+            return Optional.empty();
+        }
         if (resultRoundId == null) {
             resultRoundId = roundExporter.currentRoundId().orElse(null);
         }
@@ -395,6 +399,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         contestants.clear();
         resultRoundId = null;
+        resultExportStarted = false;
         try {
             for (int index = 0; index < players.size(); index++) {
                 Player player = players.get(index);
@@ -1067,6 +1072,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
+            resultExportStarted = true;
         } catch (RuntimeException failure) {
             logger.log(Level.SEVERE, "SCENARIOCRAFT_EXPORT_FAILURE export did not start", failure);
         }

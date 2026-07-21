@@ -91,10 +91,17 @@ final class BattleResultParser {
         String plotId = null;
         List<BattleResult.Feedback> feedback = new ArrayList<>();
         String winnerName = null;
+        boolean outcomeSeen = false;
 
         for (int index = 2; index < lines.size(); index++) {
             String line = lines.get(index);
-            if (line.isBlank() || line.startsWith("  Mean:") || line.startsWith("  Failed:")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            if (outcomeSeen) {
+                throw invalid("contains content after its result record");
+            }
+            if (line.startsWith("  Mean:") || line.startsWith("  Failed:")) {
                 continue;
             }
             Matcher winner = WINNER.matcher(line);
@@ -103,7 +110,11 @@ final class BattleResultParser {
                     addContestant(contestants, player, plotId, feedback);
                     player = null;
                 }
+                if (contestants.isEmpty()) {
+                    throw invalid("places its result before the contestants");
+                }
                 winnerName = displayText(winner.group(1), 80, "winner");
+                outcomeSeen = true;
                 continue;
             }
             if (line.startsWith("No winner:")) {
@@ -111,6 +122,10 @@ final class BattleResultParser {
                     addContestant(contestants, player, plotId, feedback);
                     player = null;
                 }
+                if (contestants.isEmpty()) {
+                    throw invalid("places its result before the contestants");
+                }
+                outcomeSeen = true;
                 continue;
             }
             Matcher contestant = CONTESTANT.matcher(line);
@@ -141,6 +156,9 @@ final class BattleResultParser {
         }
         if (contestants.isEmpty()) {
             throw invalid("contains no contestants");
+        }
+        if (!outcomeSeen) {
+            throw invalid("is missing its terminal result record");
         }
         Optional<BattleResult.Winner> winner = Optional.empty();
         if (winnerName != null) {

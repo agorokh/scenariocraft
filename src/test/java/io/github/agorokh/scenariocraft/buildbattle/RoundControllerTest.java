@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -630,6 +631,22 @@ class RoundControllerTest {
         assertEquals(1, plot.sizeX());
         assertEquals(1, plot.sizeY());
         assertEquals(1, plot.sizeZ());
+        rig.close();
+    }
+
+    @Test
+    void priorPublishedExportIdIsHiddenUntilTheCurrentExportStartsAndPublishes() {
+        TestRig rig = new TestRig();
+        rig.publishedExportId.set("round-20260720-190000");
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        assertTrue(rig.controller.resultRoundId().isEmpty());
+
+        rig.runBlockTick();
+        assertTrue(rig.controller.resultRoundId().isEmpty());
+
+        rig.publishedExportId.set("round-20260721-193000");
+        assertEquals("round-20260721-193000", rig.controller.resultRoundId().orElseThrow());
         rig.close();
     }
 
@@ -2350,6 +2367,7 @@ class RoundControllerTest {
         private final AtomicBoolean exportBusy = new AtomicBoolean();
         private final AtomicBoolean exportReading = new AtomicBoolean();
         private final AtomicInteger exportCancels = new AtomicInteger();
+        private final AtomicReference<String> publishedExportId = new AtomicReference<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
@@ -2743,8 +2761,14 @@ class RoundControllerTest {
                                 @Override
                                 public void export(RoundExportRequest request) {
                                     exportRequests.add(request);
+                                    publishedExportId.set(null);
                                     exportBusy.set(true);
                                     exportReading.set(true);
+                                }
+
+                                @Override
+                                public Optional<String> currentRoundId() {
+                                    return Optional.ofNullable(publishedExportId.get());
                                 }
 
                                 @Override

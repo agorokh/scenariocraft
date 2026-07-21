@@ -164,6 +164,33 @@ class BattleResultParserTest {
     }
 
     @Test
+    void resultRecordMustBeUniqueAndTerminalAfterContestants() {
+        String contradictory =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Winner: Alex with 9.00
+                Alex (p1)
+                  Captain Comet: 9.00 — The bright roof is welcoming.
+                No winner: tied panel
+                """;
+        String contentAfterWinner =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Alex (p1)
+                  Captain Comet: 9.00 — The bright roof is welcoming.
+                Winner: Alex with 9.00
+                No winner: tied panel
+                """;
+
+        assertThrows(IllegalArgumentException.class, () -> parser.parse(contradictory));
+        assertThrows(IllegalArgumentException.class, () -> parser.parse(contentAfterWinner));
+    }
+
+    @Test
     void rejectsMoreFeedbackThanTheJudgePersonaLimit() {
         String feedback =
                 "  Captain Comet: 2.00 — The bright roof is welcoming.\n"
