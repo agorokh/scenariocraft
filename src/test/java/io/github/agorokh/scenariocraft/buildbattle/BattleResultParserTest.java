@@ -100,7 +100,7 @@ class BattleResultParserTest {
     }
 
     @Test
-    void rejectsProfanityAndMinecraftFormattingCodes() {
+    void rejectsProfanitySexualAssaultLanguageAndMinecraftFormattingCodes() {
         String template =
                 """
                 Round: round-20260721-193000
@@ -115,6 +115,9 @@ class BattleResultParserTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("You are full of shit.")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("I hope you get raped.")));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("The §kobfuscated roof is clever.")));

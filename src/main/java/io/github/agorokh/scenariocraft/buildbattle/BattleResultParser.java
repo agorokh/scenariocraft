@@ -33,7 +33,9 @@ final class BattleResultParser {
                             + "\\b(?:dead|death|die|harm|hurt|kill|murder|self-harm|suicide)\\b|"
                             + "\\b(?:better off dead|go die|hurt yourself|kill yourself)\\b|"
                             + "\\b(?:arsehole|asshole|bastard|bitch|bullshit|crap|cunt|damn|"
-                            + "dick|douche|fuck(?:ed|er|ing)?|motherfucker|piss|prick|shit(?:ty)?)\\b",
+                            + "dick|douche|fuck(?:ed|er|ing)?|motherfucker|piss|prick|shit(?:ty)?)\\b|"
+                            + "\\b(?:molest(?:ed|er|ing|ation)?|rape(?:d|s)?|raping|rapist|"
+                            + "sexual (?:abuse|assault|violence))\\b",
                     Pattern.CASE_INSENSITIVE);
 
     BattleResult read(Path path) throws IOException {
