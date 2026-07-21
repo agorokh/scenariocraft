@@ -39,8 +39,8 @@ class OpenAiPersonaJudgeTest {
     @Test
     void requestUsesSevenImagesSharedRubricAndStrictReasonThenScoresSchema() throws Exception {
         List<JudgeImage> images = new ArrayList<>();
-        for (int index = 0; index < 7; index++) {
-            Path image = temporaryDirectory.resolve(index + ".png");
+        for (String name : RoundImages.NAMES) {
+            Path image = temporaryDirectory.resolve(name);
             Files.write(image, completePng(640, 480));
             images.add(JudgeImage.read(image, temporaryDirectory.toRealPath()));
         }
@@ -55,9 +55,22 @@ class OpenAiPersonaJudgeTest {
         String sharedInstructions = input.get(0).getAsJsonObject().getAsJsonArray("content")
                 .get(0).getAsJsonObject().get("text").getAsString();
         assertTrue(sharedInstructions.contains("Name one genuine strength"));
+        assertTrue(sharedInstructions.contains("center cross-section views"));
         assertEquals(RUBRIC, input.get(0).getAsJsonObject().getAsJsonArray("content")
                 .get(1).getAsJsonObject().get("text").getAsString());
-        assertEquals(8, input.get(1).getAsJsonObject().getAsJsonArray("content").size());
+        JsonArray userContent = input.get(1).getAsJsonObject().getAsJsonArray("content");
+        assertEquals(15, userContent.size());
+        for (int index = 0; index < RoundImages.NAMES.size(); index++) {
+            JsonObject label = userContent.get(1 + index * 2).getAsJsonObject();
+            JsonObject image = userContent.get(2 + index * 2).getAsJsonObject();
+            assertEquals("input_text", label.get("type").getAsString());
+            assertTrue(label.get("text").getAsString().contains(RoundImages.NAMES.get(index)));
+            assertEquals("input_image", image.get("type").getAsString());
+        }
+        assertTrue(userContent.get(11).getAsJsonObject().get("text").getAsString()
+                .contains("center X cross-section showing interior evidence"));
+        assertTrue(userContent.get(13).getAsJsonObject().get("text").getAsString()
+                .contains("center Z cross-section showing interior evidence"));
         JsonObject format = request.getAsJsonObject("text").getAsJsonObject("format");
         assertTrue(format.get("strict").getAsBoolean());
         List<String> propertyOrder = new ArrayList<>(format.getAsJsonObject("schema")
