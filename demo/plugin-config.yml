@@ -1,0 +1,19 @@
+plot-size: 21
+wall-height: 20
+plot-spacing: 40
+max-plots: 8
+blocks-per-tick: 6000
+
+gather-seconds: 5
+note-seconds: 5
+build-seconds: 90
+reveal-linger-seconds: 300
+
+tasks:
+  - A rocket-powered castle
+  - A friendly monster school
+  - A moon base for cats
+
+exempt-names: []
+allow-any-start: true
+demo-mode: true

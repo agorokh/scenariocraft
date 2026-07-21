@@ -23,6 +23,17 @@ class ArenaConfigLoaderTest {
         assertEquals(settings.tasks().size(), new HashSet<>(settings.tasks()).size());
         assertTrue(settings.exemptNames().isEmpty());
         assertTrue(settings.allowAnyStart());
+        assertFalse(settings.demoMode());
+    }
+
+    @Test
+    void dockerDemoModeMustBeAnExplicitBoolean() {
+        YamlConfiguration config = packagedConfig();
+        config.set("demo-mode", true);
+        assertTrue(ArenaConfigLoader.load(config).demoMode());
+
+        config.set("demo-mode", "yes please");
+        assertThrows(IllegalArgumentException.class, () -> ArenaConfigLoader.load(config));
     }
 
     @Test

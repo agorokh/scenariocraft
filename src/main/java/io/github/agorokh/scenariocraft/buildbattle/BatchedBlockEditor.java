@@ -54,8 +54,26 @@ public final class BatchedBlockEditor implements AutoCloseable {
             SecretChestPosition secretChest,
             LongConsumer onComplete,
             Consumer<Throwable> onPreparationFailure) {
+        return enqueueArena(
+                plots,
+                floorY,
+                wallHeight,
+                secretChest,
+                List.of(),
+                onComplete,
+                onPreparationFailure);
+    }
+
+    public long enqueueArena(
+            List<PlotBounds> plots,
+            int floorY,
+            int wallHeight,
+            SecretChestPosition secretChest,
+            List<BlockFill> finalFills,
+            LongConsumer onComplete,
+            Consumer<Throwable> onPreparationFailure) {
         return enqueuePlan(
-                ArenaFillPlan.forPlots(plots, floorY, wallHeight, secretChest),
+                ArenaFillPlan.forPlots(plots, floorY, wallHeight, secretChest, finalFills),
                 onComplete,
                 onPreparationFailure);
     }

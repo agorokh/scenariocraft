@@ -1,0 +1,7 @@
+.git
+.gradle
+build
+judge/build
+renderer/build
+demo/evidence
+**/.DS_Store

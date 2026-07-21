@@ -8,7 +8,17 @@ public record BattleSettings(
         PhaseTimings timings,
         List<String> tasks,
         List<String> exemptNames,
-        boolean allowAnyStart) {
+        boolean allowAnyStart,
+        boolean demoMode) {
+    public BattleSettings(
+            ArenaSettings arena,
+            PhaseTimings timings,
+            List<String> tasks,
+            List<String> exemptNames,
+            boolean allowAnyStart) {
+        this(arena, timings, tasks, exemptNames, allowAnyStart, false);
+    }
+
     public BattleSettings {
         arena = java.util.Objects.requireNonNull(arena, "arena");
         timings = java.util.Objects.requireNonNull(timings, "timings");

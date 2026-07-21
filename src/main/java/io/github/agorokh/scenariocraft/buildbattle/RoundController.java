@@ -109,6 +109,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final RoundExporter roundExporter;
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
+    private final DemoSampleBuild demoSampleBuild;
     private final RoundStateMachine state = new RoundStateMachine();
     private final Map<UUID, Contestant> contestants = new LinkedHashMap<>();
     private final Map<UUID, Spectator> revealSpectators = new LinkedHashMap<>();
@@ -152,7 +153,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         settings.arena().blocksPerTick(),
                         logger),
                 new TeleportTransport(plugin.getServer()),
-                recoveryStoreFor(plugin));
+                recoveryStoreFor(plugin),
+                DemoSampleBuild.empty());
     }
 
     public RoundController(
@@ -177,7 +179,35 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         settings.arena().blocksPerTick(),
                         logger),
                 teleportTransport,
-                recoveryStore);
+                recoveryStore,
+                DemoSampleBuild.empty());
+    }
+
+    public RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            TeleportTransport teleportTransport,
+            TeleportRecoveryStore recoveryStore,
+            DemoSampleBuild demoSampleBuild) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                bound -> ThreadLocalRandom.current().nextInt(bound),
+                ignored -> placeTaskBook(arena),
+                RoundExportService.forPlugin(
+                        plugin,
+                        arena.world(),
+                        settings.arena().blocksPerTick(),
+                        logger),
+                teleportTransport,
+                recoveryStore,
+                demoSampleBuild);
     }
 
     RoundController(
@@ -198,7 +228,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 taskBookPlacer,
                 ignored -> {},
                 new TeleportTransport(plugin.getServer()),
-                TeleportRecoveryStore.inMemory());
+                TeleportRecoveryStore.inMemory(),
+                DemoSampleBuild.empty());
     }
 
     RoundController(
@@ -220,7 +251,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 taskBookPlacer,
                 roundExporter,
                 new TeleportTransport(plugin.getServer()),
-                TeleportRecoveryStore.inMemory());
+                TeleportRecoveryStore.inMemory(),
+                DemoSampleBuild.empty());
     }
 
     RoundController(
@@ -234,6 +266,32 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             RoundExporter roundExporter,
             TeleportTransport teleportTransport,
             TeleportRecoveryStore recoveryStore) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                randomIndex,
+                taskBookPlacer,
+                roundExporter,
+                teleportTransport,
+                recoveryStore,
+                DemoSampleBuild.empty());
+    }
+
+    RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            IntUnaryOperator randomIndex,
+            Consumer<String> taskBookPlacer,
+            RoundExporter roundExporter,
+            TeleportTransport teleportTransport,
+            TeleportRecoveryStore recoveryStore,
+            DemoSampleBuild demoSampleBuild) {
         Objects.requireNonNull(plugin, "plugin");
         this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
@@ -247,6 +305,10 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.roundExporter = Objects.requireNonNull(roundExporter, "roundExporter");
         this.teleportTransport = Objects.requireNonNull(teleportTransport, "teleportTransport");
         this.recoveryStore = Objects.requireNonNull(recoveryStore, "recoveryStore");
+        this.demoSampleBuild = Objects.requireNonNull(demoSampleBuild, "demoSampleBuild");
+        if (settings.demoMode() && demoSampleBuild.isEmpty()) {
+            throw new IllegalArgumentException("demo mode requires a bundled sample build");
+        }
         this.inventorySnapshotKey =
                 new NamespacedKey(plugin, "round-inventory-snapshot");
         this.teleportRecoveryKey =
@@ -412,9 +474,15 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         roundStarter = sender;
         forEachOnlineContestant(this::prepareContestant);
         if (players.isEmpty()) {
-            sender.sendMessage("Starting a two-plot practice round.");
+            sender.sendMessage(
+                    settings.demoMode()
+                            ? "Starting a two-sample demo round."
+                            : "Starting a two-plot practice round.");
         } else if (players.size() == 1) {
-            sender.sendMessage("Starting with one builder and one extra practice plot.");
+            sender.sendMessage(
+                    settings.demoMode()
+                            ? "Solo mode is on: your challenger is the bundled sample build!"
+                            : "Starting with one builder and one extra practice plot.");
         } else {
             sender.sendMessage("Starting Build Battle for " + players.size() + " builders!");
         }
@@ -428,6 +496,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             arena.floorY(),
                             arenaSettings.wallHeight(),
                             secretChest(),
+                            demoSampleFills(players.size()),
                             completedMutations -> arenaResetComplete(completedMutations),
                             this::arenaWorkFailed);
         } catch (RuntimeException failure) {
@@ -1259,20 +1328,28 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         int originY = Math.addExact(arena.floorY(), 1);
         int plotHeight = settings.arena().wallHeight();
         List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
-        int plotNumber = 1;
+        Map<PlotBounds, Contestant> contestantsByPlot = new LinkedHashMap<>();
         for (Contestant contestant : contestants.values()) {
-            PlotBounds plot = contestant.plot();
+            contestantsByPlot.put(contestant.plot(), contestant);
+        }
+        for (int plotIndex = 0; plotIndex < plots.size(); plotIndex++) {
+            PlotBounds plot = plots.get(plotIndex);
+            Contestant contestant = contestantsByPlot.get(plot);
+            if (contestant == null && !settings.demoMode()) {
+                continue;
+            }
             exportPlots.add(
                     new RoundExportRequest.Plot(
-                            "p" + plotNumber,
-                            contestant.playerName(),
+                            "p" + (plotIndex + 1),
+                            contestant == null
+                                    ? "ScenarioCraft Sample " + (plotIndex + 1)
+                                    : contestant.playerName(),
                             plot.minX(),
                             originY,
                             plot.minZ(),
                             plot.width(),
                             plotHeight,
                             plot.depth()));
-            plotNumber++;
         }
         try {
             roundExporter.export(
@@ -1611,6 +1688,21 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
 
     private SecretChestPosition secretChest() {
         return SecretChestPosition.atHub(arena);
+    }
+
+    private List<BlockFill> demoSampleFills(int realPlayerCount) {
+        if (!settings.demoMode()) {
+            return List.of();
+        }
+        List<BlockFill> fills = new java.util.ArrayList<>();
+        for (int index = realPlayerCount; index < plots.size(); index++) {
+            fills.addAll(
+                    demoSampleBuild.placeIn(
+                            plots.get(index),
+                            arena.floorY(),
+                            settings.arena().wallHeight()));
+        }
+        return List.copyOf(fills);
     }
 
     private boolean isSecretChest(Block block) {

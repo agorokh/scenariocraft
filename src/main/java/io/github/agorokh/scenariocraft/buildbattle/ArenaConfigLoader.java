@@ -39,13 +39,17 @@ public final class ArenaConfigLoader {
         if (!config.isBoolean("allow-any-start")) {
             throw new IllegalArgumentException("allow-any-start must be true or false");
         }
+        if (config.contains("demo-mode", true) && !config.isBoolean("demo-mode")) {
+            throw new IllegalArgumentException("demo-mode must be true or false");
+        }
 
         return new BattleSettings(
                 arena,
                 timings,
                 tasks,
                 config.getStringList("exempt-names"),
-                config.getBoolean("allow-any-start"));
+                config.getBoolean("allow-any-start"),
+                config.getBoolean("demo-mode", false));
     }
 
     private static int positiveInt(FileConfiguration config, String path) {

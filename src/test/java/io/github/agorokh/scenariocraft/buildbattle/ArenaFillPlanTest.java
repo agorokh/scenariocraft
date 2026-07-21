@@ -87,6 +87,23 @@ class ArenaFillPlanTest {
     }
 
     @Test
+    void bundledSampleFillsRunAfterTheArenaClearThroughTheSamePlan() {
+        BlockFill sample =
+                new BlockFill(new Cuboid(63, 63, -60, -60, 0, 0), Material.RED_CONCRETE);
+
+        ArenaFillPlan plan =
+                ArenaFillPlan.forPlots(
+                        PlotGeometry.aroundHub(0, 0, 2, 33, 64),
+                        -61,
+                        30,
+                        new SecretChestPosition(2, -60, 0),
+                        List.of(sample));
+
+        assertEquals(sample, plan.fills().getLast());
+        assertEquals(86_562, plan.totalBlockMutations());
+    }
+
+    @Test
     void revealPlanRemovesTheFourWallsAndYCapThroughTheBudget() {
         List<PlotBounds> plots = PlotGeometry.aroundHub(0, 0, 2, 33, 64);
 

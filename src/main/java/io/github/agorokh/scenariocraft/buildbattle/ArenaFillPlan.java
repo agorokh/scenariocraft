@@ -31,6 +31,15 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
             int floorY,
             int wallHeight,
             SecretChestPosition secretChest) {
+        return forPlots(plots, floorY, wallHeight, secretChest, List.of());
+    }
+
+    public static ArenaFillPlan forPlots(
+            List<PlotBounds> plots,
+            int floorY,
+            int wallHeight,
+            SecretChestPosition secretChest,
+            List<BlockFill> finalFills) {
         if (plots.isEmpty()) {
             throw new IllegalArgumentException("at least one plot is required");
         }
@@ -125,6 +134,9 @@ public record ArenaFillPlan(List<BlockFill> fills, long totalBlockMutations) {
                             CAP_MATERIAL);
         }
         total = add(fills, total, secretChest.asCuboid(), Material.CHEST);
+        for (BlockFill fill : List.copyOf(finalFills)) {
+            total = add(fills, total, fill.bounds(), fill.material());
+        }
         return new ArenaFillPlan(fills, total);
     }
 
