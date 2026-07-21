@@ -1643,6 +1643,21 @@ class RoundControllerTest {
     }
 
     @Test
+    void activeArenaCancelsPistonHeadExtensionAboveBuildHeight() {
+        TestRig rig = new TestRig();
+        rig.advanceTo(RoundPhase.BUILDING);
+
+        BlockPistonExtendEvent extend =
+                new BlockPistonExtendEvent(
+                        rig.blockAt(0, 2, -3), List.of(), BlockFace.UP);
+
+        rig.mutations.onArenaPistonExtend(extend);
+
+        assertTrue(extend.isCancelled());
+        rig.close();
+    }
+
+    @Test
     void auditedEnvironmentalFamiliesUseNarrowArenaGuards() {
         TestRig rig = new TestRig();
         Block inside = rig.blockAt(0, 1, -3);

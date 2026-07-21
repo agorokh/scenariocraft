@@ -31,8 +31,8 @@ not interfere with normal server play.
 | `BlockDispenseEvent` | Dispenser | Dispenser output | Automation | Protected | Cancel | The event does not provide a trustworthy final destination for fluid/entity output |
 | `TNTPrimeEvent` | Priming block/entity | Primed TNT block | Player, entity, or automation | Protected | Cancel | Explosions are denied, so priming is denied early and deterministically |
 | `BlockExplodeEvent`, `EntityExplodeEvent` | Explosion block/location | Explosion block list | Player, entity, or environment | Protected | Cancel | Chain effects and mutable explosion lists cannot prove plot containment |
-| `BlockPistonExtendEvent` | Piston | Piston plus each moved block and its destination | Automation | Building | Allow only when every source/destination shares one assigned plot; otherwise cancel | Narrow boundary guard preserves normal in-plot redstone |
-| `BlockPistonRetractEvent` | Piston | Piston plus each moved block and its destination | Automation | Building | Allow only when every source/destination shares one assigned plot; otherwise cancel | Narrow boundary guard preserves normal in-plot redstone |
+| `BlockPistonExtendEvent` | Piston | Piston, piston head, plus each moved block and its destination | Automation | Building | Allow only when every source/destination shares one assigned plot; otherwise cancel | Narrow boundary guard preserves normal in-plot redstone |
+| `BlockPistonRetractEvent` | Piston | Piston, piston head, plus each moved block and its destination | Automation | Building | Allow only when every source/destination shares one assigned plot; otherwise cancel | Narrow boundary guard preserves normal in-plot redstone |
 | `BlockSpreadEvent` | Source block | Spread destination | Environment | Protected | Cancel | Fire/mushroom-style spread is non-owned and can continue beyond one event |
 | `BlockBurnEvent` | Igniting block | Burned block | Environment | Protected | Cancel | Prevents indirect destruction of completed build material |
 | `BlockFadeEvent` | Fading block | Same block/new state | Environment | Protected | Cancel | Prevents melt/fade from erasing contestant work |

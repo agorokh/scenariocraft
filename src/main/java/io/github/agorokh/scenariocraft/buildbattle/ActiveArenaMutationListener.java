@@ -445,6 +445,7 @@ final class ActiveArenaMutationListener implements Listener {
             BlockFace direction) {
         List<Block> targets = new ArrayList<>();
         targets.add(piston);
+        targets.add(piston.getRelative(direction));
         for (Block movedBlock : movedBlocks) {
             targets.add(movedBlock);
             targets.add(movedBlock.getRelative(direction));
