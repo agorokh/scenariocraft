@@ -48,6 +48,10 @@ Docker demo are all in this repository and covered by the build and real-server 
 
 ## Quickstart
 
+Prerequisites are Docker with Compose, GNU Make, `curl`, and Python 3.10 or newer. On macOS,
+install Java 21 as well (for example, `brew install openjdk@21`) so Geyser can bind directly
+to the Mac's LAN interface.
+
 1. **Clone**
 
    `git clone https://github.com/agorokh/scenariocraft.git && cd scenariocraft`
@@ -56,33 +60,61 @@ Docker demo are all in this repository and covered by the build and real-server 
 
    `export OPENAI_API_KEY='<your OpenAI API key>'`
 
-   `docker compose up --build`
+   `make family-up`
 
-3. **Play**
+3. **Play on Java or Bedrock**
 
-   Join `localhost:25565` in Minecraft Java 1.21.x.
+   - Java 1.21.x: join `localhost:25565`.
+   - Bedrock on an iPad, phone, or computer: add the Docker host's LAN IP with port `19132`.
+   - Xbox with a macOS host on the same LAN: open the Friends tab and join ScenarioCraft
+     family demo when it appears under LAN Games.
 
    Run `/speedbuild start` in chat. `/battle` and `/bb` remain available for existing servers.
 
 Want the one-minute tour first? [See how to play Speed Build](https://agorokh.github.io/scenariocraft/#step-1), then return here for the canonical commands.
 
-The demo uses Paper 1.21.11 in offline mode and is intended only for a trusted local network.
+The demo uses Paper 1.21.11 with repository-owned Geyser, Floodgate, and ViaVersion setup. It
+publishes Java TCP `25565` and Bedrock UDP `19132`, and is intended only for a trusted local
+network. The family configuration gives builders 10 minutes and uses the complete prompt deck.
+On Linux, Geyser runs in Paper's container. On macOS, where Colima and some Docker Desktop
+setups do not make container UDP discoverable to Xbox/iPad clients, `make family-up`
+automatically runs Geyser as a host LaunchAgent. It downloads the current standalone jar,
+verifies its published checksum, synchronizes Floodgate's key from Paper, and probes UDP
+`19132` before reporting that the server is ready. There is no manual key-copy step.
+Paper and the judge use Docker's `unless-stopped` restart policy; the macOS Geyser LaunchAgent
+also restarts automatically. Run `make family-status` to check both Compose and the real
+Bedrock listener, or `make family-down` to stop the family server cleanly.
 RCON stays inside the Compose network and uses a generated password. With one human player,
 solo mode automatically fills the second plot from the bundled sample rocket so the full
 render, judge, and chat-verdict path still runs. See [the demo runbook](demo/README.md) for
 headless verification and cleanup details.
 
-Missing `OPENAI_API_KEY` stops Compose immediately with an instruction to export it; the key
+Missing `OPENAI_API_KEY` stops startup immediately with an instruction to export it; the key
 is passed from the shell environment and is never stored in the Compose file or image.
 
 ## One household, every device
 
 Different kids can bring an iPad, Windows Bedrock client, or Java PC to one kid-safe Speed
 Build server that still feels like a real online game. The same secret prompt, timers, and
-warm AI panel judge every build the same way, whatever device its builder uses. Consoles
-need an operator-supplied LAN discovery or redirect setup; see the [demo
-runbook](demo/README.md#bedrock-on-linux) for the opt-in Bedrock bridge and its honest
-platform limits.
+warm AI panel judge every build the same way, whatever device its builder uses. The family
+startup command adds the verified Linux Bedrock overlay and, on macOS, the host-networked
+Geyser service needed for Xbox LAN discovery. See the [demo runbook](demo/README.md) for the
+implementation and its platform limits.
+
+### Xbox/iPad troubleshooting
+
+- On macOS, always use `make family-up`, not a direct `docker compose up`; the Make target
+  is what installs the LAN-facing Geyser service and synchronizes Floodgate authentication.
+- Allow Java to accept incoming network connections if macOS displays a firewall prompt.
+- Keep the Mac, Xbox, and iPad on the same trusted LAN. Guest Wi-Fi and access-point client
+  isolation prevent Xbox LAN discovery even when the server is healthy.
+- `make family-status` must end with `Bedrock UDP 19132 answered a RakNet discovery probe.`
+  If it does not, inspect `.local/geyser/geyser.log` and run
+  `docker compose --project-name scenariocraft -f docker-compose.yml -f docker-compose.bedrock.yml logs paper judge`
+  before starting a round.
+- Rerun `make family-up` after deleting Docker volumes or regenerating Floodgate data; it
+  resynchronizes the key automatically. Do not copy the key by hand or run another Geyser
+  process on UDP `19132`.
 
 ## How it works
 

@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+export SCENARIOCRAFT_CONFIG_FILE=./demo/plugin-config.yml
+
 if [ -z "${OPENAI_API_KEY:-}" ]; then
     echo "OPENAI_API_KEY is required. Export it before running make proof-round." >&2
     exit 2

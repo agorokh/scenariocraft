@@ -29,8 +29,11 @@ PROTECTED_TEXT = (
 QUICKSTART_TEXT = (
     "git clone https://github.com/agorokh/scenariocraft.git && cd scenariocraft",
     "export OPENAI_API_KEY='<your OpenAI API key>'",
-    "docker compose up --build",
-    "Join localhost:25565 in Minecraft Java 1.21.x.",
+    "make family-up",
+    "make family-status",
+    "Java 1.21.x: join localhost:25565",
+    "Bedrock on an iPad, phone, or computer: add the Docker host's LAN IP with port 19132",
+    "Xbox with a macOS host on the same LAN: open the Friends tab and join ScenarioCraft family demo when it appears under LAN Games.",
     "Run /speedbuild start in chat. /battle and /bb remain available for existing servers.",
 )
 

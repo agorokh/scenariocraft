@@ -319,7 +319,16 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.blockEditor = Objects.requireNonNull(blockEditor, "blockEditor");
         this.logger = Objects.requireNonNull(logger, "logger");
         this.pickerSelector = new PickerSelector(randomIndex);
-        this.taskDeck = new TaskDeck(settings.tasks(), randomIndex);
+        this.taskDeck =
+                new TaskDeck(
+                        settings.tasks(),
+                        randomIndex,
+                        plugin.getDataFolder() == null
+                                ? null
+                                : plugin.getDataFolder()
+                                        .toPath()
+                                        .resolve("task-history.txt"),
+                        logger);
         this.taskBookPlacer = Objects.requireNonNull(taskBookPlacer, "taskBookPlacer");
         this.roundExporter = Objects.requireNonNull(roundExporter, "roundExporter");
         this.teleportTransport = Objects.requireNonNull(teleportTransport, "teleportTransport");
@@ -1100,7 +1109,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         awaitingPlotEntries = false;
         transitionTo(RoundPhase.BUILDING);
         forEachOnlineContestant(
-                (player, ignored) -> enableBuildingControls(player));
+                this::enableBuildingControlsAfterPlotEntry);
         timer = RoundTimer.start(settings.timings().buildSeconds());
         buildBossBar.setVisible(true);
         updateBuildBossBar();
@@ -1667,6 +1676,28 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private void enableBuildingControls(Player player) {
         player.setGameMode(GameMode.CREATIVE);
         buildBossBar.addPlayer(player);
+    }
+
+    private void enableBuildingControlsAfterPlotEntry(
+            Player player, Contestant contestant) {
+        enableBuildingControls(player);
+        server.getScheduler()
+                .runTaskLater(
+                        plugin,
+                        () -> {
+                            if (!closed
+                                    && player.isOnline()
+                                    && phase() == RoundPhase.BUILDING
+                                    && contestants.get(player.getUniqueId()) == contestant
+                                    && !teleportAttempts.containsKey(player.getUniqueId())
+                                    && isInsideAssignedPlot(player, contestant)) {
+                                // Bedrock can apply the teleport's temporary Adventure ability
+                                // packet after the same-tick Creative update. Reassert once the
+                                // player is settled so the client sends block placements.
+                                enableBuildingControls(player);
+                            }
+                        },
+                        1L);
     }
 
     private void teleport(

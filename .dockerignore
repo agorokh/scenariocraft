@@ -1,5 +1,7 @@
 .git
 .gradle
+.local
+.runtime
 build
 judge/build
 renderer/build

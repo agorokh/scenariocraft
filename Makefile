@@ -1,4 +1,13 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check proof-round proof-check renderer-dist showcase-fixtures-check showcase-scenes site-check verify-wrapper
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit family-down family-status family-up geyser-config-seed-check proof-round proof-check renderer-dist showcase-fixtures-check showcase-scenes site-check verify-wrapper
+
+family-up:
+	./demo/family-server.sh up
+
+family-status:
+	./demo/family-server.sh status
+
+family-down:
+	./demo/family-server.sh down
 
 demo:
 	./demo/run-headless.sh
@@ -40,6 +49,7 @@ evals-release: evals-unit
 	./evals/run.sh --dry-run
 
 site-check:
+	bash -n demo/family-server.sh
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 	python3 scripts/site_check.py
 	grep -Fq 'One household, every device' site/index.html
