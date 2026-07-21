@@ -1,6 +1,7 @@
 .gradle/
 .idea/
 .scratch/
+.local/
 build/
 node_modules/
 out/

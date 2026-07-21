@@ -1,0 +1,33 @@
+services:
+  bedrock-plugins:
+    image: alpine:3.23
+    command:
+      - /bin/sh
+      - -ceu
+      - |
+        url='https://download.geysermc.org/v2/projects/floodgate/versions/2.2.5/builds/138/downloads/spigot'
+        expected='44bdb908e2fb4ff1b974d5313d048a625a21555a9844cfb86256a98e8e1c6bd1'
+        target='/plugins/floodgate-spigot.jar'
+        temporary="$${target}.download"
+        rm -f "$${temporary}"
+        wget -q -T 30 -t 3 -O "$${temporary}" "$${url}"
+        echo "$${expected}  $${temporary}" | sha256sum -c -
+        mv "$${temporary}" "$${target}"
+        config_dir='/plugins/Geyser-Spigot'
+        config="$${config_dir}/config.yml"
+        /demo/seed-geyser-config.sh "$${config}"
+        chown -R 1000:1000 "$${config_dir}"
+    volumes:
+      - plugins:/plugins
+      - ./demo/seed-geyser-config.sh:/demo/seed-geyser-config.sh:ro
+
+  paper:
+    depends_on:
+      bedrock-plugins:
+        condition: service_completed_successfully
+    environment:
+      MODRINTH_PROJECTS: geyser:U1DOZeks,viaversion:CjleI5xo
+      MODRINTH_ALLOWED_VERSION_TYPE: beta
+      MODRINTH_DEFAULT_VERSION_TYPE: beta
+    ports:
+      - "${SCENARIOCRAFT_BEDROCK_PORT:-19132}:19132/udp"
