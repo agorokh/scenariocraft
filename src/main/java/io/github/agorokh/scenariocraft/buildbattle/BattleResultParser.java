@@ -29,7 +29,7 @@ final class BattleResultParser {
             Pattern.compile("Winner: (.{1,80}) with [0-9]+(?:\\.[0-9]{1,2})?");
     private static final Pattern BUILD_FEATURE =
             Pattern.compile(
-                    "\\b(?:arch|bridge|build|chimney|color|colour|detail|design|door|doorway|"
+                    "\\b(?:arch|block|bridge|build|chimney|color|colour|detail|design|door|doorway|"
                             + "flag|floor|foundation|garden|idea|lighting|outline|palette|path|"
                             + "pattern|proportion|roof|room|shape|silhouette|structure|support|"
                             + "texture|tower|trim|wall|window)s?\\b",

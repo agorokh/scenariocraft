@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "round_id": "round-20260721-120004",
+  "task": "Build a pirate ship",
+  "contestants": [{
+    "plot_id": "p1",
+    "player": "EvalBuilder",
+    "verdicts": [
+      {"persona": "Professor Brickworth", "reasoning": "The dark-oak hull, fence edge, and compact wool sail make the pirate-ship task immediately legible.", "scores": {"theme_fit": 9, "creativity": 6, "effort": 6, "detail": 6}, "comment": "Your ship structure has a strong hull and a clear sail. Consider adding a tiny cabin doorway for one more story detail next."},
+      {"persona": "Captain Sparkle", "reasoning": "The sail silhouette and contrasting fence edge create a recognizable compact ship scene.", "scores": {"theme_fit": 9, "creativity": 6, "effort": 6, "detail": 6}, "comment": "Your bright sail gives the ship a bold recognizable silhouette. Keep experimenting with colorful flag details next."},
+      {"persona": "Granny Redstone", "reasoning": "The broad little hull, deck, fence edge, and compact sail show a clear ship plan with room for more detail.", "scores": {"theme_fit": 9, "creativity": 5, "effort": 6, "detail": 6}, "comment": "Your ship design has a sturdy hull and welcoming deck. Add a tiny treasure-room doorway next."}
+    ],
+    "mean": 6.666666666666667,
+    "failures": []
+  }],
+  "winner": {"plot_id": "p1", "player": "EvalBuilder", "mean": 6.666666666666667}
+}

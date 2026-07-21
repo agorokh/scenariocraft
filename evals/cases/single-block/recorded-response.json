@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "round_id": "round-20260721-120002",
+  "task": "Build a cozy mountain cabin",
+  "contestants": [{
+    "plot_id": "p1",
+    "player": "EvalBuilder",
+    "verdicts": [
+      {"persona": "Professor Brickworth", "reasoning": "One stone block establishes a starting point but does not yet communicate a cabin.", "scores": {"theme_fit": 2, "creativity": 2, "effort": 2, "detail": 1}, "comment": "Your stone block creates a clear starting point. Try building a small roof around it next."},
+      {"persona": "Captain Sparkle", "reasoning": "The deliberate stone choice is visible, while the requested cabin remains mostly undeveloped.", "scores": {"theme_fit": 2, "creativity": 2, "effort": 1, "detail": 1}, "comment": "Your block choice gives the build a solid beginning. Add a bright doorway to reveal the cabin idea next."},
+      {"persona": "Granny Redstone", "reasoning": "The one placed stone is a deliberate start, but no cabin structure is visible yet.", "scores": {"theme_fit": 2, "creativity": 2, "effort": 2, "detail": 1}, "comment": "Your stone block makes a clear foundation point. Try adding two wall shapes around it next."}
+    ],
+    "mean": 1.6666666666666667,
+    "failures": []
+  }],
+  "winner": {"plot_id": "p1", "player": "EvalBuilder", "mean": 1.6666666666666667}
+}

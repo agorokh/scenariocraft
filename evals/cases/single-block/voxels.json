@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "plot_id": "single-block",
+  "origin": [0, 64, 0],
+  "size": [1, 1, 1],
+  "palette": ["minecraft:air", "minecraft:stone"],
+  "blocks": [1]
+}

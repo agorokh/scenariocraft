@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source": {"kind": "synthetic", "reference": "Additional compact treehouse regression case", "response_origin": "hand-authored-golden"},
+  "scores": {
+    "theme_fit": {"min": 6, "max": 9},
+    "creativity": {"min": 2, "max": 4},
+    "effort": {"min": 2, "max": 4},
+    "detail": {"min": 2, "max": 4}
+  },
+  "ordering": {"higher_than": ["empty-plot", "single-block"], "lower_than": ["on-theme-detailed"]},
+  "tone": {"genuine_positive": true, "banned_phrases": ["awful", "boring", "tiny effort", "you failed"]},
+  "structure": {"valid_schema": true, "reason_precedes_score": true}
+}

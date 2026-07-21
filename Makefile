@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check geyser-config-seed-check site-check
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check site-check
 
 demo:
 	./demo/run-headless.sh
@@ -6,13 +6,23 @@ demo:
 demo-dry-run:
 	SCENARIOCRAFT_DEMO_DRY_RUN=true ./demo/run-headless.sh
 
-ci-fast: site-check docs-check geyser-config-seed-check bedrock-probe-check
+ci-fast: site-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		sha256sum --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	else \
 		shasum -a 256 --check gradle/wrapper/gradle-wrapper.jar.sha256; \
 	fi
 	./gradlew build --no-daemon
+	./evals/run.sh --dry-run --allow-synthetic-only
+
+evals-unit:
+	python3 -m unittest discover -s evals/tests -p 'test_*.py'
+
+evals-check: evals-unit
+	./evals/run.sh --dry-run --allow-synthetic-only
+
+evals-release: evals-unit
+	./evals/run.sh --dry-run
 
 site-check:
 	test -f site/index.html
