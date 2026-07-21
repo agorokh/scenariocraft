@@ -8,6 +8,7 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.time.Duration;
@@ -16,6 +17,16 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class RconClientTest {
+    @Test
+    void writesEachRconPacketInOneOutputWrite() throws Exception {
+        RecordingOutputStream output = new RecordingOutputStream();
+
+        RconClient.writePacket(output, 7, 2, "battle announce round-20260721-193000");
+
+        assertEquals(1, output.writes);
+        assertTrue(output.bytes.size() > 14);
+    }
+
     @Test
     void authenticatesAndSendsTheNarrowAnnouncementCommand() throws Exception {
         try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
@@ -124,4 +135,21 @@ class RconClientTest {
     }
 
     private record Packet(int id, int type, String body) {}
+
+    private static final class RecordingOutputStream extends OutputStream {
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private int writes;
+
+        @Override
+        public void write(byte[] value, int offset, int length) {
+            writes++;
+            bytes.write(value, offset, length);
+        }
+
+        @Override
+        public void write(int value) {
+            writes++;
+            bytes.write(value);
+        }
+    }
 }

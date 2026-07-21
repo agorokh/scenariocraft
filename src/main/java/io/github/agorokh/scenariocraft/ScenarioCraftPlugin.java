@@ -29,7 +29,7 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
         saveDefaultConfig();
         BattleSettings settings = ArenaConfigLoader.load(getConfig());
         ResultAnnouncementSettings resultSettings =
-                ArenaConfigLoader.loadResultAnnouncements(getConfig());
+                ArenaConfigLoader.loadResultAnnouncements(getConfig(), settings);
 
         ArenaWorld arena = new ArenaWorldService(getServer(), getLogger()).loadOrCreate();
         int topWallY = Math.addExact(arena.floorY(), settings.arena().wallHeight());

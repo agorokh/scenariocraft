@@ -71,6 +71,14 @@ class RconSettingsTest {
     }
 
     @Test
+    void malformedOptionalJudgeYamlIsReportedAsConfigurationError() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(config, "rcon: [not valid");
+
+        assertThrows(IllegalArgumentException.class, () -> RconSettings.load(config, Map.of()));
+    }
+
+    @Test
     void partialConfigurationWithoutPasswordFailsEarly() {
         assertThrows(
                 IllegalArgumentException.class,

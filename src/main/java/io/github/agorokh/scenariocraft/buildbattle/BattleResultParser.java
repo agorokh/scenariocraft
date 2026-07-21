@@ -88,11 +88,7 @@ final class BattleResultParser {
         if (!roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
             throw invalid("has an invalid round id");
         }
-        String task =
-                displayText(
-                        prefixed(lines.get(1), "Task: ", "task"),
-                        MAX_TASK_LENGTH,
-                        "task");
+        String task = taskText(prefixed(lines.get(1), "Task: ", "task"));
         List<BattleResult.Contestant> contestants = new ArrayList<>();
         String player = null;
         String plotId = null;
@@ -238,6 +234,11 @@ final class BattleResultParser {
                         + ".",
                 500,
                 "comment");
+    }
+
+    private static String taskText(String value) {
+        structuralText(value, MAX_TASK_LENGTH, "task");
+        return "A creative build challenge";
     }
 
     private static String personaLabel(String value, int ordinal) {

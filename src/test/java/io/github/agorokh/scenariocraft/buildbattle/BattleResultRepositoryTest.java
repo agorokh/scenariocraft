@@ -80,6 +80,16 @@ class BattleResultRepositoryTest {
                 () -> new BattleResultRepository(rounds).round("round-20260721-193000"));
     }
 
+    @Test
+    void requestedRoundRejectsASymlinkedRoundDirectory() throws Exception {
+        Path rounds = Files.createDirectories(temporaryDirectory.resolve("symlink-rounds"));
+        Path external = Files.createDirectories(temporaryDirectory.resolve("external-round"));
+        Files.writeString(external.resolve("results.txt"), validResult("round-20260721-193000"));
+        Files.createSymbolicLink(rounds.resolve("round-20260721-193000"), external);
+
+        assertTrue(new BattleResultRepository(rounds).round("round-20260721-193000").isEmpty());
+    }
+
     static String validResult(String roundId) {
         return """
                 Round: %s

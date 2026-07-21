@@ -19,6 +19,7 @@ import java.util.concurrent.TimeoutException;
 final class RconClient {
     private static final int AUTH_TYPE = 3;
     private static final int COMMAND_TYPE = 2;
+    private static final int RESPONSE_TYPE = 0;
     private static final int MAX_PACKET_BYTES = 1024 * 1024;
     private static final int REQUEST_ID = 0x5343;
     private final HostResolver resolver;
@@ -79,8 +80,13 @@ final class RconClient {
             }
             writePacket(socket.getOutputStream(), REQUEST_ID + 1, COMMAND_TYPE, command);
             Packet response = readPacket(socket.getInputStream());
-            if (response.id() != REQUEST_ID + 1) {
+            if (response.id() != REQUEST_ID + 1 || response.type() != RESPONSE_TYPE) {
                 throw new IOException("RCON command returned an unexpected request id");
+            }
+            String normalizedResponse = response.body().toLowerCase(java.util.Locale.ROOT);
+            if (normalizedResponse.contains("unknown command")
+                    || normalizedResponse.contains("unknown or incomplete command")) {
+                throw new IOException("RCON server rejected the announcement command");
             }
         }
     }
@@ -113,15 +119,17 @@ final class RconClient {
         }
     }
 
-    private static void writePacket(OutputStream output, int id, int type, String body) throws IOException {
+    static void writePacket(OutputStream output, int id, int type, String body) throws IOException {
         byte[] payload = body.getBytes(StandardCharsets.UTF_8);
         int length = Math.addExact(10, payload.length);
-        writeLittleEndianInt(output, length);
-        writeLittleEndianInt(output, id);
-        writeLittleEndianInt(output, type);
-        output.write(payload);
-        output.write(0);
-        output.write(0);
+        ByteArrayOutputStream packet = new ByteArrayOutputStream(length + 4);
+        writeLittleEndianInt(packet, length);
+        writeLittleEndianInt(packet, id);
+        writeLittleEndianInt(packet, type);
+        packet.write(payload);
+        packet.write(0);
+        packet.write(0);
+        output.write(packet.toByteArray());
         output.flush();
     }
 

@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.snakeyaml.engine.v2.api.Load;
 import org.snakeyaml.engine.v2.api.LoadSettings;
+import org.snakeyaml.engine.v2.exceptions.YamlEngineException;
 
 record RconSettings(
         String host,
@@ -66,7 +67,12 @@ record RconSettings(
                             .setAllowDuplicateKeys(false)
                             .setMaxAliasesForCollections(10)
                             .build();
-            Object loaded = new Load(loadSettings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
+            Object loaded;
+            try {
+                loaded = new Load(loadSettings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
+            } catch (YamlEngineException exception) {
+                throw new IllegalArgumentException("judge.yml contains invalid YAML", exception);
+            }
             if (!(loaded instanceof Map<?, ?> root)) {
                 throw new IllegalArgumentException("judge.yml must contain a mapping");
             }

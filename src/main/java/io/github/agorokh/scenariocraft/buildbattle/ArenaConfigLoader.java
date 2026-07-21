@@ -59,16 +59,10 @@ public final class ArenaConfigLoader {
         return positiveInt(config, path);
     }
 
-    public static ResultAnnouncementSettings loadResultAnnouncements(FileConfiguration config) {
-        int revealSeconds = positiveInt(config, "reveal-linger-seconds");
-        int maximumPollSeconds = Math.min(60, revealSeconds);
+    public static ResultAnnouncementSettings loadResultAnnouncements(
+            FileConfiguration config, BattleSettings settings) {
         return new ResultAnnouncementSettings(
-                inRangeOrDefault(
-                        config,
-                        "results-poll-seconds",
-                        1,
-                        maximumPollSeconds,
-                        Math.min(2, revealSeconds)),
+                settings.resultsPollTicks(),
                 inRangeOrDefault(config, "results-celebration-bursts", 1, 10, 3),
                 inRangeOrDefault(
                         config, "results-celebration-interval-ticks", 1, 100, 10));

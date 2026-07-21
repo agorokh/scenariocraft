@@ -2,10 +2,10 @@ package io.github.agorokh.scenariocraft.buildbattle;
 
 /** Configurable polling and celebration cadence for judge results. */
 public record ResultAnnouncementSettings(
-        int pollSeconds, int celebrationBursts, int celebrationIntervalTicks) {
+        int pollTicks, int celebrationBursts, int celebrationIntervalTicks) {
     public ResultAnnouncementSettings {
-        if (pollSeconds < 1 || pollSeconds > 60) {
-            throw new IllegalArgumentException("results-poll-seconds must be between 1 and 60");
+        if (pollTicks < 1 || pollTicks > 1_200) {
+            throw new IllegalArgumentException("results-poll-ticks must be between 1 and 1200");
         }
         if (celebrationBursts < 1 || celebrationBursts > 10) {
             throw new IllegalArgumentException("results-celebration-bursts must be between 1 and 10");
@@ -15,7 +15,4 @@ public record ResultAnnouncementSettings(
         }
     }
 
-    long pollTicks() {
-        return Math.multiplyExact(pollSeconds, 20L);
-    }
 }

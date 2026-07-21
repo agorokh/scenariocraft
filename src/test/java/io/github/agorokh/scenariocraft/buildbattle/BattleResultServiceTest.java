@@ -67,7 +67,7 @@ class BattleResultServiceTest {
         Files.writeString(
                 resultPath,
                 BattleResultRepositoryTest.validResult("round-20260721-193000")
-                        .replace("A rocket-powered castle", "A moon base for cats"));
+                        .replace("Alex", "Casey"));
         for (int tick = 0; tick <= 40; tick++) {
             rig.poll.get().run();
         }

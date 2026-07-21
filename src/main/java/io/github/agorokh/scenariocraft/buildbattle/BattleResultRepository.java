@@ -76,7 +76,15 @@ final class BattleResultRepository implements BattleResultReader {
         if (!roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
             throw new IllegalArgumentException("round id must match round-<yyyymmdd>-<hhmmss>");
         }
-        Path result = roundsDirectory.resolve(roundId).resolve("results.txt");
+        if (!Files.isDirectory(roundsDirectory, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(roundsDirectory)) {
+            return Optional.empty();
+        }
+        Path round = roundsDirectory.resolve(roundId);
+        if (!Files.isDirectory(round, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(round)) {
+            return Optional.empty();
+        }
+        Path result = round.resolve("results.txt");
         if (!Files.exists(result, LinkOption.NOFOLLOW_LINKS)) {
             return Optional.empty();
         }

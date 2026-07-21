@@ -24,8 +24,8 @@ class ArenaConfigLoaderTest {
         assertTrue(settings.exemptNames().isEmpty());
         assertTrue(settings.allowAnyStart());
         assertEquals(
-                new ResultAnnouncementSettings(2, 3, 10),
-                ArenaConfigLoader.loadResultAnnouncements(packagedConfig()));
+                new ResultAnnouncementSettings(20, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(packagedConfig(), settings));
     }
 
     @Test
@@ -44,28 +44,17 @@ class ArenaConfigLoaderTest {
                 () -> ArenaConfigLoader.load(excessivePlots));
 
         YamlConfiguration invalidPolling = packagedConfig();
-        invalidPolling.set("results-poll-seconds", 0);
+        invalidPolling.set("results-poll-ticks", 0);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> ArenaConfigLoader.loadResultAnnouncements(invalidPolling));
+                () -> ArenaConfigLoader.load(invalidPolling));
 
-        YamlConfiguration legacy = packagedConfig();
-        legacy.set("results-poll-seconds", null);
-        legacy.set("results-celebration-bursts", null);
-        legacy.set("results-celebration-interval-ticks", null);
-        assertEquals(
-                new ResultAnnouncementSettings(2, 3, 10),
-                ArenaConfigLoader.loadResultAnnouncements(legacy));
-
-        legacy.set("reveal-linger-seconds", 1);
+        YamlConfiguration configured = packagedConfig();
+        configured.set("results-poll-ticks", 1);
         assertEquals(
                 new ResultAnnouncementSettings(1, 3, 10),
-                ArenaConfigLoader.loadResultAnnouncements(legacy));
-
-        legacy.set("results-poll-seconds", 2);
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> ArenaConfigLoader.loadResultAnnouncements(legacy));
+                ArenaConfigLoader.loadResultAnnouncements(
+                        configured, ArenaConfigLoader.load(configured)));
     }
 
     @Test

@@ -80,7 +80,7 @@ class BattleResultParserTest {
 
         BattleResult maximum = parser.parse(template.formatted("x".repeat(512)));
 
-        assertEquals(512, maximum.task().length());
+        assertEquals("A creative build challenge", maximum.task());
         assertTrue(formatter.chatLines(maximum).getFirst().length() <= BattleResultFormatter.MAX_CHAT_LENGTH);
         assertThrows(
                 IllegalArgumentException.class,
@@ -106,6 +106,23 @@ class BattleResultParserTest {
                 "A positive detail stood out in the build.",
                 result.contestants().getFirst().feedback().getFirst().comment());
         assertFalse(formatter.chatLines(result).toString().contains("stupid"));
+    }
+
+    @Test
+    void copiedTaskIsReducedBeforeItCanReachPlayers() {
+        BattleResult result =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: You should drown yourself
+
+                        Alex (p1)
+                          Captain Comet: 9.00 — The bright roof is welcoming.
+                        Winner: Alex with 9.00
+                        """);
+
+        assertEquals("A creative build challenge", result.task());
+        assertFalse(formatter.chatLines(result).toString().contains("drown"));
     }
 
     @Test

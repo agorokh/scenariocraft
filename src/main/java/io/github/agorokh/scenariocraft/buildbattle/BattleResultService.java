@@ -177,18 +177,26 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                 player.sendMessage(line);
             }
         }
-        result.winner().flatMap(winner -> winnerLocation.apply(winner.player())).ifPresent(this::celebrate);
+        result.winner()
+                .flatMap(winner -> winnerLocation.apply(winner.player()))
+                .ifPresent(location -> celebrate(result.roundId(), location));
         logger.info("SCENARIOCRAFT_RESULTS_ANNOUNCED " + result.roundId());
     }
 
-    private void celebrate(Location location) {
+    private void celebrate(String announcedRoundId, Location location) {
         for (int burst = 0; burst < settings.celebrationBursts(); burst++) {
             long delay = Math.multiplyExact((long) burst, settings.celebrationIntervalTicks());
             server.getScheduler()
                     .runTaskLater(
                             plugin,
                             () -> {
-                                if (!closed && location.getWorld() != null) {
+                                if (!closed
+                                        && phase.get() == RoundPhase.REVEAL
+                                        && resultRoundId
+                                                .get()
+                                                .filter(announcedRoundId::equals)
+                                                .isPresent()
+                                        && location.getWorld() != null) {
                                     location.getWorld()
                                             .spawnParticle(
                                                     Particle.HAPPY_VILLAGER,

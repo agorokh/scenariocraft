@@ -18,8 +18,6 @@ reveal-linger-seconds: 900
 # Frequency for checking newly published judge results while the round is in REVEAL
 results-poll-ticks: 20
 
-# Judge-result polling stays lightweight and only runs while a round is in REVEAL.
-results-poll-seconds: 2
 results-celebration-bursts: 3
 results-celebration-interval-ticks: 10
 

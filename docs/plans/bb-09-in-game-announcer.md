@@ -49,6 +49,8 @@ session.
 | 2026-07-21 | Structurally validate raw copied comments, reduce them to the fixed allowlisted strength sentence, then language-check only the rendered sentence; treat player names as identifiers, skip corrupt latest-result candidates, and deduplicate announcements by parsed content rather than round ID. | Safe rewriting makes the raw tail non-presented data, legal player identifiers are not prose, one corrupt new artifact must not disable replay, and a corrected file for the active round must be able to replace an early version. |
 | 2026-07-21 | Restrict copied player fields to Java identifiers or the common single-prefix Floodgate/Geyser form, including underscore-normalized Bedrock gamertags. | Player names are rendered directly and can become winner titles; structural text checks alone permit abusive prose, while a Java-only pattern would break the repository's Bedrock-first constraint. |
 | 2026-07-21 | Replace copied persona names with fixed `Judge N` labels, bypass malformed YAML only when all five environment RCON values are present, and include hostname resolution inside the connect-timeout budget. | Persona labels are arbitrary player-facing prose, complete environment overrides must be authoritative, and optional RCON must not hang after durable publication on DNS outside the socket timeout. |
+| 2026-07-21 | Reduce every copied task to a fixed safe challenge label, bind delayed celebration particles to the announcing REVEAL round, and use `results-poll-ticks` as the single live interval. | Tasks and delayed effects cross the same presentation/lifecycle boundary as copied feedback; the checked-in server and smoke configuration already document tick-based polling. |
+| 2026-07-21 | Restore contiguous RCON packet writes and command-rejection checks, normalize malformed optional YAML into a configuration error, and reject symlinked requested round directories. | The merge reconciled two announcer implementations; the stronger protocol, optional-configuration, and filesystem boundary guarantees must survive that reconciliation. |
 
 ## Surprises & Discoveries
 
@@ -80,6 +82,11 @@ session.
 - “Optional announcement” applies to malformed configuration as well as network failure. A
   typo in an RCON port must not prevent the fallback artifact from being produced, and a
   credential-bearing file must be ignored mechanically rather than only by documentation.
+- Merge reconciliation can reintroduce boundary regressions even when both parents pass
+  their own tests. The final review restored single-write RCON framing, safe YAML failure
+  conversion, exact rejected-command detection, and no-follow directory checks; it also
+  found copied task text and delayed particle effects needed the same presentation/lifecycle
+  treatment as copied feedback.
 - A general “cruel language” filter did not cover ordinary profanity, sexual-assault
   language, or Minecraft's section-sign formatting codes. These need explicit validation
   at the last player-facing trust boundary, and an all-failed verdict set needs an honest
@@ -177,6 +184,10 @@ session.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.
+- Final review regressions prove task prose is reduced before presentation, requested result
+  directories cannot be symlinks, malformed optional YAML becomes a recoverable
+  configuration error, and each outbound RCON packet is emitted in one write. `make ci-fast`
+  passed after these repairs on 2026-07-21.
 - The new-head GitHub Paper smoke job remains mandatory before merge and supplies the real
   plugin enable/boot evidence. A complete timed Build Battle with live OpenAI judging is an
   operator acceptance exercise because it requires players, an API credential, and server
