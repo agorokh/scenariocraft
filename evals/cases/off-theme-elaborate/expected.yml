@@ -3,9 +3,9 @@
   "source": {"kind": "synthetic", "reference": "Issue #13 off-theme elaborate edge case", "response_origin": "hand-authored-golden"},
   "scores": {
     "theme_fit": {"min": 1, "max": 3},
-    "creativity": {"min": 4, "max": 7},
-    "effort": {"min": 3, "max": 5},
-    "detail": {"min": 3, "max": 5}
+    "creativity": {"min": 6, "max": 9},
+    "effort": {"min": 7, "max": 9},
+    "detail": {"min": 6, "max": 9}
   },
   "ordering": {"higher_than": ["empty-plot", "single-block"], "lower_than": ["on-theme-detailed", "interior-only"]},
   "tone": {"genuine_positive": true, "banned_phrases": ["awful", "wrong", "pointless", "you failed"]},

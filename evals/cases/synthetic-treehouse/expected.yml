@@ -4,8 +4,8 @@
   "scores": {
     "theme_fit": {"min": 6, "max": 9},
     "creativity": {"min": 5, "max": 8},
-    "effort": {"min": 5, "max": 8},
-    "detail": {"min": 4, "max": 8}
+    "effort": {"min": 2, "max": 4},
+    "detail": {"min": 2, "max": 4}
   },
   "ordering": {"higher_than": ["empty-plot", "single-block"], "lower_than": ["on-theme-detailed"]},
   "tone": {"genuine_positive": true, "banned_phrases": ["awful", "boring", "tiny effort", "you failed"]},

@@ -53,17 +53,26 @@ session.
 - Co-review also caught two successful recorded verdicts with no failure entry despite the
   configured three-persona panel. Every golden now contains the exact configured panel, unique
   personas, recomputed contestant/winner means, and explicit hand-authored provenance.
+- The first recorded run through the production-Java validator failed on `single-block` with
+  `Recorded response failed production validation`. The valid comment named its literal strength
+  as a "stone block," but `JudgeVerdict.BUILD_FEATURE` omitted `block`, so the kid-safety gate
+  rejected honest praise for the required single-block edge case. Adding that concrete feature
+  and `JudgeVerdictTest.acceptsOneBlockAsTheConcreteStrengthInAnEdgeCase` turned the same eval
+  green without weakening sentence, cruelty, or constructive-guidance checks.
 
 ## Acceptance evidence
 
 - `./evals/run.sh --dry-run` passes all six synthetic seed cases and prints the required table;
   score-band, tone, schema, and cross-case ordering assertions are active.
-- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes seven focused runner tests,
+- `python3 -m unittest discover -s evals/tests -p 'test_*.py'` passes eight focused runner tests,
   including duplicate-key rejection, aggregate verification, ordering failure, and anonymous
   checksum-bound council-record validation.
 - `OpenAiPersonaJudgeTest.requestUsesSevenImagesSharedRubricAndStrictReasonThenScoresSchema`
   proves the production request labels all seven views and identifies both center cross-sections
   as interior evidence.
+- The pre-fix production-parity command `./evals/run.sh --dry-run` stopped at `single-block`;
+  after the focused `block` vocabulary fix, the same committed response passes both Java
+  `JudgeVerdict` validation and the Python score/tone/order assertions.
 - `make ci-fast` passed after each pushed implementation slice on Java 21. Family-round and
   adult-supervised council evidence remains the final acceptance item and is intentionally not
   inferred from synthetic or robot-generated artifacts.

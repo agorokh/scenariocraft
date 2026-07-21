@@ -27,6 +27,22 @@ public final class JudgeCli {
             Map<String, String> environment,
             PrintWriter output,
             PrintWriter diagnostics) {
+        if (arguments.length == 4
+                && "--validate-recorded".equals(arguments[0])
+                && "--task-file".equals(arguments[2])) {
+            try {
+                Path configDirectory = configDirectory(environment);
+                return RecordedResultValidator.run(
+                        Path.of(arguments[1]),
+                        Path.of(arguments[3]),
+                        configDirectory.resolve("personas.yml"),
+                        configDirectory.resolve("rubric.md"),
+                        diagnostics);
+            } catch (IllegalArgumentException exception) {
+                diagnostics.println("Recorded response and task must use valid paths.");
+                return 2;
+            }
+        }
         if (arguments.length < 2 || arguments.length > 3
                 || !"--round".equals(arguments[0])
                 || (arguments.length == 3 && !"--dry-run".equals(arguments[2]))) {

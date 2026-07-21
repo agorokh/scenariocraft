@@ -98,7 +98,12 @@ class EvalRunnerTest(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(
                     0,
-                    scenario_evals.run(root, RUNNER.parents[1], True),
+                    scenario_evals.run(
+                        root,
+                        RUNNER.parents[1],
+                        True,
+                        production_validation=False,
+                    ),
                 )
 
     def test_banned_phrase_and_reversed_order_fail(self):
@@ -117,7 +122,12 @@ class EvalRunnerTest(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(
                     1,
-                    scenario_evals.run(root, RUNNER.parents[1], True),
+                    scenario_evals.run(
+                        root,
+                        RUNNER.parents[1],
+                        True,
+                        production_validation=False,
+                    ),
                 )
 
     def test_scores_before_reasoning_are_rejected(self):
@@ -166,7 +176,8 @@ class EvalRunnerTest(unittest.TestCase):
             case_directory.mkdir(parents=True)
             (case_directory / "voxels.json").write_text('{"fixture": true}', encoding="utf-8")
             (case_directory / "recorded-response.json").write_text(
-                '{"response": true}', encoding="utf-8"
+                '{"round_id":"round-20260721-123456","contestants":[{"plot_id":"p1"}]}',
+                encoding="utf-8",
             )
             voxel_hash = scenario_evals.file_sha256(case_directory / "voxels.json")
             response_hash = scenario_evals.file_sha256(
@@ -185,7 +196,7 @@ class EvalRunnerTest(unittest.TestCase):
                 "family-case",
                 case_directory,
                 "Task",
-                {},
+                {"plot_id": "p1"},
                 {"source": source},
             )
             valid = {
@@ -193,6 +204,7 @@ class EvalRunnerTest(unittest.TestCase):
                 "case_id": "family-case",
                 "round_id": source["round_id"],
                 "plot_id": source["plot_id"],
+                "artifact_commit": source["artifact_commit"],
                 "voxel_sha256": voxel_hash,
                 "response_sha256": response_hash,
                 "adult_supervised": True,
@@ -204,10 +216,30 @@ class EvalRunnerTest(unittest.TestCase):
             path = root / "family-case.yml"
             path.write_text(json.dumps(valid), encoding="utf-8")
             scenario_evals.validate_ground_truth(root, {"family-case": spec})
+            spec.voxel["plot_id"] = "p7"
+            with self.assertRaisesRegex(scenario_evals.EvalError, "exact reviewed artifacts"):
+                scenario_evals.validate_ground_truth(root, {"family-case": spec})
+            spec.voxel["plot_id"] = "p1"
             valid["reviews"][0]["name"] = "not allowed"
             path.write_text(json.dumps(valid), encoding="utf-8")
             with self.assertRaisesRegex(scenario_evals.EvalError, "exactly these keys"):
                 scenario_evals.validate_ground_truth(root, {"family-case": spec})
+
+    def test_family_artifact_commit_must_resolve(self):
+        spec = scenario_evals.CaseSpec(
+            "family-case",
+            RUNNER.parent,
+            "Task",
+            {},
+            {
+                "source": {
+                    "kind": "family-round",
+                    "artifact_commit": "a" * 40,
+                }
+            },
+        )
+        with self.assertRaisesRegex(scenario_evals.EvalError, "does not resolve"):
+            scenario_evals.verify_family_commits([spec], RUNNER.parents[1])
 
 
 if __name__ == "__main__":

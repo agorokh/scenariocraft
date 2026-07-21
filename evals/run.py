@@ -151,6 +151,8 @@ def validate_voxel(value: Any, label: str) -> dict[str, Any]:
             raise EvalError(f"{label} {field} must contain three integers")
     if any(size < 0 or size > 256 for size in voxel["size"]):
         raise EvalError(f"{label} size is outside the supported range")
+    if any(value < -(2**31) or value > 2**31 - 1 for value in voxel["origin"]):
+        raise EvalError(f"{label} origin must use signed 32-bit integers")
     palette = voxel["palette"]
     if (
         not isinstance(palette, list)
@@ -315,6 +317,7 @@ def validate_ground_truth(
                 "case_id",
                 "round_id",
                 "plot_id",
+                "artifact_commit",
                 "voxel_sha256",
                 "response_sha256",
                 "adult_supervised",
@@ -333,13 +336,22 @@ def validate_ground_truth(
             raise EvalError(f"{path.name} may review only a family-round case")
         voxel_hash = file_sha256(spec.directory / "voxels.json")
         response_hash = file_sha256(spec.directory / "recorded-response.json")
+        response = load_json(spec.directory / "recorded-response.json")
+        contestants = response.get("contestants") if isinstance(response, dict) else None
         if (
             root["round_id"] != source["round_id"]
             or root["plot_id"] != source["plot_id"]
+            or root["artifact_commit"] != source["artifact_commit"]
             or root["voxel_sha256"] != source["voxel_sha256"]
             or root["response_sha256"] != source["response_sha256"]
             or root["voxel_sha256"] != voxel_hash
             or root["response_sha256"] != response_hash
+            or spec.voxel["plot_id"] != source["plot_id"]
+            or not isinstance(contestants, list)
+            or len(contestants) != 1
+            or response.get("round_id") != source["round_id"]
+            or not isinstance(contestants[0], dict)
+            or contestants[0].get("plot_id") != source["plot_id"]
         ):
             raise EvalError(f"{path.name} is not bound to the exact reviewed artifacts")
         seen_cases.add(case_id)
@@ -375,11 +387,30 @@ def validate_ground_truth(
     return seen_cases
 
 
+def verify_family_commits(specs: list[CaseSpec], repo_root: Path) -> None:
+    for spec in specs:
+        source = spec.expected["source"]
+        if source["kind"] != "family-round":
+            continue
+        completed = subprocess.run(
+            ["git", "cat-file", "-e", f"{source['artifact_commit']}^{{commit}}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise EvalError(
+                f"{spec.case_id} artifact_commit does not resolve in this repository"
+            )
+
+
 def validate_results(
     value: Any,
     task: str,
     label: str,
     expected_personas: set[str] | None = None,
+    expected_round_id: str | None = None,
+    expected_plot_id: str | None = None,
 ) -> list[dict[str, Any]]:
     results = require_keys(
         value,
@@ -392,13 +423,16 @@ def validate_results(
         r"round-[0-9]{8}-[0-9]{6}", results["round_id"]
     ):
         raise EvalError(f"{label} round_id has an invalid format")
+    if expected_round_id is not None and results["round_id"] != expected_round_id:
+        raise EvalError(f"{label} round_id does not match family provenance")
     contestants = results["contestants"]
     if not isinstance(contestants, list) or len(contestants) != 1:
         raise EvalError(f"{label} must contain exactly one contestant")
     contestant = require_keys(
         contestants[0], {"plot_id", "player", "verdicts", "mean", "failures"}, f"{label} contestant"
     )
-    if contestant["plot_id"] != "p1" or not isinstance(contestant["player"], str):
+    required_plot_id = expected_plot_id or "p1"
+    if contestant["plot_id"] != required_plot_id or not isinstance(contestant["player"], str):
         raise EvalError(f"{label} contestant identity is invalid")
     if contestant["failures"] != []:
         raise EvalError(f"{label} successful recorded response must not contain failures")
@@ -457,7 +491,11 @@ def validate_results(
 
 
 def evaluate_case(
-    spec: CaseSpec, response: Any, expected_personas: set[str] | None = None
+    spec: CaseSpec,
+    response: Any,
+    expected_personas: set[str] | None = None,
+    expected_round_id: str | None = None,
+    expected_plot_id: str | None = None,
 ) -> CaseResult:
     failures: list[str] = []
     try:
@@ -466,6 +504,8 @@ def evaluate_case(
             spec.task,
             f"{spec.case_id} response",
             expected_personas,
+            expected_round_id,
+            expected_plot_id,
         )
     except EvalError as exc:
         return CaseResult(spec.case_id, None, [str(exc)])
@@ -515,9 +555,7 @@ def evaluate_ordering(specs: list[CaseSpec], results: dict[str, CaseResult]) -> 
                 )
 
 
-def prepare_live_judge(repo_root: Path) -> None:
-    if not os.environ.get("OPENAI_API_KEY", "").strip():
-        raise EvalError("live mode requires OPENAI_API_KEY; use --dry-run in CI")
+def build_current_judge(repo_root: Path) -> None:
     completed = subprocess.run(
         [str(repo_root / "gradlew"), ":judge:installDist", "--no-daemon"],
         cwd=repo_root,
@@ -528,7 +566,37 @@ def prepare_live_judge(repo_root: Path) -> None:
     )
     if completed.returncode != 0:
         diagnostic = completed.stderr.strip().splitlines()[-1:] or ["unknown failure"]
-        raise EvalError(f"could not build the live judge: {diagnostic[0]}")
+        raise EvalError(f"could not build the current judge: {diagnostic[0]}")
+
+
+def prepare_live_judge(repo_root: Path) -> None:
+    if not os.environ.get("OPENAI_API_KEY", "").strip():
+        raise EvalError("live mode requires OPENAI_API_KEY; use --dry-run in CI")
+    build_current_judge(repo_root)
+
+
+def validate_recorded_with_java(spec: CaseSpec, repo_root: Path) -> None:
+    judge = repo_root / "judge" / "build" / "install" / "judge" / "bin" / "judge"
+    environment = dict(os.environ)
+    environment["SCENARIOCRAFT_JUDGE_CONFIG_DIR"] = str(repo_root / "judge")
+    completed = subprocess.run(
+        [
+            str(judge),
+            "--validate-recorded",
+            str(spec.directory / "recorded-response.json"),
+            "--task-file",
+            str(spec.directory / "task.txt"),
+        ],
+        cwd=repo_root,
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    if completed.returncode != 0:
+        diagnostic = completed.stderr.strip().splitlines()[-1:] or ["unknown failure"]
+        raise EvalError(f"{spec.case_id} failed Java validation: {diagnostic[0]}")
 
 
 def live_response(spec: CaseSpec, repo_root: Path) -> Any:
@@ -586,6 +654,7 @@ def run(
     repo_root: Path,
     dry_run: bool,
     ground_truth_root: Path | None = None,
+    production_validation: bool = True,
 ) -> int:
     specs = load_cases(cases_root)
     if len(specs) < 6:
@@ -602,8 +671,11 @@ def run(
             raise EvalError("eval suite must contain at least two family-round cases")
         if not family_cases.issubset(reviewed):
             raise EvalError("every family-round case must have design-council ground truth")
+        verify_family_commits(specs, repo_root)
     if not dry_run:
         prepare_live_judge(repo_root)
+    elif production_validation:
+        build_current_judge(repo_root)
     expected_personas = load_persona_names(repo_root / "judge" / "personas.yml")
     results: dict[str, CaseResult] = {}
     for spec in specs:
@@ -612,7 +684,17 @@ def run(
             if dry_run
             else live_response(spec, repo_root)
         )
-        results[spec.case_id] = evaluate_case(spec, response, expected_personas)
+        if dry_run and production_validation:
+            validate_recorded_with_java(spec, repo_root)
+        source = spec.expected["source"]
+        family_recording = dry_run and source["kind"] == "family-round"
+        results[spec.case_id] = evaluate_case(
+            spec,
+            response,
+            expected_personas,
+            source["round_id"] if family_recording else None,
+            source["plot_id"] if family_recording else None,
+        )
     evaluate_ordering(specs, results)
     print(f"{'CASE':<32} {'RESULT':<6} DETAILS")
     print(f"{'-' * 32} {'-' * 6} {'-' * 30}")

@@ -6,12 +6,12 @@
     "plot_id": "p1",
     "player": "Eval builder",
     "verdicts": [
-      {"persona": "Professor Brickworth", "reasoning": "The layered brick-and-gold tower shows a deliberate compact pattern, but it does not read as a pirate ship.", "scores": {"theme_fit": 2, "creativity": 6, "effort": 5, "detail": 4}, "comment": "Your brick tower has a strong layered shape. Try adding a wooden hull to connect it to the pirate task next."},
-      {"persona": "Captain Sparkle", "reasoning": "The gold center and balanced brick pattern are purposeful, while ship features are absent.", "scores": {"theme_fit": 2, "creativity": 6, "effort": 4, "detail": 4}, "comment": "Your gold detail gives the tower a bold focal point. Add a sail shape to steer the idea toward a pirate ship next."},
-      {"persona": "Granny Redstone", "reasoning": "The compact tower has a planned brick pattern, but its shape and materials miss the pirate-ship task.", "scores": {"theme_fit": 2, "creativity": 5, "effort": 5, "detail": 4}, "comment": "Your brick pattern creates a tidy tower shape. Try extending one side into a recognizable ship hull next."}
+      {"persona": "Professor Brickworth", "reasoning": "The four-level brick-and-blackstone tower has complete walls, lighting, trim, and a patterned roof, but it does not read as a pirate ship.", "scores": {"theme_fit": 2, "creativity": 7, "effort": 8, "detail": 7}, "comment": "Your brick tower has a strong layered structure and careful trim. Try adding a wooden hull to connect it to the pirate task next."},
+      {"persona": "Captain Sparkle", "reasoning": "The gold center, lantern pattern, and blackstone roof are elaborate and purposeful, while ship features are absent.", "scores": {"theme_fit": 2, "creativity": 8, "effort": 8, "detail": 7}, "comment": "Your gold and lantern details give the tower a bold focal point. Add a sail shape to steer the idea toward a pirate ship next."},
+      {"persona": "Granny Redstone", "reasoning": "The tall tower shows sustained work across four decorated levels, but its silhouette and materials miss the pirate-ship task.", "scores": {"theme_fit": 2, "creativity": 7, "effort": 8, "detail": 8}, "comment": "Your brick pattern creates a detailed and sturdy tower shape. Try extending one side into a recognizable ship hull next."}
     ],
-    "mean": 4.083333333333333,
+    "mean": 6.166666666666667,
     "failures": []
   }],
-  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 4.083333333333333}
+  "winner": {"plot_id": "p1", "player": "Eval builder", "mean": 6.166666666666667}
 }
