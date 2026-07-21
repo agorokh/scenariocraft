@@ -314,6 +314,33 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return Optional.ofNullable(resultRoundId);
     }
 
+    /** Returns the current plot center used for a short winner-particle celebration. */
+    public Location resultCelebrationLocation(String plotId) {
+        if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
+            return null;
+        }
+        int plotNumber;
+        try {
+            plotNumber = Integer.parseInt(plotId.substring(1));
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+        if (plotNumber > plots.size()) {
+            return null;
+        }
+        PlotBounds plot = plots.get(plotNumber - 1);
+        return new Location(
+                arena.world(),
+                plot.centerX() + 0.5,
+                arena.floorY() + 3.0,
+                plot.centerZ() + 0.5);
+    }
+
+    @Override
+    public Optional<String> activeResultRoundId() {
+        return resultRoundId();
+    }
+
     ActiveArenaMutationListener mutationListener() {
         return mutationListener;
     }
@@ -340,7 +367,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "The last build is still being packed up safely — just a moment!");
             return;
         }
-
         List<Player> players =
                 server.getOnlinePlayers().stream()
                         .map(Player.class::cast)
@@ -1072,6 +1098,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
+            resultExportStarted = true;
             resultExportStarted = true;
         } catch (RuntimeException failure) {
             logger.log(Level.SEVERE, "SCENARIOCRAFT_EXPORT_FAILURE export did not start", failure);

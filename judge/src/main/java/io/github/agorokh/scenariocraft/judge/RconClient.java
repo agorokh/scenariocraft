@@ -31,6 +31,19 @@ final class RconClient {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
     }
 
+    static void execute(RconConfig config, String command) throws IOException {
+        Objects.requireNonNull(config, "config");
+        new RconClient()
+                .execute(
+                        new RconSettings(
+                                config.host(),
+                                config.port(),
+                                config.password(),
+                                config.timeout(),
+                                config.timeout()),
+                        command);
+    }
+
     void execute(RconSettings settings, String command) throws IOException {
         if (command == null || command.isBlank() || command.length() > 512
                 || command.codePoints().anyMatch(Character::isISOControl)) {
