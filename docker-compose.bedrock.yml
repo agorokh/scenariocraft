@@ -13,6 +13,19 @@ services:
         wget -q -T 30 -t 3 -O "$${temporary}" "$${url}"
         echo "$${expected}  $${temporary}" | sha256sum -c -
         mv "$${temporary}" "$${target}"
+        config_dir='/plugins/Geyser-Spigot'
+        config="$${config_dir}/config.yml"
+        mkdir -p "$${config_dir}"
+        if test -f "$${config}"; then
+          if grep -Eq '^[[:space:]]*auth-type:' "$${config}"; then
+            sed -i 's/^\([[:space:]]*\)auth-type:.*/\1auth-type: floodgate/' "$${config}"
+          else
+            printf '\njava:\n  auth-type: floodgate\n' >>"$${config}"
+          fi
+        else
+          printf 'java:\n  auth-type: floodgate\n' >"$${config}"
+        fi
+        chown -R 1000:1000 "$${config_dir}"
     volumes:
       - plugins:/plugins
 

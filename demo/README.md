@@ -44,20 +44,13 @@ Bedrock UDP port without changing the Java-only base demo. On a Linux Docker hos
    docker compose -f docker-compose.yml -f docker-compose.bedrock.yml up --build -d
    ```
 
-3. Wait for Geyser to generate its writable configuration, switch it to Floodgate
-   authentication, and restart Paper:
-
-   ```sh
-   docker compose -f docker-compose.yml -f docker-compose.bedrock.yml exec paper \
-     sh -c "until test -f plugins/Geyser-Spigot/config.yml; do sleep 1; done; \
-     sed -i 's/auth-type: online/auth-type: floodgate/' plugins/Geyser-Spigot/config.yml; \
-     grep -q 'auth-type: floodgate' plugins/Geyser-Spigot/config.yml"
-   docker compose -f docker-compose.yml -f docker-compose.bedrock.yml restart paper
-   ```
-
-   This edits the generated file inside the named plugin volume. Do not bind-mount a file or
-   directory into `/data/plugins`: Docker can create it as root, which prevents Floodgate
-   from writing its private `key.pem` and makes Bedrock authentication fail closed.
+3. The one-shot `bedrock-plugins` service creates or updates the writable
+   `plugins/Geyser-Spigot/config.yml` in the named plugin volume with
+   `java.auth-type: floodgate` before Paper starts. It preserves the rest of an existing
+   config, owns the directory as the server user, and removes the manual edit-and-restart
+   race. Do not bind-mount a file or directory into `/data/plugins`: Docker can create it as
+   root, which prevents Floodgate from writing its private `key.pem` and makes Bedrock
+   authentication fail closed.
 
 4. From the Linux host, verify the live RakNet endpoint and Speed Build MOTD:
 
@@ -77,6 +70,12 @@ before placing the jar in the shared plugin volume; a stalled or changed artifac
 startup. Floodgate's Modrinth files do not match the Paper and Minecraft version tags used
 by this demo. ViaVersion bridges the newer Java protocol expected by Geyser to Paper
 1.21.11.
+
+Hosted CI runs `make bedrock-compose-smoke` on Linux. It builds the plugin, starts the real
+Paper overlay, verifies the pinned downloads, nested Floodgate auth, and generated key,
+waits for Geyser UDP 19132, and sends the same RakNet probe before tearing down all smoke volumes.
+That is runtime wiring evidence, not a substitute for a real Bedrock player completing a
+round.
 
 ### How players join
 

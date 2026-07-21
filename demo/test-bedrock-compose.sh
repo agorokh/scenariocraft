@@ -37,6 +37,10 @@ jq -e '
     (.services["bedrock-plugins"].command | tostring | contains(floodgate_url)) and
     (.services["bedrock-plugins"].command | tostring | contains(floodgate_sha256)) and
     (.services["bedrock-plugins"].command | tostring | contains("wget -q -T 30 -t 3")) and
+    (.services["bedrock-plugins"].command | tostring |
+      contains("/plugins/Geyser-Spigot")) and
+    (.services["bedrock-plugins"].command | tostring |
+      contains("auth-type: floodgate")) and
     .services.paper.depends_on["bedrock-plugins"].condition ==
       "service_completed_successfully" and
     any(

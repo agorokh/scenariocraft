@@ -34,6 +34,7 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 | 2026-07-21 | Install Floodgate 2.2.5 build 138 through a one-shot Compose service and verify SHA-256 before publishing it to the plugin volume. | A floating `latest` plugin URL executes mutable remote code at every start; a versioned URL plus committed digest fails closed. |
 | 2026-07-21 | State that the Docker bridge overlay does not provide console LAN discovery. | Published UDP accepts direct Bedrock connections but does not relay Geyser's broadcast from the container bridge to the physical LAN. |
 | 2026-07-21 | Pin Geyser and ViaVersion by exact Modrinth version ID, bound Floodgate download retries, and split repository-document assertions into `docs-check`. | Current-head review showed that floating betas, an unbounded setup download, and cross-domain `site-check` assertions could hide runtime drift or erode target contracts. |
+| 2026-07-21 | Seed and maintain `auth-type: floodgate` in the writable plugin volume before Paper starts, and add a Linux hosted-CI overlay boot plus RakNet probe. | The manual post-start edit/restart was brittle, while Compose rendering alone did not prove plugin download, Paper startup, Geyser binding, or host-plane UDP. |
 
 ## Surprises & Discoveries
 
@@ -60,6 +61,16 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
   open-ended. The contract now explicitly unsets the caller variable, Geyser and ViaVersion
   use exact Modrinth version IDs, Floodgate has three 30-second attempts, and `site-check`
   again owns only `site/` assertions.
+- The configured reviewer then separated runtime wiring from real-player acceptance: CI had
+  not booted the Bedrock overlay, and the runbook still required a post-start config edit.
+  The overlay now prepares Floodgate auth before Paper starts, while hosted Linux CI boots
+  the stack and probes its real published RakNet endpoint. A real Bedrock client round
+  remains explicitly operator-only and merge-blocking.
+- The first automatic config seed used a root-level `auth-type`, but the pinned Geyser 2.11
+  schema stores it under `java.auth-type`; a real local overlay boot exposed that Geyser had
+  retained `online`. The initializer and runtime smoke now target and assert the nested key.
+  A repeat boot generated the Floodgate key and returned the Speed Build RakNet pong without
+  a manual edit or restart.
 
 ## Acceptance evidence
 
@@ -74,6 +85,10 @@ CI, so an ExecPlan keeps the platform-specific claims and acceptance evidence al
 - A `SETUP_ONLY` run of the pinned `itzg/minecraft-server:2026.4.0-java21` image resolved
   `geyser:U1DOZeks` and `viaversion:CjleI5xo` into `Geyser-Spigot.jar` and
   `ViaVersion-5.11.1-SNAPSHOT.jar` in a fresh data volume.
+- Hosted Linux CI runs `make bedrock-compose-smoke`, which builds and starts the real Paper
+  overlay, verifies nested `java.auth-type: floodgate` and the generated Floodgate key,
+  waits for Geyser to bind UDP 19132, receives the Speed Build RakNet pong through the
+  published host port, and removes the isolated stack and volumes.
 - `demo/check-bedrock.sh` parsed a protocol-valid local RakNet pong fixture and printed
   `SCENARIOCRAFT_BEDROCK_OK` with the fixture's Speed Build MOTD.
 - A fresh isolated Compose-volume smoke downloaded Geyser 2.11.0-b1200, ViaVersion

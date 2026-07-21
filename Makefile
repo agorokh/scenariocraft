@@ -1,4 +1,4 @@
-.PHONY: bedrock-compose-check ci-fast demo demo-dry-run docs-check site-check
+.PHONY: bedrock-compose-check bedrock-compose-smoke ci-fast demo demo-dry-run docs-check site-check
 
 demo:
 	./demo/run-headless.sh
@@ -30,6 +30,10 @@ docs-check:
 	grep -Fq 'One household, every device' README.md
 	grep -Fq 'Docker Desktop on macOS' demo/README.md
 	test -x demo/check-bedrock.sh
+	test -x demo/smoke-bedrock-compose.sh
 
 bedrock-compose-check:
 	./demo/test-bedrock-compose.sh
+
+bedrock-compose-smoke:
+	./demo/smoke-bedrock-compose.sh
