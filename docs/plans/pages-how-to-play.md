@@ -2,7 +2,7 @@
 
 Issue: #32
 Owner: Codex
-Status: Blocked on supplied logo asset
+Status: In progress
 
 ## Purpose
 
@@ -14,7 +14,7 @@ give Build Week judges a one-minute path to understanding the game without insta
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Inspect and preserve the supplied logo assets under `assets/branding/`.
+- [x] Inspect and preserve the supplied logo assets under `assets/branding/`.
 - [x] Produce traceable renderer imagery and implement all seven story steps.
 - [x] Add the Pages deployment workflow and README header link.
 - [ ] Verify zero external requests, mobile readability, source traceability, and local CI.
@@ -30,27 +30,29 @@ give Build Week judges a one-minute path to understanding the game without insta
 | 2026-07-20 | Use committed schema-v1 voxel fixtures rendered by the repository CLI as primary scene imagery, with inline decorative CSS/SVG only where a renderer cannot express the game phase. | Every visual remains original and traceable to repository artifacts while the seven-step story stays legible. |
 | 2026-07-20 | Keep all rename implementation surfaces out of this branch; only the page copy and README link use the adopted target name and command. | Issue #31 belongs to `pgorokh`, and #32 explicitly permits advertising the target state without changing plugin behavior. |
 | 2026-07-20 | Deploy the literal `site/` directory with the official Pages artifact and deploy actions. | It preserves the issue's requested source layout and avoids a generated-site toolchain or external dependencies. |
+| 2026-07-20 | Derive the final page system from the supplied 1535x1024 logo: acid grass green, warm dirt and gold, purple-black deepslate, italic angular type, beveled depth, asymmetric horizontal trails, and a white field. | These are the actual recurring cues in the design council's image; using them directly keeps the page in the same visual language rather than merely using generic pixel styling. |
 
 ## Surprises & Discoveries
 
-- The requested `~/Downloads/speed-build-logo.png` glob did not resolve during initial
-  discovery. Searches of Downloads, the user's home directory, Spotlight, recent Chronicle
-  state, and connected Chrome state did not recover the file. The original asset must be
-  restored or attached; substituting a newly invented logo would violate the issue.
+- The requested `~/Downloads/speed-build-logo.png` was absent during initial discovery and
+  blocked the first review. The operator then restored the original file. It is the only
+  matching variant and is preserved byte-for-byte under `assets/branding/`.
 - The operator's original checkout contains unrelated work on another branch, so #32 uses a
   separate clean worktree based on `origin/main` rather than disturbing those files.
 - The desktop shell does not select its installed Java automatically. Setting
   `JAVA_HOME=/opt/homebrew/opt/openjdk@21` exposes Java 21.0.11 for renderer and CI runs.
 - The in-app browser was unavailable, so responsive screenshot evidence must be captured from
   the public Pages URL after deployment.
-- `/review` found one P1 and no other findings: the missing canonical logo makes `site-check`,
-  the Pages staging copy, the README image, and the page hero fail. That finding remains open
-  until the supplied file is available.
+- The first `/review` found one P1 and no other findings: the missing canonical logo made
+  `site-check`, the Pages staging copy, the README image, and the page hero fail. Restoring and
+  committing the exact supplied asset resolves that finding; a second review will verify it.
 
 ## Acceptance evidence
 
 - Pages API: `POST /repos/agorokh/scenariocraft/pages` succeeded with
   `build_type: workflow`, `public: true`, and HTTPS enabled.
+- Canonical logo SHA-256:
+  `0e4a76e9c3b7c676e723f85fba885b4b6a7d954c6386af791bfabb15647b9a42`.
 - Renderer regression:
   `./gradlew :renderer:test --tests 'io.github.agorokh.scenariocraft.renderer.VoxelRendererTest'`
   passed under Java 21.
