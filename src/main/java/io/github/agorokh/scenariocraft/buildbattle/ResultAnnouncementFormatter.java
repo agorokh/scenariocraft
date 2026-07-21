@@ -14,7 +14,7 @@ final class ResultAnnouncementFormatter {
 
     static Announcement format(BattleResultSummary result) {
         List<String> chat = new ArrayList<>();
-        chat.add(limit("Build Battle results — " + clean(result.task()), MAX_CHAT_CODE_POINTS));
+        chat.add(limit("Speed Build results — " + clean(result.task()), MAX_CHAT_CODE_POINTS));
         for (BattleResultSummary.ContestantFeedback contestant : result.contestants()) {
             for (BattleResultSummary.PersonaFeedback feedback : contestant.feedback()) {
                 chat.add(limit(
@@ -33,7 +33,7 @@ final class ResultAnnouncementFormatter {
             title = limit("Winner: " + clean(result.winner().player()) + "!", MAX_TITLE_CODE_POINTS);
             chat.add(title);
         } else {
-            title = "Build Battle results";
+            title = "Speed Build results";
             chat.add(NO_WINNER_MESSAGE);
         }
         return new Announcement(title, List.copyOf(chat));

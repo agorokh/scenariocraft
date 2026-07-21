@@ -1,6 +1,6 @@
 # Active arena mutation matrix
 
-This matrix is the durable review contract for Build Battle's active arena. “Building” means
+This matrix is the durable review contract for Speed Build's active arena. “Building” means
 `RoundPhase.BUILDING`; “protected” means any non-idle round phase or an arena export read. An
 assigned plot includes its editable vertical range. Outside a protected arena these listeners do
 not interfere with normal server play.

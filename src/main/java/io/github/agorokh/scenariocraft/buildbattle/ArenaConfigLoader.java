@@ -3,7 +3,7 @@ package io.github.agorokh.scenariocraft.buildbattle;
 import java.util.List;
 import org.bukkit.configuration.file.FileConfiguration;
 
-/** Loads Build Battle settings from config.yml and rejects unusable values early. */
+/** Loads Speed Build settings from config.yml and rejects unusable values early. */
 public final class ArenaConfigLoader {
     private static final int DEBUG_PLOT_COUNT = 2;
     private static final int MAX_PLOT_COUNT = 8;
@@ -61,6 +61,29 @@ public final class ArenaConfigLoader {
             return defaultValue;
         }
         return positiveInt(config, path);
+    }
+
+    public static ResultAnnouncementSettings loadResultAnnouncements(
+            FileConfiguration config, BattleSettings settings) {
+        int maximumPollTicks = Math.multiplyExact(settings.timings().revealLingerSeconds(), 20);
+        if (settings.resultsPollTicks() > maximumPollTicks) {
+            throw new IllegalArgumentException(
+                    "results-poll-ticks must not exceed the REVEAL duration");
+        }
+        return new ResultAnnouncementSettings(
+                settings.resultsPollTicks(),
+                inRangeOrDefault(config, "results-celebration-bursts", 1, 10, 3),
+                inRangeOrDefault(
+                        config, "results-celebration-interval-ticks", 1, 100, 10));
+    }
+
+    private static int inRangeOrDefault(
+            FileConfiguration config,
+            String path,
+            int minimum,
+            int maximum,
+            int defaultValue) {
+        return config.isSet(path) ? inRange(config, path, minimum, maximum) : defaultValue;
     }
 
     private static int positiveInt(FileConfiguration config, String path) {

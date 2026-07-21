@@ -25,6 +25,9 @@ class ArenaConfigLoaderTest {
         assertTrue(settings.allowAnyStart());
         assertFalse(settings.demoMode());
         assertEquals(20, settings.resultsPollTicks());
+        assertEquals(
+                new ResultAnnouncementSettings(20, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(packagedConfig(), settings));
     }
 
     @Test
@@ -52,21 +55,26 @@ class ArenaConfigLoaderTest {
                 IllegalArgumentException.class,
                 () -> ArenaConfigLoader.load(excessivePlots));
 
-        YamlConfiguration invalidResultsPoll = packagedConfig();
-        invalidResultsPoll.set("results-poll-ticks", 0);
+        YamlConfiguration invalidPolling = packagedConfig();
+        invalidPolling.set("results-poll-ticks", 0);
         assertThrows(
                 IllegalArgumentException.class,
-                () -> ArenaConfigLoader.load(invalidResultsPoll));
-    }
+                () -> ArenaConfigLoader.load(invalidPolling));
 
-    @Test
-    void existingConfigWithoutPollSettingUsesBackwardCompatibleDefault() {
-        YamlConfiguration existingConfig = packagedConfig();
-        existingConfig.set("results-poll-ticks", null);
+        YamlConfiguration configured = packagedConfig();
+        configured.set("results-poll-ticks", 1);
+        assertEquals(
+                new ResultAnnouncementSettings(1, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(
+                        configured, ArenaConfigLoader.load(configured)));
 
-        BattleSettings settings = ArenaConfigLoader.load(existingConfig);
-
-        assertEquals(20, settings.resultsPollTicks());
+        configured.set("results-poll-ticks", 21);
+        configured.set("reveal-linger-seconds", 1);
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        ArenaConfigLoader.loadResultAnnouncements(
+                                configured, ArenaConfigLoader.load(configured)));
     }
 
     @Test

@@ -6,17 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
-import org.bukkit.command.BlockCommandSender;
 import org.bukkit.command.CommandSender;
-import org.bukkit.command.ConsoleCommandSender;
-import org.bukkit.command.RemoteConsoleCommandSender;
 import org.junit.jupiter.api.Test;
 
 class BattleCommandTest {
     @Test
     void allowedPlayerCanStartButCannotStop() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(true), round);
+        BattleCommand command = new BattleCommand(settings(true), round, new FakeResults());
         SenderRig sender = new SenderRig("BuilderKid", false);
 
         assertTrue(command.onCommand(sender.sender(), null, "battle", new String[] {"start"}));
@@ -30,7 +27,7 @@ class BattleCommandTest {
     @Test
     void restrictedStartRequiresOperatorOrConfiguredName() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(false), round);
+        BattleCommand command = new BattleCommand(settings(false), round, new FakeResults());
         SenderRig visitor = new SenderRig("Visitor", false);
         SenderRig configured = new SenderRig("BuilderKid", false);
 
@@ -46,7 +43,7 @@ class BattleCommandTest {
     @Test
     void operatorCanStopAndUnknownSubcommandShowsTextUsage() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(true), round);
+        BattleCommand command = new BattleCommand(settings(true), round, new FakeResults());
         SenderRig operator = new SenderRig("Parent", true);
 
         command.onCommand(operator.sender(), null, "bb", new String[] {"stop"});
@@ -59,42 +56,14 @@ class BattleCommandTest {
     }
 
     @Test
-    void resultsReplaysForPlayersAndConsoleAnnouncementHasASeparateGuardedPath() {
-        FakeRound round = new FakeRound();
+    void resultsDelegatesWithoutOperatorPermission() {
         FakeResults results = new FakeResults();
-        BattleCommand command = new BattleCommand(settings(true), round, results);
-        SenderRig player = new SenderRig("BuilderKid", false, true);
-        SenderRig commandBlock = new SenderRig("@", true, BlockCommandSender.class);
-        SenderRig console = new SenderRig("CONSOLE", true, ConsoleCommandSender.class);
-        SenderRig rcon = new SenderRig("Rcon", true, RemoteConsoleCommandSender.class);
+        BattleCommand command = new BattleCommand(settings(false), new FakeRound(), results);
+        SenderRig visitor = new SenderRig("Visitor", false);
 
-        command.onCommand(player.sender(), null, "battle", new String[] {"results"});
-        command.onCommand(player.sender(), null, "battle", new String[] {"announce-results"});
-        command.onCommand(
-                commandBlock.sender(), null, "battle", new String[] {"announce-results"});
-        command.onCommand(console.sender(), null, "battle", new String[] {"announce-results"});
-        command.onCommand(rcon.sender(), null, "battle", new String[] {"announce-results"});
+        command.onCommand(visitor.sender(), null, "battle", new String[] {"results"});
 
-        assertEquals(1, results.replays);
-        assertEquals(2, results.announcements);
-        assertEquals(
-                "Only the server console can announce judge results.",
-                player.messages().getLast());
-        assertEquals(
-                "Only the server console can announce judge results.",
-                commandBlock.messages().getLast());
-    }
-
-    @Test
-    void resultsBeforeTheFirstVerdictUsesFriendlyNoResultsMessage() {
-        BattleCommand command = new BattleCommand(settings(true), new FakeRound());
-        SenderRig sender = new SenderRig("BuilderKid", false);
-
-        command.onCommand(sender.sender(), null, "battle", new String[] {"results"});
-
-        assertEquals(
-                "No judge results yet — check back after the reveal!",
-                sender.messages().getLast());
+        assertEquals(1, results.latestRequests);
     }
 
     private static BattleSettings settings(boolean allowAnyStart) {
@@ -103,8 +72,7 @@ class BattleCommandTest {
                 new PhaseTimings(30, 60, 1_200, 900),
                 List.of("A dragon treehouse"),
                 List.of("BuilderKid"),
-                allowAnyStart,
-                20);
+                allowAnyStart);
     }
 
     private static final class FakeRound implements BattleRound {
@@ -127,57 +95,42 @@ class BattleCommandTest {
         }
     }
 
-    private static final class FakeResults implements BattleResultsReporter {
-        private int replays;
-        private int announcements;
+    private static final class FakeResults implements BattleResultCommands {
+        private int latestRequests;
 
         @Override
-        public void replayLatest(CommandSender sender) {
-            replays++;
+        public void showLatest(CommandSender sender) {
+            latestRequests++;
         }
 
         @Override
-        public void announceLatest(CommandSender sender) {
-            announcements++;
-        }
+        public void announceRound(String roundId, CommandSender sender) {}
     }
 
     private record SenderRig(CommandSender sender, List<String> messages) {
         private SenderRig(String name, boolean operator) {
-            this(name, operator, false);
-        }
-
-        private SenderRig(String name, boolean operator, boolean player) {
-            this(messages(
-                    name,
-                    operator,
-                    player ? org.bukkit.entity.Player.class : CommandSender.class));
-        }
-
-        private SenderRig(
-                String name, boolean operator, Class<? extends CommandSender> senderType) {
-            this(messages(name, operator, senderType));
+            this(messages(name, operator));
         }
 
         private SenderRig(SenderParts parts) {
             this(parts.sender(), parts.messages());
         }
 
-        private static SenderParts messages(
-                String name, boolean operator, Class<? extends CommandSender> senderType) {
+        private static SenderParts messages(String name, boolean operator) {
             List<String> messages = new ArrayList<>();
-            java.lang.reflect.InvocationHandler handler =
-                    (ignored, method, arguments) ->
-                            switch (method.getName()) {
-                                case "getName" -> name;
-                                case "isOp" -> operator;
-                                case "sendMessage" -> {
-                                    messages.add(String.valueOf(arguments[0]));
-                                    yield null;
-                                }
-                                default -> defaultValue(method.getReturnType());
-                            };
-            CommandSender sender = proxy(senderType, handler);
+            CommandSender sender =
+                    proxy(
+                            CommandSender.class,
+                            (ignored, method, arguments) ->
+                                    switch (method.getName()) {
+                                        case "getName" -> name;
+                                        case "isOp" -> operator;
+                                        case "sendMessage" -> {
+                                            messages.add(String.valueOf(arguments[0]));
+                                            yield null;
+                                        }
+                                        default -> defaultValue(method.getReturnType());
+                                    });
             return new SenderParts(sender, messages);
         }
     }

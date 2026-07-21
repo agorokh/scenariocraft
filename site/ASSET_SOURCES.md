@@ -7,6 +7,9 @@ Every visual loaded by the Speed Build How to Play page is original to this repo
 - `assets/scenes/candy-volcano-*.png` are deterministic outputs from the repository's Java
   voxel renderer. Their source is
   `src/test/resources/fixtures/speed-build-candy-volcano.voxels.json` (schema v1).
+- `assets/fonts/bungee-latin.woff2` is the Latin subset of Bungee Regular, self-hosted
+  from Google Fonts and licensed under the SIL Open Font License 1.1. The license is
+  preserved at `assets/fonts/OFL.txt`.
 - The remaining story illustrations and judge portraits are inline SVG or CSS authored for
   this page. They do not copy Mojang assets or game-client UI.
 

@@ -1,53 +1,89 @@
 package io.github.agorokh.scenariocraft.judge;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-/** Minimal bounded client for Minecraft's Source-RCON protocol. */
 final class RconClient {
-    static final int SERVERDATA_RESPONSE_VALUE = 0;
-    static final int SERVERDATA_EXECCOMMAND = 2;
-    static final int SERVERDATA_AUTH_RESPONSE = 2;
-    static final int SERVERDATA_AUTH = 3;
-    static final int MAX_PACKET_BYTES = 4 * 1024 * 1024;
+    private static final int AUTH_TYPE = 3;
+    private static final int COMMAND_TYPE = 2;
+    private static final int RESPONSE_TYPE = 0;
+    private static final int MAX_PACKET_BYTES = 1024 * 1024;
+    private static final int REQUEST_ID = 0x5343;
+    private final HostResolver resolver;
 
-    private RconClient() {}
+    RconClient() {
+        this(InetAddress::getAllByName);
+    }
+
+    RconClient(HostResolver resolver) {
+        this.resolver = Objects.requireNonNull(resolver, "resolver");
+    }
 
     static void execute(RconConfig config, String command) throws IOException {
-        if (command == null || command.isBlank() || command.length() > 1_024
-                || command.codePoints().anyMatch(Character::isISOControl)) {
-            throw new IllegalArgumentException("RCON command must be bounded safe text");
-        }
-        int timeoutMillis = Math.toIntExact(config.timeout().toMillis());
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(config.host(), config.port()), timeoutMillis);
-            socket.setSoTimeout(timeoutMillis);
-            DataInputStream input = new DataInputStream(socket.getInputStream());
-            DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+        Objects.requireNonNull(config, "config");
+        new RconClient()
+                .execute(
+                        new RconSettings(
+                                config.host(),
+                                config.port(),
+                                config.password(),
+                                config.timeout(),
+                                config.timeout()),
+                        command);
+    }
 
-            int authId = positiveRequestId();
-            writePacket(output, new Packet(authId, SERVERDATA_AUTH, config.password()));
-            Packet authResponse = readAuthResponse(input);
-            if (authResponse.requestId() == -1 || authResponse.requestId() != authId
-                    || authResponse.type() != SERVERDATA_AUTH_RESPONSE) {
+    void execute(RconSettings settings, String command) throws IOException {
+        if (command == null || command.isBlank() || command.length() > 512
+                || command.codePoints().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("RCON command must be a non-blank safe command");
+        }
+        long connectTimeoutNanos = settings.connectTimeout().toNanos();
+        long connectDeadline = System.nanoTime() + connectTimeoutNanos;
+        InetAddress address = resolve(settings.host(), settings.connectTimeout().toMillis());
+        long remainingNanos = connectDeadline - System.nanoTime();
+        if (remainingNanos <= 0L) {
+            throw new SocketTimeoutException("RCON hostname resolution exhausted the connect timeout");
+        }
+        int remainingMillis =
+                Math.toIntExact(
+                        Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
+        try (Socket socket = new Socket()) {
+            socket.connect(
+                    new InetSocketAddress(address, settings.port()), remainingMillis);
+            socket.setSoTimeout(Math.toIntExact(settings.readTimeout().toMillis()));
+            writePacket(socket.getOutputStream(), REQUEST_ID, AUTH_TYPE, settings.password());
+            Packet auth = readPacket(socket.getInputStream());
+            if (auth.id() == -1) {
                 throw new IOException("RCON authentication failed");
             }
-
-            int commandId = positiveRequestId();
-            writePacket(output, new Packet(commandId, SERVERDATA_EXECCOMMAND, command));
-            Packet commandResponse = readPacket(input);
-            if (commandResponse.requestId() != commandId
-                    || commandResponse.type() != SERVERDATA_RESPONSE_VALUE) {
-                throw new IOException("RCON returned an invalid command response");
+            if (auth.id() != REQUEST_ID || auth.type() != COMMAND_TYPE) {
+                auth = readPacket(socket.getInputStream());
             }
-            String normalizedResponse = commandResponse.body().toLowerCase(java.util.Locale.ROOT);
+            if (auth.id() == -1) {
+                throw new IOException("RCON authentication failed");
+            }
+            if (auth.id() != REQUEST_ID || auth.type() != COMMAND_TYPE) {
+                throw new IOException("RCON authentication returned an unexpected request id");
+            }
+            writePacket(socket.getOutputStream(), REQUEST_ID + 1, COMMAND_TYPE, command);
+            Packet response = readPacket(socket.getInputStream());
+            if (response.id() != REQUEST_ID + 1 || response.type() != RESPONSE_TYPE) {
+                throw new IOException("RCON command returned an unexpected request id");
+            }
+            String normalizedResponse = response.body().toLowerCase(java.util.Locale.ROOT);
             if (normalizedResponse.contains("unknown command")
                     || normalizedResponse.contains("unknown or incomplete command")) {
                 throw new IOException("RCON server rejected the announcement command");
@@ -55,61 +91,73 @@ final class RconClient {
         }
     }
 
-    private static Packet readAuthResponse(DataInputStream input) throws IOException {
-        Packet first = readPacket(input);
-        if (first.type() == SERVERDATA_AUTH_RESPONSE) {
-            return first;
+    private InetAddress resolve(String host, long timeoutMillis) throws IOException {
+        FutureTask<InetAddress[]> resolution =
+                new FutureTask<>(() -> resolver.resolve(host));
+        Thread.ofPlatform()
+                .daemon(true)
+                .name("scenariocraft-rcon-dns")
+                .start(resolution);
+        try {
+            InetAddress[] addresses = resolution.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (addresses.length == 0) {
+                throw new IOException("RCON hostname resolved to no addresses");
+            }
+            return addresses[0];
+        } catch (TimeoutException exception) {
+            resolution.cancel(true);
+            throw new SocketTimeoutException("RCON hostname resolution timed out");
+        } catch (InterruptedException exception) {
+            resolution.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new IOException("RCON hostname resolution was interrupted", exception);
+        } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof IOException ioFailure) {
+                throw ioFailure;
+            }
+            throw new IOException("RCON hostname resolution failed", exception.getCause());
         }
-        if (first.type() != SERVERDATA_RESPONSE_VALUE) {
-            throw new IOException("RCON returned an invalid authentication response");
-        }
-        return readPacket(input);
     }
 
-    static void writePacket(DataOutputStream output, Packet packet) throws IOException {
-        byte[] body = packet.body().getBytes(StandardCharsets.UTF_8);
-        int payloadLength = Math.addExact(body.length, 10);
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream(payloadLength + 4);
-        DataOutputStream packetOutput = new DataOutputStream(bytes);
-        writeLittleEndianInt(packetOutput, payloadLength);
-        writeLittleEndianInt(packetOutput, packet.requestId());
-        writeLittleEndianInt(packetOutput, packet.type());
-        packetOutput.write(body);
-        packetOutput.writeByte(0);
-        packetOutput.writeByte(0);
-        output.write(bytes.toByteArray());
+    static void writePacket(OutputStream output, int id, int type, String body) throws IOException {
+        byte[] payload = body.getBytes(StandardCharsets.UTF_8);
+        int length = Math.addExact(10, payload.length);
+        ByteArrayOutputStream packet = new ByteArrayOutputStream(length + 4);
+        writeLittleEndianInt(packet, length);
+        writeLittleEndianInt(packet, id);
+        writeLittleEndianInt(packet, type);
+        packet.write(payload);
+        packet.write(0);
+        packet.write(0);
+        output.write(packet.toByteArray());
         output.flush();
     }
 
-    static Packet readPacket(DataInputStream input) throws IOException {
-        int payloadLength = readLittleEndianInt(input);
-        if (payloadLength < 10 || payloadLength > MAX_PACKET_BYTES) {
-            throw new IOException("RCON packet length is outside the supported range");
+    private static Packet readPacket(InputStream input) throws IOException {
+        int length = readLittleEndianInt(input);
+        if (length < 10 || length > MAX_PACKET_BYTES) {
+            throw new IOException("RCON returned an invalid packet length");
         }
-        byte[] payload = input.readNBytes(payloadLength);
-        if (payload.length != payloadLength) {
-            throw new EOFException("RCON packet ended early");
+        byte[] packet = input.readNBytes(length);
+        if (packet.length != length) {
+            throw new EOFException("RCON response ended early");
         }
-        int requestId = littleEndianInt(payload, 0);
-        int type = littleEndianInt(payload, 4);
-        if (payload[payload.length - 1] != 0 || payload[payload.length - 2] != 0) {
-            throw new IOException("RCON packet is missing terminators");
+        if (packet[length - 1] != 0 || packet[length - 2] != 0) {
+            throw new IOException("RCON response is missing terminators");
         }
-        String body = new String(payload, 8, payload.length - 10, StandardCharsets.UTF_8);
-        return new Packet(requestId, type, body);
+        int id = littleEndianInt(packet, 0);
+        int type = littleEndianInt(packet, 4);
+        ByteArrayOutputStream body = new ByteArrayOutputStream(length - 10);
+        body.write(packet, 8, length - 10);
+        return new Packet(id, type, body.toString(StandardCharsets.UTF_8));
     }
 
-    private static int positiveRequestId() {
-        return ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE);
-    }
-
-    private static int readLittleEndianInt(DataInputStream input) throws IOException {
-        return Integer.reverseBytes(input.readInt());
-    }
-
-    private static void writeLittleEndianInt(DataOutputStream output, int value)
-            throws IOException {
-        output.writeInt(Integer.reverseBytes(value));
+    private static int readLittleEndianInt(InputStream input) throws IOException {
+        byte[] bytes = input.readNBytes(4);
+        if (bytes.length != 4) {
+            throw new EOFException("RCON response ended before its length");
+        }
+        return littleEndianInt(bytes, 0);
     }
 
     private static int littleEndianInt(byte[] bytes, int offset) {
@@ -119,5 +167,17 @@ final class RconClient {
                 | ((bytes[offset + 3] & 0xff) << 24);
     }
 
-    record Packet(int requestId, int type, String body) {}
+    private static void writeLittleEndianInt(OutputStream output, int value) throws IOException {
+        output.write(value & 0xff);
+        output.write((value >>> 8) & 0xff);
+        output.write((value >>> 16) & 0xff);
+        output.write((value >>> 24) & 0xff);
+    }
+
+    private record Packet(int id, int type, String body) {}
+
+    @FunctionalInterface
+    interface HostResolver {
+        InetAddress[] resolve(String host) throws IOException;
+    }
 }

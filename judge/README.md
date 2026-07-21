@@ -59,33 +59,29 @@ contain `manifest.json` and either all seven PNGs under `out/<plot_id>/` or
 `<plot_id>.voxels.json` for the renderer fallback. The command writes `results.json` and
 `results.txt` into the round directory.
 
-## In-game announcement over RCON
+After publishing both result files, the judge can ask the running Paper server to announce
+the round through RCON. Set `SCENARIOCRAFT_RCON_PASSWORD` and optionally
+`SCENARIOCRAFT_RCON_HOST` (default `127.0.0.1`), `SCENARIOCRAFT_RCON_PORT` (default
+`25575`), `SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS`, and
+`SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS` (both default to 5).
 
-After both result files are published, the judge can ask the running Paper server to announce
-them. Enable RCON in `server.properties`, then provide all three settings through the process
-environment:
+Alternatively, place an untracked `judge.yml` beside `personas.yml` and `rubric.md` with an
+`rcon` mapping containing `host`, `port`, `password`, `connect_timeout_seconds`, and
+`read_timeout_seconds`. The legacy `timeout-seconds` YAML key and
+`SCENARIOCRAFT_RCON_TIMEOUT_SECONDS` environment value set both timeouts. For example:
 
-```sh
-export SCENARIOCRAFT_RCON_HOST=127.0.0.1
-export SCENARIOCRAFT_RCON_PORT=25575
-export SCENARIOCRAFT_RCON_PASSWORD='<server rcon password>'
-```
-
-The same values can be placed in an optional `judge.yml` beside `personas.yml` and
-`rubric.md`:
-
-```yaml
+```yml
 rcon:
   host: 127.0.0.1
   port: 25575
   password: replace-with-the-server-rcon-password
-  timeout-seconds: 5
+  connect_timeout_seconds: 5
+  read_timeout_seconds: 5
 ```
 
-Environment values override `judge.yml`. Keep a credential-bearing `judge.yml` outside source
-control with owner-only permissions. `SCENARIOCRAFT_RCON_TIMEOUT_SECONDS` can override the
-connection and response timeout with a value from 1 through 60 seconds. RCON is optional; a
-missing configuration skips the network request. A connection, authentication, or command
-failure is reported without the password and does not change the judge status or remove
-`results.json`/`results.txt`. If the files are shared with the server, ScenarioCraft's REVEAL
-poll still announces them; `/battle results` replays the latest readable result at any time.
+Never commit that file; keep it outside source control with owner-only permissions.
+Environment values override matching YAML values. RCON is optional: a missing configuration
+skips the network request, while connection, authentication, or command failure is reported
+without the password and does not change judge status or remove the published files. If the
+files are shared with the server, ScenarioCraft's REVEAL poll still announces them;
+`/speedbuild results` replays the latest readable result at any time.

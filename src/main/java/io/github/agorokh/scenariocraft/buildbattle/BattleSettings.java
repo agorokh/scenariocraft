@@ -36,7 +36,7 @@ public record BattleSettings(
             List<String> tasks,
             List<String> exemptNames,
             boolean allowAnyStart,
-            int resultsPollTicks) {
+        int resultsPollTicks) {
         this(arena, timings, tasks, exemptNames, allowAnyStart, false, resultsPollTicks);
     }
 

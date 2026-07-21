@@ -1,6 +1,7 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,6 +14,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -617,9 +619,6 @@ class RoundControllerTest {
         rig.runBlockTick();
 
         assertEquals(1, rig.exportRequests.size());
-        assertEquals(
-                java.util.Optional.of("round-20260721-193000"),
-                rig.controller.activeResultRoundId());
         RoundExportRequest request = rig.exportRequests.getFirst();
         assertEquals("A dragon treehouse", request.task());
         assertEquals(ArenaWorldService.WORLD_NAME, request.world());
@@ -633,6 +632,25 @@ class RoundControllerTest {
         assertEquals(1, plot.sizeX());
         assertEquals(1, plot.sizeY());
         assertEquals(1, plot.sizeZ());
+        rig.close();
+    }
+
+    @Test
+    void priorPublishedExportIdIsHiddenUntilTheCurrentExportStartsAndPublishes() {
+        TestRig rig = new TestRig();
+        rig.publishedExportId.set("round-20260720-190000");
+
+        rig.advanceTo(RoundPhase.REVEAL);
+        assertTrue(rig.controller.resultRoundId().isEmpty());
+
+        rig.runBlockTick();
+        assertTrue(rig.controller.resultRoundId().isEmpty());
+
+        rig.publishedExportId.set("round-20260721-193000");
+        assertEquals("round-20260721-193000", rig.controller.resultRoundId().orElseThrow());
+        assertEquals(
+                Optional.of("round-20260721-193000"),
+                rig.controller.activeResultRoundId());
         rig.close();
     }
 
@@ -653,10 +671,23 @@ class RoundControllerTest {
         assertEquals(2, request.plots().size());
         assertEquals("BuilderKid", request.plots().get(0).player());
         assertEquals("p2", request.plots().get(1).plotId());
-        assertEquals("ScenarioCraft Sample 2", request.plots().get(1).player());
+        assertEquals("ScenarioCraft_Sample_2", request.plots().get(1).player());
         assertTrue(
                 rig.playerMessages.contains(
                         "Solo mode is on: your challenger is the bundled sample build!"));
+        rig.close();
+    }
+
+    @Test
+    void invalidExportPlayerNameDoesNotAbortRevealSetup() {
+        TestRig rig = new TestRig();
+        rig.playerName.set("You are a clown");
+
+        rig.advanceTo(RoundPhase.REVEAL);
+
+        assertDoesNotThrow(rig::runBlockTick);
+        assertEquals(RoundPhase.REVEAL, rig.controller.phase());
+        assertTrue(rig.exportRequests.isEmpty());
         rig.close();
     }
 
@@ -727,7 +758,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> "round-20260721-193000");
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(2, rig.inventoryContents.get().length);
@@ -776,7 +807,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> "round-20260721-193000");
+                        ignored -> {});
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(0.5, rig.lastTeleport.get().getX());
@@ -2050,7 +2081,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> "round-20260721-193000",
+                        ignored -> {},
                         new TeleportTransport(rig.server),
                         reopenedStore);
 
@@ -2394,10 +2425,12 @@ class RoundControllerTest {
         private final AtomicBoolean exportBusy = new AtomicBoolean();
         private final AtomicBoolean exportReading = new AtomicBoolean();
         private final AtomicInteger exportCancels = new AtomicInteger();
+        private final AtomicReference<String> publishedExportId = new AtomicReference<>();
         private final Map<NamespacedKey, Object> persistentData = new HashMap<>();
         private final Map<NamespacedKey, Object> spectatorPersistentData = new HashMap<>();
         private final UUID playerId =
                 UUID.fromString("9a49fbc6-1d0b-4b12-a37b-cbb1b0f6d5cc");
+        private final AtomicReference<String> playerName = new AtomicReference<>("BuilderKid");
         private final UUID spectatorId =
                 UUID.fromString("726ee348-f967-4e3c-96fd-c3c012bb59a6");
         private final World world;
@@ -2584,7 +2617,7 @@ class RoundControllerTest {
                             (ignored, method, arguments) ->
                                     switch (method.getName()) {
                                         case "getUniqueId" -> playerId;
-                                        case "getName" -> "BuilderKid";
+                                        case "getName" -> playerName.get();
                                         case "getGameMode" -> gameMode.get();
                                         case "getLocation" -> lastTeleport.get().clone();
                                         case "getWorld" -> lastTeleport.get().getWorld();
@@ -2837,11 +2870,16 @@ class RoundControllerTest {
                             },
                             new RoundExporter() {
                                 @Override
-                                public String export(RoundExportRequest request) {
+                                public void export(RoundExportRequest request) {
                                     exportRequests.add(request);
+                                    publishedExportId.set(null);
                                     exportBusy.set(true);
                                     exportReading.set(true);
-                                    return "round-20260721-193000";
+                                }
+
+                                @Override
+                                public Optional<String> currentRoundId() {
+                                    return Optional.ofNullable(publishedExportId.get());
                                 }
 
                                 @Override
