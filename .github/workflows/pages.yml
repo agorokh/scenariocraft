@@ -1,0 +1,62 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Configure Pages
+        id: configure_pages
+        continue-on-error: true
+        uses: actions/configure-pages@v6
+
+      - name: Explain Pages configuration failure
+        if: steps.configure_pages.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::error title=GitHub Pages setup required::Set Settings > Pages > Build and deployment > Source to GitHub Actions, confirm the github-pages environment allows deployments, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+          exit 1
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Explain Pages deployment failure
+        if: steps.deployment.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::error title=GitHub Pages deployment failed::Confirm the github-pages environment allows deployments and Settings > Pages > Build and deployment > Source is GitHub Actions, then rerun this workflow. See README.md#publishing-the-how-to-play-page."
+          exit 1
