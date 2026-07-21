@@ -77,6 +77,9 @@ session.
 - Review also caught that the empty fixture used a zero-height volume, which could make a live
   renderer fail before judging. It now uses a positive-height all-air volume while remaining an
   actually empty build.
+- Current-head review caught a cross-module vocabulary drift after the one-block judge fix: the
+  plugin's `BattleResultParser` still rejected `block`, discarding the valid result before player
+  announcement. Both production boundaries now accept it, with a parser regression test.
 
 ## Acceptance evidence
 
