@@ -14,14 +14,16 @@ match while we play. Speed Build is reference scenario #1, not the product. The 
 the repeatable, kid-legible, parent-guidable, agent-buildable, warmly judged loop that can
 welcome whatever scenario comes up in the car next week.
 
+**Codex built this repository from [public GitHub issues](https://github.com/agorokh/scenariocraft/issues); GPT-5.6 [referees every round](judge/src/main/java/io/github/agorokh/scenariocraft/judge/OpenAiPersonaJudge.java).**
+
 > **NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR
 > MICROSOFT.**
 
 ## The co-creators
 
-- A 7-year-old game brainstormer and judge auditor.
-- A 10-year-old idea author, gaem designer, logo designer and UX lead, judge auditor.
-- A 17-year-old contributing engineer working in his own Codex sessions, tester.
+- A 7-year-old brainstormer and judge auditor.
+- A 10-year-old game designer, logo author, and judge auditor.
+- A 17-year-old contributing engineer working in his own Codex sessions.
 - Their dad, facilitating the build and playing every round.
 
 Their design feedback is product input. Relevant choices are recorded as “Decisions by the
@@ -31,22 +33,38 @@ design council” without publishing any child's name.
 
 - The 10-year-old game designer, logo designer, and UX lead renamed the first scenario from
   Build Battle to **Speed Build**.
+- The council kept controls in chat, titles, and bossbars so Java and Bedrock players hear the
+  same story; there is no inventory-menu UI.
+- The three judge personas share [one rubric](judge/rubric.md), and the panel
+  [fails closed below quorum](judge/src/main/java/io/github/agorokh/scenariocraft/judge/JudgeCouncil.java).
 
 ## First scenario: Speed Build
 
 Contestants receive a secret build prompt, create in private plots, tour the finished builds,
 and hear a warm three-persona AI panel score every entry against one shared rubric.
 
-Gameplay arrives through the Build Week issue sequence. This scaffold intentionally contains
-no game logic yet.
+The playable Paper round, voxel renderer, GPT-5.6 judge CLI, in-game verdict path, and local
+Docker demo are all in this repository and covered by the build and real-server smoke checks.
 
 ## Quickstart
 
-1. `git clone https://github.com/agorokh/scenariocraft.git && cd scenariocraft`
-2. `export OPENAI_API_KEY='<your OpenAI API key>'`
-3. `docker compose up --build`
-4. Join `localhost:25565` in Minecraft Java 1.21.x.
-5. Run `/speedbuild start` in chat. `/battle` and `/bb` remain available for existing servers.
+1. **Clone**
+
+   `git clone https://github.com/agorokh/scenariocraft.git && cd scenariocraft`
+
+2. **Start the local server**
+
+   `export OPENAI_API_KEY='<your OpenAI API key>'`
+
+   `docker compose up --build`
+
+3. **Play**
+
+   Join `localhost:25565` in Minecraft Java 1.21.x.
+
+   Run `/speedbuild start` in chat. `/battle` and `/bb` remain available for existing servers.
+
+Want the one-minute tour first? [See how to play Speed Build](https://agorokh.github.io/scenariocraft/#step-1), then return here for the canonical commands.
 
 The demo uses Paper 1.21.11 in offline mode and is intended only for a trusted local network.
 RCON stays inside the Compose network and uses a generated password. With one human player,
@@ -56,6 +74,21 @@ headless verification and cleanup details.
 
 Missing `OPENAI_API_KEY` stops Compose immediately with an instruction to export it; the key
 is passed from the shell environment and is never stored in the Compose file or image.
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["Speed Build round"] --> B["Voxel export"]
+  B --> C["ScenarioCraft renderer"]
+  C --> D["Three-persona GPT-5.6 panel"]
+  D --> E["Warm verdict in game"]
+```
+
+The [round exporter](src/main/java/io/github/agorokh/scenariocraft/buildbattle/RoundExportService.java)
+writes the build evidence, the [renderer](renderer/) makes the views, and the
+[judge CLI](judge/) applies the committed personas and shared rubric before the plugin
+announces the result.
 
 ## Publishing the How to Play page
 
@@ -139,12 +172,27 @@ whenever persisted recoveries are waiting; each one resumes when that player rej
 ## How this was built
 
 ScenarioCraft is being built in the open for **OpenAI Build Week (July 2026)**. Every change
-starts from a GitHub issue and is implemented by Codex.
+starts from a [GitHub issue](https://github.com/agorokh/scenariocraft/issues), is implemented
+by Codex, and lands through a pull request carrying its Codex session receipt. The public
+[delivery procedure](.agents/skills/deliver/SKILL.md), living [agent guide](AGENTS.md), and
+[ExecPlans](docs/plans/) make the decisions and the failures inspectable instead of hiding
+them behind the final code.
+
+Codex accelerated the project by turning the council's written rules into small, tested
+vertical slices: Paper gameplay, the voxel contract and renderer, the GPT-5.6 judge, the
+Docker demo, and this page. The review loop caught concrete problems before merge. For
+example, review of the How to Play page found that its logo worked only in the deployment
+workflow and broke local preview; the fix and the reason are preserved in the
+[page ExecPlan](docs/plans/pages-how-to-play.md). Every PR is reviewed against
+[the same P1 policy](code_review.md). The in-flight
+[judge eval suite](https://github.com/agorokh/scenariocraft/pull/40) is being kept in its own
+PR rather than copied into the submission pack.
 
 The engineering discipline used here was not invented for Build Week. It is a public port of
 a privately evolved, multi-model agentic engineering system: pitfall ledgers, decision logs,
 eval gates, and session handoffs. ScenarioCraft is the first public project built with that
-method and Codex as its sole software builder.
+method and Codex as its sole software builder. A larger private family-AI system with companion
+players exists, but it is not part of this entry and no code was copied from it.
 
 ## License
 

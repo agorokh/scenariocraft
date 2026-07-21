@@ -2,7 +2,7 @@
 
 Issue: #15
 Owner: Codex
-Status: In progress
+Status: Ready for review
 
 ## Purpose
 
@@ -14,14 +14,14 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Replace the page's closing headline with the crafting-recipe story and preserve the
+- [x] Replace the page's closing headline with the crafting-recipe story and preserve the
       existing provenance trail as small print.
-- [ ] Add the README-derived home quickstart panel and reciprocal README page link.
-- [ ] Complete the README and submission-requirement claim audit without duplicating the
+- [x] Add the README-derived home quickstart panel and reciprocal README page link.
+- [x] Complete the README and submission-requirement claim audit without duplicating the
       in-flight real-round, judge-eval, or household/device work.
-- [ ] Verify links, 1280 px and 375 px layouts, contrast, accessibility, and untouched content.
-- [ ] Run local CI, complete `/review`, and capture acceptance evidence.
-- [ ] Record the retrospective.
+- [x] Verify links, 1280 px and 375 px layouts, contrast, accessibility, and untouched content.
+- [x] Run local CI, complete `/review`, and capture acceptance evidence.
+- [x] Record the retrospective.
 
 ## Decision Log
 
@@ -40,12 +40,44 @@ page art, accessibility, and claim verification; it does not add gameplay or dep
   provisional because three related pull requests remain open while this work proceeds.
 - The judge config fails closed on unknown persona keys and `OpenAiPersonaJudge` uses one static
   `gpt-5.6` model, so Sol/Terra/Luna cannot be assigned truthfully without a runtime feature.
+- The default desktop shell has no discoverable Java runtime. The required Homebrew Java 21 at
+  `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home` runs the full gate cleanly.
+- The first Lighthouse pass scored 96 and caught 4.04:1 contrast on two blue recipe icons.
+  Reusing the design system's deepslate surface raised the final accessibility score to 100
+  with no failed contrast audit.
+- No public YouTube demo URL exists in the repository or its issue/PR history. The submission
+  file and shot list flag that operator-owned recording/upload step instead of inventing a link.
 
 ## Acceptance evidence
 
-To be filled with final repository queries, link checks, local CI output, responsive screenshots,
-and Lighthouse accessibility results.
+- `python3 site/check.py --check-external`: `SITE_CHECK_OK` and
+  `SITE_EXTERNAL_LINKS_OK`; all local resources, anchors, and allowlisted GitHub links resolve.
+- Browser metrics at 1280 px and 375 px: document scroll width exactly equals viewport width;
+  hero, all seven steps, judge stage, home panel, and recipe stay inside the mobile viewport;
+  all four images load at their natural sizes with non-empty alt text.
+- Recipe interaction: all nine ingredients are present; the Codex card opens by click/tap and
+  its tooltip is visible at both widths without horizontal overflow.
+- Screenshots: `docs/screenshots/bb-13-desktop-1280.png`,
+  `docs/screenshots/bb-13-desktop-recipe-1280.png`, and
+  `docs/screenshots/bb-13-mobile-375.png`.
+- Lighthouse 13.4.1 accessibility: **100/100**, with no failed accessibility audits.
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`:
+  `BUILD SUCCESSFUL` across 23 actionable tasks.
+- `git diff --check`: clean. The canonical logo has no diff, the full footer block is
+  byte-for-byte unchanged, and every honesty label, disclaimer, skip link, and reduced-motion
+  rule remains present.
+- Public-history query on July 21, 2026: 22 issues and 19 merged pull requests; first commit
+  July 18, three calendar days before verification.
+- `/review` against `code_review.md`: no P1. The patch changes no judge/export logic, block
+  mutation, player-facing runtime output, timing/deck behavior, GUI, or credential handling.
 
 ## Retrospective
 
-To be completed after review and verification.
+The page now tells one coherent story from play through installation to authorship, while the
+README supplies the longer claim trail and submission details. Native `details` elements keep
+the ingredient cards usable by tap and keyboard without JavaScript, while CSS hover labels make
+the desktop recipe quick to scan. The main scope decision held: this branch links to the
+in-flight eval work but does not copy it, does not claim Mineflayer before its PR lands, and does
+not fabricate tier routing or a video URL. The only remaining submission action is external to
+the repository: record/upload the public YouTube demo and place its URL in the three named
+locations before 5:00 PM PDT.
