@@ -17,10 +17,10 @@ acceptance boundaries.
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Implement with tests (2026-07-21).
+- [x] Capture local acceptance evidence (2026-07-21); remote Paper smoke remains a merge gate.
+- [x] Complete `/review` and repair the plan-only P1 finding (2026-07-21).
+- [x] Record the retrospective (2026-07-21).
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -33,6 +33,8 @@ session.
 | 2026-07-20 | Have the judge write both result files before attempting a narrow authenticated RCON `battle announce <round-id>` command. | Disk publication must survive network/authentication failure, while the command lets Bukkit resolve the active arena world and winner plot safely. |
 | 2026-07-20 | Poll bounded result files off the server main thread, then marshal only Bukkit presentation work back to the main thread and deduplicate by round/result identity. | Filesystem I/O should not stall ticks, and RCON plus polling may observe the same result concurrently. |
 | 2026-07-20 | Load RCON host, port, password, and timeouts from environment overrides or an optional external `judge.yml`, with no repository credential. | The issue requires both configuration surfaces and `code_review.md` forbids credentials in source, fixtures, logs, or history. |
+| 2026-07-21 | Make the only RCON payload `battle announce <round-id>` and accept it only from console/RCON senders. | The judge should not own Bukkit formatting or world effects, and a narrow validated round identifier keeps the authenticated command surface small. |
+| 2026-07-21 | Parse `results.txt` with fixed headers, bounded bytes/lines/fields, then format only parsed fields with JSON punctuation removed and per-line clamps. | Copied result files are an external input; strict parsing prevents raw JSON, failure details, control characters, or an unbounded line from reaching players. |
 
 ## Surprises & Discoveries
 
@@ -44,16 +46,37 @@ session.
   the winner, so the plugin can remain independent of `results.json`. Winner coordinates are
   still an active-round concern and must come from the controller's plot map rather than raw
   result JSON.
+- Marking the plan-only head ready for review immediately produced a valid P1: `Closes #11`
+  would have closed the issue without any behavior. The resolver therefore had to complete
+  the implementation before it could resolve that thread.
+- Paper exposes remote-console and local-console sender types separately. The hidden
+  `battle announce` path accepts only those two types; players and command blocks cannot use
+  the judge's announcement path.
 
 ## Acceptance evidence
 
-- Pending: local Java 21 `make ci-fast`, focused judge RCON/config tests, plugin parser,
-  formatting, no-results, polling/deduplication, command, and celebration tests.
-- Pending: real Paper + RCON run showing round export, judge result publication, automatic
-  REVEAL announcement, winner title/persona chat, winner-plot effect, and `/battle results`.
-- Pending: forced RCON authentication/connection failure showing `results.txt` and
-  `results.json` remain available and `/battle results` still prints the verdict.
+- `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
+  passed on 2026-07-21: plugin 132 tests, judge 73 tests, renderer 14 tests, zero failures.
+- `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
+  `battle announce round-20260721-193000` command, and response framing.
+- `BattleResultServiceTest` proves REVEAL polling announces a copied `results.txt` once and
+  that the no-result command path gives a friendly player message. Parser/formatter tests
+  enforce byte/line/field bounds, chat-line limits, kid-safe no-winner text, and no raw JSON
+  punctuation. `BattleResultRepositoryTest` uses a round containing only copied
+  `results.txt`, with no local manifest or JSON dependency.
+- `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
+  connection failure after judging and verifies both result files remain published while
+  the judge returns success.
+- The new-head GitHub Paper smoke job remains mandatory before merge and supplies the real
+  plugin enable/boot evidence. A complete timed Build Battle with live OpenAI judging is an
+  operator acceptance exercise because it requires players, an API credential, and server
+  RCON configuration that are intentionally absent from the repository.
 
 ## Retrospective
 
-Pending implementation, live acceptance evidence, and review.
+The smallest safe boundary was not “send judge text over RCON”; it was “publish durable
+results, send one authenticated round identifier, and let Bukkit own presentation.” That
+kept disk polling and protocol work off the server thread, preserved Bedrock-safe chat/title
+controls, and made RCON failure independent from judging success. The premature ready-for-
+review transition was useful evidence that an ExecPlan is not delivery: review must compare
+the actual diff with the issue before trusting checklist prose.

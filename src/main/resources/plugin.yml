@@ -8,7 +8,7 @@ website: https://github.com/agorokh/scenariocraft
 commands:
   battle:
     description: Controls the current ScenarioCraft Build Battle round.
-    usage: /<command> start|stop
+    usage: /<command> start|stop|results
     aliases:
       - buildbattle
       - bb

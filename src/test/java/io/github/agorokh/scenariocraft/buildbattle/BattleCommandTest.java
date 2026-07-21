@@ -13,7 +13,7 @@ class BattleCommandTest {
     @Test
     void allowedPlayerCanStartButCannotStop() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(true), round);
+        BattleCommand command = new BattleCommand(settings(true), round, new FakeResults());
         SenderRig sender = new SenderRig("BuilderKid", false);
 
         assertTrue(command.onCommand(sender.sender(), null, "battle", new String[] {"start"}));
@@ -27,7 +27,7 @@ class BattleCommandTest {
     @Test
     void restrictedStartRequiresOperatorOrConfiguredName() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(false), round);
+        BattleCommand command = new BattleCommand(settings(false), round, new FakeResults());
         SenderRig visitor = new SenderRig("Visitor", false);
         SenderRig configured = new SenderRig("BuilderKid", false);
 
@@ -43,14 +43,27 @@ class BattleCommandTest {
     @Test
     void operatorCanStopAndUnknownSubcommandShowsTextUsage() {
         FakeRound round = new FakeRound();
-        BattleCommand command = new BattleCommand(settings(true), round);
+        BattleCommand command = new BattleCommand(settings(true), round, new FakeResults());
         SenderRig operator = new SenderRig("Parent", true);
 
         command.onCommand(operator.sender(), null, "bb", new String[] {"stop"});
         command.onCommand(operator.sender(), null, "bb", new String[] {"menu"});
 
         assertEquals(1, round.stops);
-        assertEquals("Try /bb start or /bb stop.", operator.messages().getLast());
+        assertEquals(
+                "Try /bb start, /bb stop, or /bb results.",
+                operator.messages().getLast());
+    }
+
+    @Test
+    void resultsDelegatesWithoutOperatorPermission() {
+        FakeResults results = new FakeResults();
+        BattleCommand command = new BattleCommand(settings(false), new FakeRound(), results);
+        SenderRig visitor = new SenderRig("Visitor", false);
+
+        command.onCommand(visitor.sender(), null, "battle", new String[] {"results"});
+
+        assertEquals(1, results.latestRequests);
     }
 
     private static BattleSettings settings(boolean allowAnyStart) {
@@ -80,6 +93,18 @@ class BattleCommandTest {
         public void stop(CommandSender sender) {
             stops++;
         }
+    }
+
+    private static final class FakeResults implements BattleResultCommands {
+        private int latestRequests;
+
+        @Override
+        public void showLatest(CommandSender sender) {
+            latestRequests++;
+        }
+
+        @Override
+        public void announceRound(String roundId, CommandSender sender) {}
     }
 
     private record SenderRig(CommandSender sender, List<String> messages) {

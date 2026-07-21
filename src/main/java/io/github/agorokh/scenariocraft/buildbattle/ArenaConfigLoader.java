@@ -48,6 +48,13 @@ public final class ArenaConfigLoader {
                 config.getBoolean("allow-any-start"));
     }
 
+    public static ResultAnnouncementSettings loadResultAnnouncements(FileConfiguration config) {
+        return new ResultAnnouncementSettings(
+                inRange(config, "results-poll-seconds", 1, 60),
+                inRange(config, "results-celebration-bursts", 1, 10),
+                inRange(config, "results-celebration-interval-ticks", 1, 100));
+    }
+
     private static int positiveInt(FileConfiguration config, String path) {
         return atLeast(config, path, 1);
     }

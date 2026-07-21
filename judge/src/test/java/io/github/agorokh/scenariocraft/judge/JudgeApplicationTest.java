@@ -124,6 +124,32 @@ class JudgeApplicationTest {
         assertTrue(Files.exists(realRound.resolve("results.txt")));
     }
 
+    @Test
+    void rconFailureLeavesPublishedResultsAvailable() throws Exception {
+        Path runtime = copyFixtureRuntime();
+        Path round = runtime.resolve("rounds/round-20260721-193000");
+        StringWriter diagnostics = new StringWriter();
+
+        int status =
+                new JudgeApplication()
+                        .run(
+                                round,
+                                runtime.resolve("judge/personas.yml"),
+                                runtime.resolve("judge/rubric.md"),
+                                new StubPersonaJudge(),
+                                new PrintWriter(new StringWriter()),
+                                new PrintWriter(diagnostics),
+                                ignored -> {
+                                    throw new java.io.IOException("connection refused");
+                                });
+
+        assertEquals(0, status);
+        assertTrue(Files.isRegularFile(round.resolve("results.json")));
+        assertTrue(Files.isRegularFile(round.resolve("results.txt")));
+        assertTrue(diagnostics.toString().contains("Results were saved"));
+        assertTrue(diagnostics.toString().contains("connection refused"));
+    }
+
     private Path copyFixtureRuntime() throws Exception {
         Path source = Path.of(System.getProperty("scenariocraft.repoRoot"))
                 .resolve("judge/src/test/resources/fixtures/runtime");

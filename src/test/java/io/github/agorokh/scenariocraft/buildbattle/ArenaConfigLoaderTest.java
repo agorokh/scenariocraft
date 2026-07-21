@@ -23,6 +23,9 @@ class ArenaConfigLoaderTest {
         assertEquals(settings.tasks().size(), new HashSet<>(settings.tasks()).size());
         assertTrue(settings.exemptNames().isEmpty());
         assertTrue(settings.allowAnyStart());
+        assertEquals(
+                new ResultAnnouncementSettings(2, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(packagedConfig()));
     }
 
     @Test
@@ -39,6 +42,12 @@ class ArenaConfigLoaderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> ArenaConfigLoader.load(excessivePlots));
+
+        YamlConfiguration invalidPolling = packagedConfig();
+        invalidPolling.set("results-poll-seconds", 0);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> ArenaConfigLoader.loadResultAnnouncements(invalidPolling));
     }
 
     @Test

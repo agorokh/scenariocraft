@@ -16,6 +16,11 @@ note-seconds: 60
 build-seconds: 1200
 reveal-linger-seconds: 900
 
+# Judge-result polling stays lightweight and only runs while a round is in REVEAL.
+results-poll-seconds: 2
+results-celebration-bursts: 3
+results-celebration-interval-ticks: 10
+
 # Design-council deck: short, kid-friendly prompts that work in a compact plot
 tasks:
   - A dragon treehouse

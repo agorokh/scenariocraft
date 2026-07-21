@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -290,6 +291,23 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     @Override
     public RoundPhase phase() {
         return state.phase();
+    }
+
+    public Optional<Location> winnerCelebrationLocation(String playerName) {
+        Objects.requireNonNull(playerName, "playerName");
+        if (phase() != RoundPhase.REVEAL) {
+            return Optional.empty();
+        }
+        return contestants.values().stream()
+                .filter(contestant -> contestant.playerName().equalsIgnoreCase(playerName))
+                .findFirst()
+                .map(
+                        contestant ->
+                                new Location(
+                                        arena.world(),
+                                        contestant.plot().centerX() + 0.5,
+                                        arena.floorY() + 3.0,
+                                        contestant.plot().centerZ() + 0.5));
     }
 
     @Override

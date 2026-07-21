@@ -19,6 +19,24 @@ final class JudgeApplication {
             PersonaJudge judge,
             PrintWriter output,
         PrintWriter diagnostics) {
+        return run(
+                roundDirectory,
+                personasPath,
+                rubricPath,
+                judge,
+                output,
+                diagnostics,
+                ignored -> {});
+    }
+
+    int run(
+            Path roundDirectory,
+            Path personasPath,
+            Path rubricPath,
+            PersonaJudge judge,
+            PrintWriter output,
+            PrintWriter diagnostics,
+            ResultAnnouncer announcer) {
         try {
             if (!Files.isDirectory(roundDirectory, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(roundDirectory)) {
@@ -44,6 +62,13 @@ final class JudgeApplication {
             RoundResults results =
                     JudgeCouncil.judge(round, config, images, judge, diagnostics);
             ResultsWriter.write(canonicalRound, results);
+            try {
+                announcer.announce(results.roundId());
+            } catch (IOException | RuntimeException announcementFailure) {
+                diagnostics.println(
+                        "Results were saved, but the server announcement could not be sent: "
+                                + safeDiagnostic(announcementFailure));
+            }
             output.print(ResultsWriter.humanReadable(results));
             output.flush();
             diagnostics.flush();
@@ -53,5 +78,13 @@ final class JudgeApplication {
             diagnostics.flush();
             return 1;
         }
+    }
+
+    private static String safeDiagnostic(Exception failure) {
+        String message = failure.getMessage();
+        if (message == null || message.isBlank()) {
+            return failure.getClass().getSimpleName();
+        }
+        return message.replaceAll("[\\r\\n\\t]+", " ").strip();
     }
 }

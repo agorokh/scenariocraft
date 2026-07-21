@@ -5,9 +5,11 @@ import io.github.agorokh.scenariocraft.buildbattle.ArenaWorld;
 import io.github.agorokh.scenariocraft.buildbattle.ArenaWorldService;
 import io.github.agorokh.scenariocraft.buildbattle.BatchedBlockEditor;
 import io.github.agorokh.scenariocraft.buildbattle.BattleCommand;
+import io.github.agorokh.scenariocraft.buildbattle.BattleResultService;
 import io.github.agorokh.scenariocraft.buildbattle.BattleSettings;
 import io.github.agorokh.scenariocraft.buildbattle.ProtectionPluginWarner;
 import io.github.agorokh.scenariocraft.buildbattle.RoundController;
+import io.github.agorokh.scenariocraft.buildbattle.ResultAnnouncementSettings;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportRecoveryStore;
 import io.github.agorokh.scenariocraft.buildbattle.TeleportTransport;
 import java.nio.file.Path;
@@ -20,11 +22,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class ScenarioCraftPlugin extends JavaPlugin {
     private BatchedBlockEditor blockEditor;
     private RoundController roundController;
+    private BattleResultService resultService;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         BattleSettings settings = ArenaConfigLoader.load(getConfig());
+        ResultAnnouncementSettings resultSettings =
+                ArenaConfigLoader.loadResultAnnouncements(getConfig());
 
         ArenaWorld arena = new ArenaWorldService(getServer(), getLogger()).loadOrCreate();
         int topWallY = Math.addExact(arena.floorY(), settings.arena().wallHeight());
@@ -76,7 +81,16 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         getLogger(),
                         teleportTransport,
                         recoveryStore);
-        BattleCommand battleCommand = new BattleCommand(settings, roundController);
+        resultService =
+                new BattleResultService(
+                        this,
+                        getDataFolder().toPath().resolve("rounds"),
+                        resultSettings,
+                        roundController::phase,
+                        roundController::winnerCelebrationLocation,
+                        getLogger());
+        BattleCommand battleCommand =
+                new BattleCommand(settings, roundController, resultService);
         Objects.requireNonNull(getCommand("battle"), "battle command missing from plugin.yml")
                 .setExecutor(battleCommand);
 
@@ -98,6 +112,9 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (resultService != null) {
+            resultService.close();
+        }
         if (roundController != null) {
             roundController.close();
         }

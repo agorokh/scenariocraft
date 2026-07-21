@@ -58,3 +58,15 @@ directory containing those two files. BB-10 owns the production content. Each ro
 contain `manifest.json` and either all seven PNGs under `out/<plot_id>/` or
 `<plot_id>.voxels.json` for the renderer fallback. The command writes `results.json` and
 `results.txt` into the round directory.
+
+After publishing both result files, the judge can ask the running Paper server to announce
+the round through RCON. Set `SCENARIOCRAFT_RCON_PASSWORD` and optionally
+`SCENARIOCRAFT_RCON_HOST` (default `127.0.0.1`), `SCENARIOCRAFT_RCON_PORT` (default
+`25575`), `SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS`, and
+`SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS` (both default to 5).
+
+Alternatively, place an untracked `judge.yml` beside `personas.yml` and `rubric.md` with an
+`rcon` mapping containing `host`, `port`, `password`, `connect_timeout_seconds`, and
+`read_timeout_seconds`. Never commit that file. Environment values override matching YAML
+values. If RCON is unavailable, judging still succeeds and the published files remain
+available for automatic plugin polling and `/battle results`.
