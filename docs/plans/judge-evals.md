@@ -2,7 +2,7 @@
 
 Issue: #13
 Owner: Codex session 019f85ba-261c-74e3-8ec9-1074d0ec72b1
-Status: In progress
+Status: Ready for review under operator-approved deadline exception
 
 ## Purpose
 
@@ -17,8 +17,9 @@ by a failing eval.
 
 - [x] Define the smallest end-to-end slice.
 - [x] Implement the recorded/live runner, synthetic seed cases, and focused judge fix with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
+- [x] Complete parallel review and resolve all actionable code and fixture findings.
+- [x] Record the deadline scope exception for unavailable family-round evidence.
+- [ ] Capture the deferred family-round acceptance evidence after review.
 - [ ] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
@@ -35,6 +36,7 @@ session.
 | 2026-07-21 | Label all seven canonical views in the GPT request and explicitly identify the plan and center cross-sections as interior evidence. | The interior-only seed exposed that filenames were retained locally but discarded at the model boundary, so the judge could not distinguish a cutaway from an exterior view. |
 | 2026-07-21 | Keep synthetic responses explicitly marked as hand-authored goldens; require family cases and council records to bind round, plot, commit, voxel, and response hashes. | Synthetic fixtures exercise the assertion engine but must never be presented as live family evidence. |
 | 2026-07-21 | Bind family provenance to repository paths whose content is read and hashed from the cited commit, and fetch full history in CI. | Merely proving that a SHA names some commit does not prove the reviewed round artifacts existed in it. |
+| 2026-07-21 | Move PR #40 to ready without the unavailable family-round exports and child-auditor records. | With one hour remaining, the operator explicitly accepted this scope exception so external review and CI could proceed; synthetic fixtures remain labeled honestly and are not presented as family evidence. |
 
 ## Surprises & Discoveries
 
