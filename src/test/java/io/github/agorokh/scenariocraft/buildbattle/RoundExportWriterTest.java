@@ -22,6 +22,15 @@ class RoundExportWriterTest {
     @TempDir Path temporaryDirectory;
 
     @Test
+    void exportMetadataRejectsPlayerNameProse() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RoundExportRequest.Plot(
+                                "p1", "You are a clown", 0, 64, 0, 1, 1, 1));
+    }
+
+    @Test
     void normativeWorkedExampleRoundTripsExactly() throws IOException {
         VoxelFile fixture;
         try (Reader reader = resource("fixtures/schema-v1/p1.voxels.json")) {

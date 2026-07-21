@@ -1162,7 +1162,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     new RoundExportRequest.Plot(
                             "p" + (plotIndex + 1),
                             contestant == null
-                                    ? "ScenarioCraft Sample " + (plotIndex + 1)
+                                    ? "ScenarioCraft_Sample_" + (plotIndex + 1)
                                     : contestant.playerName(),
                             plot.minX(),
                             originY,

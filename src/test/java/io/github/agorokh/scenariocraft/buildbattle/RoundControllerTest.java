@@ -670,7 +670,7 @@ class RoundControllerTest {
         assertEquals(2, request.plots().size());
         assertEquals("BuilderKid", request.plots().get(0).player());
         assertEquals("p2", request.plots().get(1).plotId());
-        assertEquals("ScenarioCraft Sample 2", request.plots().get(1).player());
+        assertEquals("ScenarioCraft_Sample_2", request.plots().get(1).player());
         assertTrue(
                 rig.playerMessages.contains(
                         "Solo mode is on: your challenger is the bundled sample build!"));
