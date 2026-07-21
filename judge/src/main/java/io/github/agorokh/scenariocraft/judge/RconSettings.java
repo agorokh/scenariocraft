@@ -49,47 +49,17 @@ record RconSettings(
         boolean fileConfigured = Files.exists(path, LinkOption.NOFOLLOW_LINKS);
         boolean environmentComplete =
                 CONNECTION_ENVIRONMENT_KEYS.stream().allMatch(environment::containsKey);
-        if (fileConfigured && !environmentComplete) {
-            if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
-                throw new IOException("judge.yml must be a regular file");
-            }
-            byte[] bytes;
-            try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
-                bytes = input.readNBytes(MAX_CONFIG_BYTES + 1);
-            }
-            if (bytes.length > MAX_CONFIG_BYTES) {
-                throw new IOException("judge.yml exceeds the byte limit");
-            }
-            LoadSettings loadSettings =
-                    LoadSettings.builder()
-                            .setLabel(path.toString())
-                            .setAllowDuplicateKeys(false)
-                            .setMaxAliasesForCollections(10)
-                            .build();
-            Object loaded;
+        if (fileConfigured) {
             try {
-                loaded = new Load(loadSettings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
-            } catch (YamlEngineException exception) {
-                throw new IllegalArgumentException("judge.yml contains invalid YAML", exception);
+                yaml = loadYaml(path);
+            } catch (IOException | IllegalArgumentException exception) {
+                if (!environmentComplete) {
+                    throw exception;
+                }
             }
-            if (!(loaded instanceof Map<?, ?> root)) {
-                throw new IllegalArgumentException("judge.yml must contain a mapping");
-            }
-            if (!root.keySet().equals(Set.of("rcon"))) {
-                throw new IllegalArgumentException("judge.yml must contain exactly the rcon key");
-            }
-            if (!(root.get("rcon") instanceof Map<?, ?> rcon)) {
-                throw new IllegalArgumentException("judge.yml rcon must contain a mapping");
-            }
-            Set<String> actual = rcon.keySet().stream().map(String::valueOf).collect(java.util.stream.Collectors.toSet());
-            if (!actual.equals(KEYS) && !actual.equals(LEGACY_KEYS)) {
-                throw new IllegalArgumentException(
-                        "judge.yml rcon must contain either the current or legacy timeout keys");
-            }
-            yaml = rcon;
         }
         boolean environmentConfigured =
-                CONNECTION_ENVIRONMENT_KEYS.stream().anyMatch(key -> environment.containsKey(key))
+                CONNECTION_ENVIRONMENT_KEYS.stream().anyMatch(environment::containsKey)
                         || environment.containsKey("SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS")
                         || environment.containsKey("SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS")
                         || environment.containsKey("SCENARIOCRAFT_RCON_TIMEOUT_SECONDS");
@@ -110,6 +80,49 @@ record RconSettings(
                         password,
                         Duration.ofSeconds(connectSeconds),
                         Duration.ofSeconds(readSeconds)));
+    }
+
+    private static Map<?, ?> loadYaml(Path path) throws IOException {
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
+            throw new IOException("judge.yml must be a regular file");
+        }
+        byte[] bytes;
+        try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+            bytes = input.readNBytes(MAX_CONFIG_BYTES + 1);
+        }
+        if (bytes.length > MAX_CONFIG_BYTES) {
+            throw new IOException("judge.yml exceeds the byte limit");
+        }
+        LoadSettings loadSettings =
+                LoadSettings.builder()
+                        .setLabel(path.toString())
+                        .setAllowDuplicateKeys(false)
+                        .setMaxAliasesForCollections(10)
+                        .build();
+        Object loaded;
+        try {
+            loaded = new Load(loadSettings).loadFromString(new String(bytes, StandardCharsets.UTF_8));
+        } catch (YamlEngineException exception) {
+            throw new IllegalArgumentException("judge.yml contains invalid YAML", exception);
+        }
+        if (!(loaded instanceof Map<?, ?> root)) {
+            throw new IllegalArgumentException("judge.yml must contain a mapping");
+        }
+        if (!root.keySet().equals(Set.of("rcon"))) {
+            throw new IllegalArgumentException("judge.yml must contain exactly the rcon key");
+        }
+        if (!(root.get("rcon") instanceof Map<?, ?> rcon)) {
+            throw new IllegalArgumentException("judge.yml rcon must contain a mapping");
+        }
+        Set<String> actual =
+                rcon.keySet().stream()
+                        .map(String::valueOf)
+                        .collect(java.util.stream.Collectors.toSet());
+        if (!actual.equals(KEYS) && !actual.equals(LEGACY_KEYS)) {
+            throw new IllegalArgumentException(
+                    "judge.yml rcon must contain either the current or legacy timeout keys");
+        }
+        return rcon;
     }
 
     private static int timeoutValue(

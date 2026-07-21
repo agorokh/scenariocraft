@@ -240,6 +240,20 @@ class BattleResultParserTest {
                         """);
         assertEquals(".Bedrock_Kid", bedrock.contestants().getFirst().player());
 
+        BattleResult longBedrockName =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: A moon base for cats
+
+                        ..Bedrock Builder With A Long Name (p1)
+                          Captain Comet: 9.00 — The bright roof is welcoming.
+                        Winner: ..Bedrock Builder With A Long Name with 9.00
+                        """);
+        assertEquals(
+                "..Bedrock Builder With A Long Name",
+                longBedrockName.contestants().getFirst().player());
+
         assertThrows(
                 IllegalArgumentException.class,
                 () ->

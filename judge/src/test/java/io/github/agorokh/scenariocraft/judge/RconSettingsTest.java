@@ -20,7 +20,7 @@ class RconSettingsTest {
     }
 
     @Test
-    void environmentTrioOverridesJudgeYamlAndUsesDefaultTimeouts() throws Exception {
+    void environmentTrioOverridesConnectionValuesAndPreservesYamlTimeouts() throws Exception {
         Path config = temporaryDirectory.resolve("judge.yml");
         Files.writeString(
                 config,
@@ -44,8 +44,8 @@ class RconSettingsTest {
 
         assertEquals("127.0.0.1", settings.host());
         assertEquals(25_580, settings.port());
-        assertEquals(Duration.ofSeconds(5), settings.connectTimeout());
-        assertEquals(Duration.ofSeconds(5), settings.readTimeout());
+        assertEquals(Duration.ofSeconds(4), settings.connectTimeout());
+        assertEquals(Duration.ofSeconds(6), settings.readTimeout());
     }
 
     @Test

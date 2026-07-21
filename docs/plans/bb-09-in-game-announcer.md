@@ -51,6 +51,7 @@ session.
 | 2026-07-21 | Replace copied persona names with fixed `Judge N` labels, bypass malformed YAML only when all five environment RCON values are present, and include hostname resolution inside the connect-timeout budget. | Persona labels are arbitrary player-facing prose, complete environment overrides must be authoritative, and optional RCON must not hang after durable publication on DNS outside the socket timeout. |
 | 2026-07-21 | Reduce every copied task to a fixed safe challenge label, bind delayed celebration particles to the announcing REVEAL round, and use `results-poll-ticks` as the single live interval. | Tasks and delayed effects cross the same presentation/lifecycle boundary as copied feedback; the checked-in server and smoke configuration already document tick-based polling. |
 | 2026-07-21 | Restore contiguous RCON packet writes and command-rejection checks, normalize malformed optional YAML into a configuration error, and reject symlinked requested round directories. | The merge reconciled two announcer implementations; the stronger protocol, optional-configuration, and filesystem boundary guarantees must survive that reconciliation. |
+| 2026-07-21 | Accept the judge's 64-character safe player-name contract while rejecting unsafe multi-word prose, schedule the next result read on the configured tick boundary, preserve valid YAML timeouts beneath connection environment overrides, and keep a stable RCON smoke-failure token. | Producer and consumer validation must agree for Bedrock gamertags, the maximum legal polling interval must permit a second read during REVEAL, and optional configuration compatibility must not weaken live RCON verification. |
 
 ## Surprises & Discoveries
 
@@ -87,6 +88,11 @@ session.
   conversion, exact rejected-command detection, and no-follow directory checks; it also
   found copied task text and delayed particle effects needed the same presentation/lifecycle
   treatment as copied feedback.
+- A single-prefix, 16-character player regex was narrower than the judge/export contract and
+  excluded valid multi-prefix or longer Bedrock names. The safe boundary is the existing
+  64-character structural contract plus rejection of unsafe multi-word prose, not a Java-name
+  approximation. The poll countdown also needed boundary semantics: a legal interval equal
+  to REVEAL must schedule its second read on the final eligible tick rather than one tick later.
 - A general “cruel language” filter did not cover ordinary profanity, sexual-assault
   language, or Minecraft's section-sign formatting codes. These need explicit validation
   at the last player-facing trust boundary, and an all-failed verdict set needs an honest

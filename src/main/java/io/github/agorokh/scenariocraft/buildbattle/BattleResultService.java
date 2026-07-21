@@ -153,9 +153,11 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
         }
         if (ticksUntilPoll > 0L) {
             ticksUntilPoll--;
-            return;
+            if (ticksUntilPoll > 0L) {
+                return;
+            }
         }
-        ticksUntilPoll = settings.pollTicks();
+        ticksUntilPoll = settings.pollTicks() - 1L;
         readAsync(
                 () -> repository.round(expectedRoundId),
                 result -> {

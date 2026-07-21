@@ -80,7 +80,7 @@ final class JudgeApplication {
                 announcer.announce(results.roundId());
             } catch (IOException | RuntimeException announcementFailure) {
                 diagnostics.println(
-                        "Results were saved, but the server announcement could not be sent: "
+                        "RCON announcement failed. Results were saved: "
                                 + safeDiagnostic(announcementFailure)
                                 + "; results remain available on disk.");
             }
