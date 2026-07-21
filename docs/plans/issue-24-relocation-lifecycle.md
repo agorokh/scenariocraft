@@ -15,10 +15,10 @@ operator alerts, and real-server smoke evidence.
 ## Progress
 
 - [x] Define the smallest end-to-end slice.
-- [ ] Implement with tests.
-- [ ] Capture the issue's acceptance evidence.
-- [ ] Complete `/review` and resolve P1 findings.
-- [ ] Record the retrospective.
+- [x] Implement with tests.
+- [x] Capture the issue's acceptance evidence.
+- [x] Complete `/review` and resolve P1 findings.
+- [x] Record the retrospective.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -33,6 +33,8 @@ session.
 | 2026-07-20 | Treat BUILDING respawn as a guarded plot re-entry and apply Creative mode, bossbar, and a plot border only after authoritative arrival. | A remote plot border must never be applied while the player is elsewhere, but a successful respawn must restore all phase controls and containment. |
 | 2026-07-20 | Preserve the current plot border during plot-to-safe-destination confirmation and keep pending recovery protected in IDLE. | Containment must cover the full dispatch window and must not disappear merely because round state was cleared before hub arrival was confirmed and persisted. |
 | 2026-07-20 | Exercise the production `minecraft:execute ... run minecraft:tp` path in the pinned real-Paper smoke job. | Plugin enable and unit command-map checks do not prove that the exact console dispatch path parses and executes on the supported Paper build. |
+| 2026-07-20 | Prioritize pending durable recovery before active-round re-entry on join. | A contestant who disconnected during a failed relocation must reach the hub before the controller may reapply the current phase. |
+| 2026-07-20 | Settle an owned teleport as successful during close when the player has already reached its authoritative destination. | A move can arrive after dispatch but before its delayed confirmation; shutdown must not convert that real success into a false recovery failure. |
 
 ## Surprises & Discoveries
 
@@ -43,20 +45,44 @@ session.
 - The existing success path clears the player-data recovery marker on every confirmed
   teleport, including plot entry, rather than only after authoritative hub recovery. The
   lifecycle boundary must distinguish safe hub extraction from ordinary controller movement.
+- The first local gate could not locate Java through the shell. The repository-required Java
+  21 runtime was already installed at
+  `/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home`; binding `JAVA_HOME` to
+  that installation made the baseline and final gates reproducible without changing the
+  repository.
+- Independent review found that active-contestant join handling originally ran before pending
+  recovery, unusable-respawn hub success did not clear the old plot border, and close could
+  misclassify an arrival that settled before its confirmation task. All three paths now have
+  focused regression tests.
 
 ## Acceptance evidence
 
-- Pending: focused unit tests for BUILDING respawn success and unusable-plot containment.
-- Pending: recovery-store restart tests with simulated player-data save and clear failures.
-- Pending: runtime loss tests for the exact namespaced command path at round start,
-  relocation, and retry.
-- Pending: supervised-task tests for supersede, close, and exactly-once terminal callbacks.
-- Pending: containment tests for border timing and pending-recovery teleport restrictions in
-  IDLE.
-- Pending: `make ci-fast`, `./gradlew build`, and `./gradlew test` on Java 21.
-- Pending: real-Paper smoke assertion for the production namespaced teleport command path.
-- Pending: `/review` against `code_review.md` and complete PR feedback audit.
+- `RoundControllerTest` covers BUILDING respawn success, unusable-plot hub fallback,
+  active-contestant recovery-first rejoin, border timing, runtime command loss, IDLE movement
+  restriction, supersede cancellation, close failure settlement, and close-after-arrival
+  success settlement.
+- `TeleportRecoveryStoreTest` covers atomic add/remove across fresh store instances, malformed
+  input fail-closed behavior, and failed replacement without in-memory corruption. The
+  controller integration test combines a simulated `Player.saveData()` failure with an
+  on-disk store reopen and successful hub retry.
+- `TeleportTransportTest` pins the exact namespaced, explicit-world, UUID-targeted production
+  command including coordinates and rotation.
+- `make ci-fast` passed on Java 21 with 114 plugin tests and 13 renderer tests, all green.
+- A local Paper 1.21.11 build 132 smoke run enabled ScenarioCraft, executed
+  `minecraft:execute in minecraft:battle_world run minecraft:tp` against a marker entity,
+  confirmed its authoritative destination, and shut down with all dimensions saved.
+- Production source scans found no direct `Player.teleport`, `teleportAsync`, or
+  `PlayerMoveEvent`; console dispatch is isolated in `TeleportTransport`.
+- Independent `/review` against `code_review.md` found no P1 and no remaining actionable
+  findings after three lifecycle fixes were added and retested.
 
 ## Retrospective
 
-Pending implementation, verification, external review, and merge.
+The relocation code is now split at two narrow ownership boundaries: command construction and
+dispatch live in `TeleportTransport`, while durable pending UUIDs live in
+`TeleportRecoveryStore`. `RoundController` retains phase decisions and supervises every retry
+and confirmation task. The most important design correction was to make hub arrival a distinct
+terminal event: generic teleport success no longer clears recovery, and borders, Adventure
+mode, player data, and the atomic registry transition only in the order justified by an
+authoritative location. Local verification and review are complete; GitHub CI, external review,
+and merge remain delivery steps.

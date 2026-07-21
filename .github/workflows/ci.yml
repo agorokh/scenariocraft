@@ -186,6 +186,10 @@ jobs:
               if test -f logs/latest.log &&
                 grep -q "Done (" logs/latest.log; then
                 battle_log_offset=$(wc -c <logs/latest.log)
+                printf '%s\n' \
+                  'minecraft:execute in minecraft:battle_world run minecraft:summon minecraft:armor_stand 0 100 0 {Tags:["scenariocraft_transport_probe"],Invisible:1b,Marker:1b}' \
+                  'minecraft:execute in minecraft:battle_world run minecraft:tp @e[type=minecraft:armor_stand,tag=scenariocraft_transport_probe,limit=1] 3 100 4' \
+                  'minecraft:execute in minecraft:battle_world positioned 3 100 4 if entity @e[type=minecraft:armor_stand,tag=scenariocraft_transport_probe,distance=..0.1,limit=1] run say SCENARIOCRAFT_TELEPORT_TRANSPORT_OK' >&3
                 printf "battle start\n" >&3
                 break
               fi
@@ -284,6 +288,13 @@ jobs:
           if ! grep -q 'ScenarioCraft enabled' "${log}"; then
             printf 'ScenarioCraft post-onEnable readiness line was not found.\n'
             grep -n -C 4 -E 'ScenarioCraft|Enabling|Disabling|ERROR|Exception' \
+              "${log}" || true
+            failed=1
+          fi
+          if ! grep -q 'SCENARIOCRAFT_TELEPORT_TRANSPORT_OK' "${log}"; then
+            printf 'The exact namespaced execute-in-world teleport path was not confirmed.\n'
+            grep -n -C 4 -E \
+              'SCENARIOCRAFT_TELEPORT_TRANSPORT_OK|Unknown or incomplete command|No entity was found' \
               "${log}" || true
             failed=1
           fi
