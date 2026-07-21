@@ -50,9 +50,19 @@ public final class ArenaConfigLoader {
 
     public static ResultAnnouncementSettings loadResultAnnouncements(FileConfiguration config) {
         return new ResultAnnouncementSettings(
-                inRange(config, "results-poll-seconds", 1, 60),
-                inRange(config, "results-celebration-bursts", 1, 10),
-                inRange(config, "results-celebration-interval-ticks", 1, 100));
+                inRangeOrDefault(config, "results-poll-seconds", 1, 60, 2),
+                inRangeOrDefault(config, "results-celebration-bursts", 1, 10, 3),
+                inRangeOrDefault(
+                        config, "results-celebration-interval-ticks", 1, 100, 10));
+    }
+
+    private static int inRangeOrDefault(
+            FileConfiguration config,
+            String path,
+            int minimum,
+            int maximum,
+            int defaultValue) {
+        return config.isSet(path) ? inRange(config, path, minimum, maximum) : defaultValue;
     }
 
     private static int positiveInt(FileConfiguration config, String path) {

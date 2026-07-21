@@ -48,6 +48,14 @@ class ArenaConfigLoaderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> ArenaConfigLoader.loadResultAnnouncements(invalidPolling));
+
+        YamlConfiguration legacy = packagedConfig();
+        legacy.set("results-poll-seconds", null);
+        legacy.set("results-celebration-bursts", null);
+        legacy.set("results-celebration-interval-ticks", null);
+        assertEquals(
+                new ResultAnnouncementSettings(2, 3, 10),
+                ArenaConfigLoader.loadResultAnnouncements(legacy));
     }
 
     @Test

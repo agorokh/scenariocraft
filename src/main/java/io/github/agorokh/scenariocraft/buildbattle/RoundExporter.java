@@ -1,9 +1,16 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
+import java.util.Optional;
+
 /** Receives one immutable round description when BUILDING enters REVEAL. */
 @FunctionalInterface
 interface RoundExporter extends AutoCloseable {
     void export(RoundExportRequest request);
+
+    /** Identifies the round most recently accepted by this exporter. */
+    default Optional<String> currentRoundId() {
+        return Optional.empty();
+    }
 
     /** Invalidates any snapshot that could still be reading mutable arena blocks. */
     default void cancel() {}

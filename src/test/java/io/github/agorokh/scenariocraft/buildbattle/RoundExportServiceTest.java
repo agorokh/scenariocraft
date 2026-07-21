@@ -132,6 +132,7 @@ class RoundExportServiceTest {
 
         exporter.export(request);
         assertTrue(exporter.isBusy());
+        assertTrue(exporter.currentRoundId().filter("round-20260720-204209"::equals).isPresent());
         exporter.cancel();
         assertFalse(exporter.isBusy());
         snapshotTick.get().run();

@@ -29,6 +29,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private final BattleResultFormatter formatter = new BattleResultFormatter();
     private final ResultAnnouncementSettings settings;
     private final Supplier<RoundPhase> phase;
+    private final Supplier<Optional<String>> resultRoundId;
     private final Function<String, Optional<Location>> winnerLocation;
     private final Logger logger;
     private final AtomicBoolean readInFlight = new AtomicBoolean();
@@ -41,6 +42,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             Path roundsDirectory,
             ResultAnnouncementSettings settings,
             Supplier<RoundPhase> phase,
+            Supplier<Optional<String>> resultRoundId,
             Function<String, Optional<Location>> winnerLocation,
             Logger logger) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -48,6 +50,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
         this.repository = new BattleResultRepository(roundsDirectory);
         this.settings = Objects.requireNonNull(settings, "settings");
         this.phase = Objects.requireNonNull(phase, "phase");
+        this.resultRoundId = Objects.requireNonNull(resultRoundId, "resultRoundId");
         this.winnerLocation = Objects.requireNonNull(winnerLocation, "winnerLocation");
         this.logger = Objects.requireNonNull(logger, "logger");
         this.pollingTask =
@@ -101,10 +104,16 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
         if (closed || phase.get() != RoundPhase.REVEAL || readInFlight.get()) {
             return;
         }
+        Optional<String> expectedRound = resultRoundId.get();
+        if (expectedRound.isEmpty()) {
+            return;
+        }
+        String expectedRoundId = expectedRound.orElseThrow();
         readAsync(
-                repository::latest,
+                () -> repository.round(expectedRoundId),
                 result -> {
-                    if (phase.get() == RoundPhase.REVEAL) {
+                    if (phase.get() == RoundPhase.REVEAL
+                            && resultRoundId.get().filter(expectedRoundId::equals).isPresent()) {
                         result.ifPresent(this::announce);
                     }
                 },

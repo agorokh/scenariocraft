@@ -50,6 +50,32 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void revealPollingDoesNotReplayThePreviousRoundsLatestResult() throws Exception {
+        Path rounds = temporaryDirectory.resolve("rounds");
+        Path previous = Files.createDirectories(rounds.resolve("round-20260721-190000"));
+        Files.writeString(
+                previous.resolve("results.txt"),
+                BattleResultRepositoryTest.validResult("round-20260721-190000"));
+        ServiceRig rig =
+                new ServiceRig(
+                        rounds,
+                        RoundPhase.REVEAL,
+                        "round-20260721-193000");
+
+        rig.poll.get().run();
+        assertTrue(rig.titles.isEmpty());
+
+        Path active = Files.createDirectories(rounds.resolve("round-20260721-193000"));
+        Files.writeString(
+                active.resolve("results.txt"),
+                BattleResultRepositoryTest.validResult("round-20260721-193000"));
+        rig.poll.get().run();
+
+        assertEquals(1, rig.titles.size());
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();
@@ -57,6 +83,10 @@ class BattleResultServiceTest {
         private final BattleResultService service;
 
         private ServiceRig(Path rounds, RoundPhase phase) {
+            this(rounds, phase, "round-20260721-193000");
+        }
+
+        private ServiceRig(Path rounds, RoundPhase phase, String resultRoundId) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             BukkitScheduler scheduler =
                     proxy(
@@ -103,6 +133,7 @@ class BattleResultServiceTest {
                             rounds,
                             new ResultAnnouncementSettings(2, 3, 10),
                             () -> phase,
+                            () -> Optional.of(resultRoundId),
                             ignored -> Optional.empty(),
                             Logger.getAnonymousLogger());
         }

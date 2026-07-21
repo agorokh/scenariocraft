@@ -87,6 +87,7 @@ public final class ScenarioCraftPlugin extends JavaPlugin {
                         getDataFolder().toPath().resolve("rounds"),
                         resultSettings,
                         roundController::phase,
+                        roundController::resultRoundId,
                         roundController::winnerCelebrationLocation,
                         getLogger());
         BattleCommand battleCommand =

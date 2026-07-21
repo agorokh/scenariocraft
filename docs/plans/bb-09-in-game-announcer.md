@@ -35,6 +35,8 @@ session.
 | 2026-07-20 | Load RCON host, port, password, and timeouts from environment overrides or an optional external `judge.yml`, with no repository credential. | The issue requires both configuration surfaces and `code_review.md` forbids credentials in source, fixtures, logs, or history. |
 | 2026-07-21 | Make the only RCON payload `battle announce <round-id>` and accept it only from console/RCON senders. | The judge should not own Bukkit formatting or world effects, and a narrow validated round identifier keeps the authenticated command surface small. |
 | 2026-07-21 | Parse `results.txt` with fixed headers, bounded bytes/lines/fields, then format only parsed fields with JSON punctuation removed and per-line clamps. | Copied result files are an external input; strict parsing prevents raw JSON, failure details, control characters, or an unbounded line from reaching players. |
+| 2026-07-21 | Carry the exact exporter-allocated round ID into the controller and require polling to load that directory, never the globally latest result. | A later REVEAL normally begins before its judge result exists; global latest discovery would replay the previous round before announcing the current one. |
+| 2026-07-21 | Treat absent result-announcement keys as versioned defaults while validating any explicitly configured value. | `saveDefaultConfig()` must not make an existing server config unable to boot after an upgrade adds new optional settings. |
 
 ## Surprises & Discoveries
 
@@ -52,11 +54,16 @@ session.
 - Paper exposes remote-console and local-console sender types separately. The hidden
   `battle announce` path accepts only those two types; players and command blocks cannot use
   the judge's announcement path.
+- The first implementation review found two lifecycle edges that unit happy paths missed:
+  “latest result” is not the same as “active round result,” and packaged config defaults do
+  not guarantee upgrade safety for an already-written server config. Both became focused
+  regression tests before the replacement head was pushed.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21: plugin 132 tests, judge 73 tests, renderer 14 tests, zero failures.
+  passed on 2026-07-21 after merging current `main`: plugin 244 tests, judge 73 tests,
+  renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
 - `BattleResultServiceTest` proves REVEAL polling announces a copied `results.txt` once and
@@ -64,6 +71,10 @@ session.
   enforce byte/line/field bounds, chat-line limits, kid-safe no-winner text, and no raw JSON
   punctuation. `BattleResultRepositoryTest` uses a round containing only copied
   `results.txt`, with no local manifest or JSON dependency.
+- `BattleResultServiceTest.revealPollingDoesNotReplayThePreviousRoundsLatestResult` proves
+  the poller stays silent while only the previous round has results, then announces exactly
+  once when the exporter-selected active round appears. `ArenaConfigLoaderTest` removes all
+  three new keys and verifies legacy configurations receive safe defaults.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

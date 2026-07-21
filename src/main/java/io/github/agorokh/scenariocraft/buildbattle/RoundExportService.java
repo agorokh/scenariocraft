@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
@@ -40,6 +41,7 @@ final class RoundExportService implements RoundExporter {
     private boolean preparingChunks;
     private boolean writing;
     private boolean closed;
+    private String currentRoundId;
 
     RoundExportService(
             Plugin plugin,
@@ -84,10 +86,15 @@ final class RoundExportService implements RoundExporter {
         if (activeSnapshot != null || writing) {
             throw new IllegalStateException("a round export is already in progress");
         }
-        activeSnapshot =
-                new BatchedRoundSnapshot(ROUND_ID_FORMAT.format(clock.instant()), request);
+        currentRoundId = ROUND_ID_FORMAT.format(clock.instant());
+        activeSnapshot = new BatchedRoundSnapshot(currentRoundId, request);
         preparingChunks = true;
         prepareChunks(request, ++preparationGeneration);
+    }
+
+    @Override
+    public synchronized Optional<String> currentRoundId() {
+        return Optional.ofNullable(currentRoundId);
     }
 
     @Override
