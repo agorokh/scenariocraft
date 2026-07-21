@@ -46,15 +46,26 @@ final class BattleResultsReader {
     }
 
     Optional<LatestResult> latest() throws IOException {
-        return findLatest(true);
+        return findLatest();
     }
 
-    Optional<LatestResult> latestRound() throws IOException {
-        return findLatest(false);
+    Optional<LatestResult> latestRound(String roundId) throws IOException {
+        if (roundId == null || !ROUND_DIRECTORY.matcher(roundId).matches()) {
+            throw new IllegalArgumentException("active round id is invalid");
+        }
+        if (!Files.isDirectory(roundsDirectory, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(roundsDirectory)) {
+            return Optional.empty();
+        }
+        Path roundDirectory = roundsDirectory.resolve(roundId);
+        if (!Files.isDirectory(roundDirectory, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(roundDirectory)) {
+            return Optional.empty();
+        }
+        return readRound(roundDirectory);
     }
 
-    private Optional<LatestResult> findLatest(boolean skipRoundsWithoutResults)
-            throws IOException {
+    private Optional<LatestResult> findLatest() throws IOException {
         if (!Files.isDirectory(roundsDirectory, LinkOption.NOFOLLOW_LINKS)
                 || Files.isSymbolicLink(roundsDirectory)) {
             return Optional.empty();
@@ -75,22 +86,27 @@ final class BattleResultsReader {
             throw new IOException("round directory count exceeds the supported limit");
         }
         for (Path roundDirectory : roundDirectories) {
-            Path results = roundDirectory.resolve("results.txt");
-            if (!Files.isRegularFile(results, LinkOption.NOFOLLOW_LINKS)
-                    || Files.isSymbolicLink(results)) {
-                if (!skipRoundsWithoutResults) {
-                    return Optional.empty();
-                }
+            Optional<LatestResult> result = readRound(roundDirectory);
+            if (result.isEmpty()) {
                 continue;
             }
-            byte[] bytes = readBounded(results);
-            BattleResultSummary summary = parse(decodeUtf8(bytes));
-            if (!summary.roundId().equals(roundDirectory.getFileName().toString())) {
-                throw new IOException("results.txt round does not match its directory");
-            }
-            return Optional.of(new LatestResult(summary, fingerprint(bytes)));
+            return result;
         }
         return Optional.empty();
+    }
+
+    private Optional<LatestResult> readRound(Path roundDirectory) throws IOException {
+        Path results = roundDirectory.resolve("results.txt");
+        if (!Files.isRegularFile(results, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(results)) {
+            return Optional.empty();
+        }
+        byte[] bytes = readBounded(results);
+        BattleResultSummary summary = parse(decodeUtf8(bytes));
+        if (!summary.roundId().equals(roundDirectory.getFileName().toString())) {
+            throw new IOException("results.txt round does not match its directory");
+        }
+        return Optional.of(new LatestResult(summary, fingerprint(bytes)));
     }
 
     static BattleResultSummary parse(String text) {

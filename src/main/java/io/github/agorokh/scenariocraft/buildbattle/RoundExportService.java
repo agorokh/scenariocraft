@@ -76,7 +76,7 @@ final class RoundExportService implements RoundExporter {
     }
 
     @Override
-    public synchronized void export(RoundExportRequest request) {
+    public synchronized String export(RoundExportRequest request) {
         Objects.requireNonNull(request, "request");
         if (closed) {
             throw new IllegalStateException("round exporter is closed");
@@ -84,10 +84,11 @@ final class RoundExportService implements RoundExporter {
         if (activeSnapshot != null || writing) {
             throw new IllegalStateException("a round export is already in progress");
         }
-        activeSnapshot =
-                new BatchedRoundSnapshot(ROUND_ID_FORMAT.format(clock.instant()), request);
+        String roundId = ROUND_ID_FORMAT.format(clock.instant());
+        activeSnapshot = new BatchedRoundSnapshot(roundId, request);
         preparingChunks = true;
         prepareChunks(request, ++preparationGeneration);
+        return roundId;
     }
 
     @Override

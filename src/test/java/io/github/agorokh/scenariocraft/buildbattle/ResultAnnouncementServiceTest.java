@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
@@ -98,7 +99,8 @@ class ResultAnnouncementServiceTest {
                             case "getLogger" -> Logger.getAnonymousLogger();
                             default -> defaultValue(method.getReturnType());
                         });
-        BattleRound reveal = new FixedPhaseRound(RoundPhase.REVEAL);
+        BattleRound reveal =
+                new FixedPhaseRound(RoundPhase.REVEAL, "round-20260721-193000");
         CommandSender commandSender = proxy(
                 CommandSender.class,
                 (ignored, method, arguments) -> {
@@ -178,7 +180,7 @@ class ResultAnnouncementServiceTest {
                 });
         ResultAnnouncementService service = new ResultAnnouncementService(
                 plugin,
-                new FixedPhaseRound(RoundPhase.IDLE),
+                new FixedPhaseRound(RoundPhase.IDLE, null),
                 new BattleResultsReader(temporaryDirectory.resolve("missing")),
                 ignored -> null,
                 20L);
@@ -193,7 +195,12 @@ class ResultAnnouncementServiceTest {
                 List.of("No judge results yet — check back after the reveal!"), messages);
     }
 
-    private record FixedPhaseRound(RoundPhase phase) implements BattleRound {
+    private record FixedPhaseRound(RoundPhase phase, String roundId) implements BattleRound {
+        @Override
+        public Optional<String> activeResultRoundId() {
+            return Optional.ofNullable(roundId);
+        }
+
         @Override
         public void start(CommandSender sender) {}
 

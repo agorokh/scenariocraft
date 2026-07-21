@@ -128,35 +128,43 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
         if (closed.get()) {
             return;
         }
+        Optional<String> roundId = round.activeResultRoundId();
+        if (roundId.isEmpty()) {
+            sender.sendMessage(NO_RESULTS_MESSAGE);
+            return;
+        }
         try {
             server.getScheduler()
-                    .runTaskAsynchronously(plugin, () -> readLatestForAnnouncement(sender));
+                    .runTaskAsynchronously(
+                            plugin, () -> readLatestForAnnouncement(sender, roundId.get()));
         } catch (RuntimeException failure) {
             logReadFailure(failure);
             sender.sendMessage(READ_FAILURE_MESSAGE);
         }
     }
 
-    private void readLatestForAnnouncement(CommandSender sender) {
+    private void readLatestForAnnouncement(CommandSender sender, String roundId) {
         ReadResult result;
         try {
-            result = new ReadResult(reader.latestRound(), null);
+            result = new ReadResult(reader.latestRound(roundId), null);
         } catch (IOException | RuntimeException failure) {
             result = new ReadResult(Optional.empty(), failure);
         }
         ReadResult completed = result;
         try {
-            server.getScheduler().runTask(plugin, () -> completeAnnouncement(sender, completed));
+            server.getScheduler()
+                    .runTask(plugin, () -> completeAnnouncement(sender, roundId, completed));
         } catch (RuntimeException failure) {
             logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
         }
     }
 
-    private void completeAnnouncement(CommandSender sender, ReadResult result) {
+    private void completeAnnouncement(CommandSender sender, String roundId, ReadResult result) {
         if (closed.get()) {
             return;
         }
-        if (round.phase() != RoundPhase.REVEAL) {
+        if (round.phase() != RoundPhase.REVEAL
+                || !round.activeResultRoundId().equals(Optional.of(roundId))) {
             sender.sendMessage(
                     "Judge results are safe on disk; the in-game celebration only plays during REVEAL.");
             return;
@@ -183,33 +191,41 @@ public final class ResultAnnouncementService implements BattleResultsReporter, A
                 || !pollInFlight.compareAndSet(false, true)) {
             return;
         }
+        Optional<String> roundId = round.activeResultRoundId();
+        if (roundId.isEmpty()) {
+            pollInFlight.set(false);
+            return;
+        }
         try {
-            server.getScheduler().runTaskAsynchronously(plugin, this::readLatestForPoll);
+            server.getScheduler()
+                    .runTaskAsynchronously(plugin, () -> readLatestForPoll(roundId.get()));
         } catch (RuntimeException failure) {
             pollInFlight.set(false);
             logReadFailure(failure);
         }
     }
 
-    private void readLatestForPoll() {
+    private void readLatestForPoll(String roundId) {
         ReadResult result;
         try {
-            result = new ReadResult(reader.latestRound(), null);
+            result = new ReadResult(reader.latestRound(roundId), null);
         } catch (IOException | RuntimeException failure) {
             result = new ReadResult(Optional.empty(), failure);
         }
         ReadResult completed = result;
         try {
-            server.getScheduler().runTask(plugin, () -> completePoll(completed));
+            server.getScheduler().runTask(plugin, () -> completePoll(roundId, completed));
         } catch (RuntimeException failure) {
             pollInFlight.set(false);
             logger.log(Level.WARNING, "Could not return judge results to the server thread", failure);
         }
     }
 
-    private void completePoll(ReadResult result) {
+    private void completePoll(String roundId, ReadResult result) {
         pollInFlight.set(false);
-        if (closed.get() || round.phase() != RoundPhase.REVEAL) {
+        if (closed.get()
+                || round.phase() != RoundPhase.REVEAL
+                || !round.activeResultRoundId().equals(Optional.of(roundId))) {
             return;
         }
         if (result.failure() != null) {

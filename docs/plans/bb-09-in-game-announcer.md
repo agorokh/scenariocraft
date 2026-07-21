@@ -38,6 +38,7 @@ session.
 | 2026-07-21 | Read player-requested result replays asynchronously too, and replace machine-oriented no-winner reasons with a fixed warm message. | Players may issue the replay command repeatedly against shared storage, and operational quorum diagnostics are not appropriate judge feedback for children. |
 | 2026-07-21 | Skip `judge.yml` entirely when the environment supplies the complete RCON trio. | Environment overrides must remain usable when an optional local configuration file is stale, malformed, or inaccessible. |
 | 2026-07-21 | Use the async read/main-thread delivery boundary for RCON-triggered announcements as well as polling and player replay. | Every path reads the same potentially shared results directory; the transport that initiates a read does not make synchronous filesystem work safe on Paper's main thread. |
+| 2026-07-21 | Bind REVEAL polling and RCON announcements to the round ID returned when the active export starts. | After restart, the newest completed directory may belong to the prior battle while the current snapshot is still being written; global-newest selection can celebrate a stale winner in the new arena. |
 
 ## Surprises & Discoveries
 
@@ -73,6 +74,10 @@ session.
   same async handoff, unchecked reader failures are converted into completed read failures so
   the single-flight poll gate always reopens, and legacy Minecraft section-sign formatting is
   stripped before any judge text reaches chat or titles.
+- A later review found the restart/export window where global-newest polling could announce a
+  prior battle. The exporter now returns the active round ID, the controller exposes it to the
+  announcement service, and async completion revalidates both phase and round ID before any
+  player-facing effect.
 
 ## Acceptance evidence
 

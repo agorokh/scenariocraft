@@ -605,6 +605,9 @@ class RoundControllerTest {
         rig.runBlockTick();
 
         assertEquals(1, rig.exportRequests.size());
+        assertEquals(
+                java.util.Optional.of("round-20260721-193000"),
+                rig.controller.activeResultRoundId());
         RoundExportRequest request = rig.exportRequests.getFirst();
         assertEquals("A dragon treehouse", request.task());
         assertEquals(ArenaWorldService.WORLD_NAME, request.world());
@@ -688,7 +691,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {});
+                        ignored -> "round-20260721-193000");
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(2, rig.inventoryContents.get().length);
@@ -737,7 +740,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {});
+                        ignored -> "round-20260721-193000");
 
         assertTrue(rig.persistentData.isEmpty());
         assertEquals(0.5, rig.lastTeleport.get().getX());
@@ -1815,7 +1818,7 @@ class RoundControllerTest {
                         Logger.getAnonymousLogger(),
                         ignored -> 0,
                         ignored -> {},
-                        ignored -> {},
+                        ignored -> "round-20260721-193000",
                         new TeleportTransport(rig.server),
                         reopenedStore);
 
@@ -2530,10 +2533,11 @@ class RoundControllerTest {
                             },
                             new RoundExporter() {
                                 @Override
-                                public void export(RoundExportRequest request) {
+                                public String export(RoundExportRequest request) {
                                     exportRequests.add(request);
                                     exportBusy.set(true);
                                     exportReading.set(true);
+                                    return "round-20260721-193000";
                                 }
 
                                 @Override

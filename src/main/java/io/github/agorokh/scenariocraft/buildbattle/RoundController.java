@@ -107,6 +107,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
     private final RoundExporter roundExporter;
+    private String activeResultRoundId;
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
     private final RoundStateMachine state = new RoundStateMachine();
@@ -196,7 +197,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 logger,
                 randomIndex,
                 taskBookPlacer,
-                ignored -> {},
+                ignored -> "round-19700101-000000",
                 new TeleportTransport(plugin.getServer()),
                 TeleportRecoveryStore.inMemory());
     }
@@ -315,6 +316,11 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @Override
+    public java.util.Optional<String> activeResultRoundId() {
+        return java.util.Optional.ofNullable(activeResultRoundId);
+    }
+
+    @Override
     public void start(CommandSender sender) {
         Objects.requireNonNull(sender, "sender");
         if (closed) {
@@ -336,6 +342,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "The last build is still being packed up safely — just a moment!");
             return;
         }
+        activeResultRoundId = null;
 
         List<Player> players =
                 server.getOnlinePlayers().stream()
@@ -1274,6 +1281,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void exportRound() {
+        activeResultRoundId = null;
         if (currentTask == null) {
             logger.severe("SCENARIOCRAFT_EXPORT_FAILURE no task is available at REVEAL");
             return;
@@ -1297,7 +1305,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             plotNumber++;
         }
         try {
-            roundExporter.export(
+            activeResultRoundId = roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
         } catch (RuntimeException failure) {

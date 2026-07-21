@@ -37,7 +37,16 @@ class BattleResultsReaderTest {
         assertEquals("Alex", latest.summary().winner().player());
         assertEquals("p1", latest.summary().winner().plotId());
         assertEquals(2, latest.summary().contestants().size());
-        assertTrue(new BattleResultsReader(rounds).latestRound().isEmpty());
+        assertTrue(new BattleResultsReader(rounds)
+                .latestRound("round-20260721-194500")
+                .isEmpty());
+        assertEquals(
+                "round-20260721-193000",
+                new BattleResultsReader(rounds)
+                        .latestRound("round-20260721-193000")
+                        .orElseThrow()
+                        .summary()
+                        .roundId());
     }
 
     @Test

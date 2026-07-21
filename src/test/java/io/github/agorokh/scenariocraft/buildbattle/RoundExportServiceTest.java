@@ -1,5 +1,6 @@
 package io.github.agorokh.scenariocraft.buildbattle;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -130,7 +131,7 @@ class RoundExportServiceTest {
                                 new RoundExportRequest.Plot(
                                         "p1", "KidAva", 100, 64, 200, 2, 2, 2)));
 
-        exporter.export(request);
+        assertEquals("round-20260720-204209", exporter.export(request));
         assertTrue(exporter.isBusy());
         exporter.cancel();
         assertFalse(exporter.isBusy());
