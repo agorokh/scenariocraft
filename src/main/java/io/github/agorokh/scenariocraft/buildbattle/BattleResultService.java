@@ -178,7 +178,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             }
         }
         result.winner().flatMap(winner -> winnerLocation.apply(winner.player())).ifPresent(this::celebrate);
-        logger.info("Announced judge results for " + result.roundId() + ".");
+        logger.info("SCENARIOCRAFT_RESULTS_ANNOUNCED " + result.roundId());
     }
 
     private void celebrate(Location location) {
