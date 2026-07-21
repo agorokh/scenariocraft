@@ -3,6 +3,7 @@ package io.github.agorokh.scenariocraft.judge;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.PrintWriter;
@@ -22,7 +23,7 @@ class JudgeCouncilTest {
             new Persona("Three", "Voice three"));
 
     @Test
-    void ranksContestantsByMeanAcrossPersonaCriterionMeans() {
+    void ranksContestantsByMeanAcrossPersonaCriterionMeans() throws Exception {
         PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
             int score = "p1".equals(plotId) ? 8 : 6;
             return verdict(persona.name(), score);
@@ -38,7 +39,7 @@ class JudgeCouncilTest {
     }
 
     @Test
-    void retriesOnceThenFailsClosedWhenTwoPersonasStillFail() {
+    void retriesOnceThenFailsClosedWhenTwoPersonasStillFail() throws Exception {
         Map<String, AtomicInteger> calls = new HashMap<>();
         PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
             calls.computeIfAbsent(persona.name(), ignored -> new AtomicInteger())
@@ -60,7 +61,7 @@ class JudgeCouncilTest {
     }
 
     @Test
-    void oneTransientFailureUsesSecondAttemptAndStillCountsVerdict() {
+    void oneTransientFailureUsesSecondAttemptAndStillCountsVerdict() throws Exception {
         AtomicInteger calls = new AtomicInteger();
         PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
             if ("One".equals(persona.name()) && "p1".equals(plotId)
@@ -77,7 +78,21 @@ class JudgeCouncilTest {
         assertNull(results.noWinner());
     }
 
-    private RoundResults run(PersonaJudge judge) {
+    @Test
+    void nonRetryableFailureStopsTheCouncilImmediately() {
+        AtomicInteger calls = new AtomicInteger();
+        PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
+            calls.incrementAndGet();
+            throw new JudgeException("cancelled", null, false);
+        };
+
+        JudgeException exception = assertThrows(JudgeException.class, () -> run(judge));
+
+        assertEquals("cancelled", exception.getMessage());
+        assertEquals(1, calls.get());
+    }
+
+    private RoundResults run(PersonaJudge judge) throws JudgeException {
         JudgeRound round = new JudgeRound(
                 1,
                 "round-20260721-193000",

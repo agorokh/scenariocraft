@@ -17,7 +17,9 @@ key is never accepted as an argument or written to output. Live calls default to
 per-attempt timeout; set `SCENARIOCRAFT_JUDGE_TIMEOUT_SECONDS` to a positive integer to
 override it.
 
-The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory.
-BB-10 owns those production content files. Each round must contain `manifest.json` and either
-all seven PNGs under `out/<plot_id>/` or `<plot_id>.voxels.json` for the renderer fallback.
-The command writes `results.json` and `results.txt` into the round directory.
+The command reads `judge/personas.yml` and `judge/rubric.md` relative to its working directory
+by default. To run it from another directory, set `SCENARIOCRAFT_JUDGE_CONFIG_DIR` to the
+directory containing those two files. BB-10 owns the production content. Each round must
+contain `manifest.json` and either all seven PNGs under `out/<plot_id>/` or
+`<plot_id>.voxels.json` for the renderer fallback. The command writes `results.json` and
+`results.txt` into the round directory.

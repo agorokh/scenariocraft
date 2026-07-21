@@ -20,6 +20,7 @@ CI, and live acceptance evidence.
 - [x] Capture the issue's acceptance evidence.
 - [x] Complete `/review` and resolve P1 findings.
 - [x] Record the retrospective.
+- [x] 2026-07-21 resolve external review findings against the integrated BB-10 content.
 
 Update this list as work proceeds. Add timestamps when a checkpoint is useful to the next
 session.
@@ -33,6 +34,8 @@ session.
 | 2026-07-20 | Treat the newest issue #10 comment as the frozen BB-08/BB-10 contract: runtime reads `judge/personas.yml` and `judge/rubric.md`, while this PR commits only fixture versions plus shape/drift guards. | BB-10 owns the human-authored personas and rubric; changing or duplicating that content here would break the parallel-work boundary. |
 | 2026-07-20 | Compute each persona score as the arithmetic mean of the four integer criteria and rank contestants by the mean across successful personas. | This follows the frozen verdict contract and avoids trusting a redundant model-supplied aggregate. |
 | 2026-07-20 | Write partial verdicts but set `no_winner: true` and return non-zero whenever any contestant has fewer than configured `min_judges` valid verdicts after one retry per persona. | The round must fail closed rather than quietly ranking builds from unequal or one-person councils. |
+| 2026-07-21 | Treat model output, response lifecycle state, and round image paths as untrusted inputs: reject cruel or strength-free comments, non-completed responses, symbolic links, and plot-ID mismatches. | Judge output is player-facing and image payloads leave the machine, so validation must fail closed before either publishing text or uploading bytes. |
+| 2026-07-21 | Make the persona/rubric directory configurable with `SCENARIOCRAFT_JUDGE_CONFIG_DIR`, while preserving `judge/` as the repository-root default. | Operators can launch the installed CLI outside the repository root without weakening the frozen filenames or duplicating BB-10 content. |
 
 ## Surprises & Discoveries
 
@@ -48,6 +51,9 @@ session.
 - The repository-wide `out/` ignore rule also matches the judge's normative `out/p<N>/`
   fixture contract. The 14 intentional PNG fixtures therefore have to be force-added while
   generated `results.json` and `results.txt` remain uncommitted run output.
+- BB-10 merged while this PR was under review. Integrating current `main` made its production
+  `judge/personas.yml` and `judge/rubric.md` available, so the shape and drift guard now runs
+  against the real content as well as the isolated fixture.
 
 ## Acceptance evidence
 
@@ -76,6 +82,12 @@ session.
   Sam/p2 scored `1.0833333333333333`, and `results.json` named Alex/p1 the mean-based winner.
   The corresponding human output rounded the means to `3.83` and `1.08`; all six comments
   named a concrete strength and offered one kind next step.
+- Review-repair focused tests passed for kid-safe comment validation, deterministic sentence
+  boundaries, non-completed Responses payload rejection, sanitized HTTP diagnostics,
+  cancellation without retry, symbolic-link rejection, voxel ownership, configurable content
+  paths, and the merged production persona/rubric contract.
+- The post-repair `make ci-fast` gate and the workflow-equivalent installed judge dry run both
+  passed on Java 21; the dry run retained the expected `8.75` / `6.75` means and Alex winner.
 
 ## Retrospective
 

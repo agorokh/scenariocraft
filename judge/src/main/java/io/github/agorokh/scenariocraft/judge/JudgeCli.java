@@ -58,12 +58,27 @@ public final class JudgeCli {
                 return 2;
             }
         }
+        Path configDirectory;
+        try {
+            configDirectory = configDirectory(environment);
+        } catch (IllegalArgumentException exception) {
+            diagnostics.println("SCENARIOCRAFT_JUDGE_CONFIG_DIR must be a valid non-blank path.");
+            return 2;
+        }
         return new JudgeApplication().run(
                 Path.of(arguments[1]),
-                Path.of("judge/personas.yml"),
-                Path.of("judge/rubric.md"),
+                configDirectory.resolve("personas.yml"),
+                configDirectory.resolve("rubric.md"),
                 judge,
                 output,
                 diagnostics);
+    }
+
+    static Path configDirectory(Map<String, String> environment) {
+        String value = environment.getOrDefault("SCENARIOCRAFT_JUDGE_CONFIG_DIR", "judge");
+        if (value.isBlank()) {
+            throw new IllegalArgumentException("config directory must be non-blank");
+        }
+        return Path.of(value);
     }
 }

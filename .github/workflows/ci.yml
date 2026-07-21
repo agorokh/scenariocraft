@@ -39,6 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -x judge/build/install/judge/bin/judge
           cd judge/src/test/resources/fixtures/runtime
           ../../../../../build/install/judge/bin/judge \
             --round rounds/round-20260721-193000 --dry-run

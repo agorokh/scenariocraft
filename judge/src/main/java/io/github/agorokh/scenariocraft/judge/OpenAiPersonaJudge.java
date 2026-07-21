@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 final class OpenAiPersonaJudge implements PersonaJudge {
     static final String MODEL = "gpt-5.6";
@@ -27,6 +28,9 @@ final class OpenAiPersonaJudge implements PersonaJudge {
     private static final Set<String> VERDICT_KEYS =
             Set.of("persona", "reasoning", "scores", "comment");
     private static final Set<String> SCORE_KEYS = Set.copyOf(JudgeConfig.CRITERIA);
+    private static final Pattern SECRET_TOKEN =
+            Pattern.compile("(?i)\\b(?:sk|key)-[A-Za-z0-9_-]{8,}\\b");
+    private static final Pattern SAFE_REQUEST_ID = Pattern.compile("[A-Za-z0-9_-]{1,128}");
 
     private final HttpClient client;
     private final URI endpoint;
@@ -67,12 +71,16 @@ final class OpenAiPersonaJudge implements PersonaJudge {
             HttpResponse<String> response =
                     client.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new JudgeException("OpenAI returned HTTP " + response.statusCode());
+                throw new JudgeException(httpErrorMessage(
+                        response.statusCode(),
+                        response.body(),
+                        response.headers().firstValue("x-request-id").orElse(null),
+                        apiKey));
             }
             return parseResponse(response.body(), persona.name());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new JudgeException("OpenAI request was interrupted", exception);
+            throw new JudgeException("OpenAI request was interrupted", exception, false);
         } catch (IOException exception) {
             throw new JudgeException("OpenAI request failed", exception);
         }
@@ -147,7 +155,16 @@ final class OpenAiPersonaJudge implements PersonaJudge {
             if (!parsed.isJsonObject()) {
                 throw new JudgeException("OpenAI response must contain a JSON object");
             }
-            JsonElement outputValue = parsed.getAsJsonObject().get("output");
+            JsonObject response = parsed.getAsJsonObject();
+            JsonElement errorValue = response.get("error");
+            if (errorValue != null && !errorValue.isJsonNull()) {
+                throw new JudgeException("OpenAI response reported an error");
+            }
+            String status = requireString(response, "status");
+            if (!"completed".equals(status)) {
+                throw new JudgeException("OpenAI response was not completed");
+            }
+            JsonElement outputValue = response.get("output");
             if (outputValue == null || !outputValue.isJsonArray()) {
                 throw new JudgeException("OpenAI response is missing output items");
             }
@@ -213,6 +230,52 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         } catch (JsonParseException | IllegalArgumentException exception) {
             throw new JudgeException("OpenAI returned a malformed verdict", exception);
         }
+    }
+
+    static String httpErrorMessage(int status, String responseBody, String requestId, String apiKey) {
+        StringBuilder message = new StringBuilder("OpenAI returned HTTP ").append(status);
+        String apiMessage = extractApiErrorMessage(responseBody);
+        if (apiMessage != null) {
+            message.append(": ").append(sanitizeDiagnostic(apiMessage, apiKey));
+        }
+        if (requestId != null && SAFE_REQUEST_ID.matcher(requestId).matches()) {
+            message.append(" (request ").append(requestId).append(')');
+        }
+        return message.toString();
+    }
+
+    private static String extractApiErrorMessage(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) {
+            return null;
+        }
+        try {
+            JsonElement parsed = JsonParser.parseString(responseBody);
+            if (!parsed.isJsonObject()) {
+                return null;
+            }
+            JsonElement error = parsed.getAsJsonObject().get("error");
+            if (error == null || !error.isJsonObject()) {
+                return null;
+            }
+            JsonElement message = error.getAsJsonObject().get("message");
+            return message != null && message.isJsonPrimitive()
+                    && message.getAsJsonPrimitive().isString()
+                    ? message.getAsString()
+                    : null;
+        } catch (JsonParseException exception) {
+            return null;
+        }
+    }
+
+    private static String sanitizeDiagnostic(String value, String apiKey) {
+        String sanitized = apiKey == null || apiKey.isEmpty()
+                ? value
+                : value.replace(apiKey, "[redacted]");
+        sanitized = SECRET_TOKEN.matcher(sanitized).replaceAll("[redacted]")
+                .replaceAll("[\\p{Cntrl}]+", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
+        return sanitized.length() <= 240 ? sanitized : sanitized.substring(0, 240) + "…";
     }
 
     private static JsonObject inputText(String text) {

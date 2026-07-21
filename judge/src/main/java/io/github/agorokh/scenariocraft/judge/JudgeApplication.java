@@ -33,7 +33,7 @@ final class JudgeApplication {
             output.flush();
             diagnostics.flush();
             return results.hasWinner() ? 0 : 1;
-        } catch (IOException | IllegalArgumentException exception) {
+        } catch (IOException | IllegalArgumentException | JudgeException exception) {
             diagnostics.println("Judge failed: " + exception.getMessage());
             diagnostics.flush();
             return 1;

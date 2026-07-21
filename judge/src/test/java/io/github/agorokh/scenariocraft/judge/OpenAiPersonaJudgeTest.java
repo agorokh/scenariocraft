@@ -67,6 +67,7 @@ class OpenAiPersonaJudgeTest {
         JsonArray output = new JsonArray();
         output.add(message);
         JsonObject response = new JsonObject();
+        response.addProperty("status", "completed");
         response.add("output", output);
 
         JudgeVerdict parsed = OpenAiPersonaJudge.parseResponse(
@@ -90,6 +91,38 @@ class OpenAiPersonaJudgeTest {
                 () -> OpenAiPersonaJudge.parseVerdict(validVerdict().replace(
                         "Your doorway is welcoming. Add roof texture next.",
                         "Your doorway is welcoming."), PERSONA.name()));
+        assertThrows(JudgeException.class,
+                () -> OpenAiPersonaJudge.parseVerdict(validVerdict().replace(
+                        "Your doorway is welcoming. Add roof texture next.",
+                        "Your doorway is ugly. Add roof texture next."), PERSONA.name()));
+    }
+
+    @Test
+    void rejectsNonCompletedResponseEvenWhenItContainsVerdictText() {
+        String response = """
+                {"status":"incomplete","output":[{"content":[
+                  {"type":"output_text","text":%s}
+                ]}]}
+                """.formatted(new com.google.gson.Gson().toJson(validVerdict()));
+
+        JudgeException exception = assertThrows(
+                JudgeException.class,
+                () -> OpenAiPersonaJudge.parseResponse(response, PERSONA.name()));
+
+        assertTrue(exception.getMessage().contains("was not completed"));
+    }
+
+    @Test
+    void sanitizesUsefulApiErrorDetailsWithoutEchoingSecrets() {
+        String message = OpenAiPersonaJudge.httpErrorMessage(
+                429,
+                "{\"error\":{\"message\":\"Quota exhausted for sk-secret123456\"}}",
+                "req_123",
+                "sk-secret123456");
+
+        assertTrue(message.contains("Quota exhausted"));
+        assertTrue(message.contains("request req_123"));
+        assertFalse(message.contains("sk-secret123456"));
     }
 
     private String validVerdict() {

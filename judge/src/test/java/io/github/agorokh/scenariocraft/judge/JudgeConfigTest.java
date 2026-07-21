@@ -49,6 +49,21 @@ class JudgeConfigTest {
         JudgeConfig.load(personasFixture(), rubricFixture());
     }
 
+    @Test
+    void productionPersonasAndRubricHonorFrozenContract() throws Exception {
+        Path productionRoot = Path.of(System.getProperty("scenariocraft.repoRoot"))
+                .resolve("judge");
+
+        JudgeConfig config = JudgeConfig.load(
+                productionRoot.resolve("personas.yml"),
+                productionRoot.resolve("rubric.md"));
+
+        assertEquals(3, config.personas().size());
+        for (String criterion : JudgeConfig.CRITERIA) {
+            assertTrue(config.rubric().contains(criterion), criterion);
+        }
+    }
+
     private Path personasFixture() {
         return fixtureRoot().resolve("judge/personas.yml");
     }

@@ -15,7 +15,7 @@ final class JudgeCouncil {
             JudgeConfig config,
             Map<String, List<Path>> images,
             PersonaJudge judge,
-            PrintWriter diagnostics) {
+            PrintWriter diagnostics) throws JudgeException {
         List<RoundResults.ContestantResult> contestants = new ArrayList<>();
         String quorumFailure = null;
         for (JudgeRound.Plot plot : round.plots()) {
@@ -71,12 +71,15 @@ final class JudgeCouncil {
             JudgeRound.Plot plot,
             List<Path> images,
             List<String> failures,
-            PrintWriter diagnostics) {
+            PrintWriter diagnostics) throws JudgeException {
         String lastFailure = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 return judge.judge(persona, round.task(), rubric, plot.plotId(), images);
             } catch (JudgeException exception) {
+                if (!exception.retryable()) {
+                    throw exception;
+                }
                 lastFailure = persona.name() + ": " + exception.getMessage();
                 diagnostics.println("Judge " + persona.name() + " attempt " + attempt
                         + " failed for " + plot.player() + ": " + exception.getMessage());
