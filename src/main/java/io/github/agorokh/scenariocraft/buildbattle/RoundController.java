@@ -939,6 +939,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         closed = true;
+        taskDeck.flushHistory();
         settleTeleportAttemptsForClose(false);
         timerTask.cancel();
         blockEditor.cancel();

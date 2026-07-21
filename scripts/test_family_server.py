@@ -36,6 +36,13 @@ class FamilyServerContractTest(unittest.TestCase):
         self.assertIn('-iUDP:19132', script)
         self.assertIn('version "21([.]|\\")', script)
         self.assertIn('demo/check-bedrock.sh', script)
+        self.assertIn('geyser_build=1201', script)
+        self.assertIn(
+            'geyser_sha256=036475e5a1dfea07bd0d2974d117e67fb477df1c47db7c95b90de0638c019d22',
+            script,
+        )
+        self.assertIn('SCENARIOCRAFT_CONFIG_FILE=./demo/family-config.yml', script)
+        self.assertIn('export SCENARIOCRAFT_BEDROCK_PORT=19132', script)
 
     def test_status_exits_when_bedrock_probe_fails(self):
         script = (ROOT / "demo" / "family-server.sh").read_text(encoding="utf-8")

@@ -7,6 +7,16 @@ geyser_label=com.scenariocraft.geyser
 runtime_dir="$repo_dir/.local/geyser"
 geyser_jar="$runtime_dir/Geyser-Standalone.jar"
 geyser_log="$runtime_dir/geyser.log"
+# Bump the version, build, URL, and independently recorded digest together.
+geyser_version=2.11.0
+geyser_build=1201
+geyser_sha256=036475e5a1dfea07bd0d2974d117e67fb477df1c47db7c95b90de0638c019d22
+geyser_url="https://download.geysermc.org/v2/projects/geyser/versions/$geyser_version/builds/$geyser_build/downloads/standalone"
+
+# A family launch is intentionally immune to timing/port overrides left by
+# proof and smoke commands in the parent shell.
+export SCENARIOCRAFT_CONFIG_FILE=./demo/family-config.yml
+export SCENARIOCRAFT_BEDROCK_PORT=19132
 
 for dependency in curl make python3; do
     if ! command -v "$dependency" >/dev/null 2>&1; then
@@ -68,6 +78,27 @@ wait_for_floodgate_key() {
     exit 1
 }
 
+verify_floodgate_health() {
+    local container_digest container_id local_digest
+    container_id=$(compose_cmd ps -q paper)
+    compose_cmd exec -T paper sh -ceu \
+        "test -s /data/plugins/floodgate/key.pem; \
+         grep -Eq '^[[:space:]]+auth-type: floodgate$' \
+           /data/plugins/Geyser-Spigot/config.yml"
+    if [[ $(uname -s) == Darwin ]]; then
+        if [[ ! -s "$runtime_dir/key.pem" ]]; then
+            echo "Host Geyser has no Floodgate key." >&2
+            return 1
+        fi
+        container_digest=$(docker exec "$container_id" sha256sum /data/plugins/floodgate/key.pem | awk '{print $1}')
+        local_digest=$(shasum -a 256 "$runtime_dir/key.pem" | awk '{print $1}')
+        if [[ "$container_digest" != "$local_digest" ]]; then
+            echo "Host Geyser and Paper have different Floodgate keys; rerun make family-up." >&2
+            return 1
+        fi
+    fi
+}
+
 find_java_21() {
     local candidate java_home
     if java_home=$(/usr/libexec/java_home -v 21 2>/dev/null); then
@@ -101,31 +132,35 @@ unload_macos_geyser() {
     done
     if launchctl print "$service_target" >/dev/null 2>&1; then
         echo "Could not stop the managed macOS Geyser LaunchAgent." >&2
-        exit 1
+        return 1
     fi
     if [[ "$remove_plist" == true ]]; then
         rm -f "$plist"
+        for _ in $(seq 1 20); do
+            if ! lsof -nP -iUDP:19132 >/dev/null 2>&1; then
+                return
+            fi
+            sleep 0.25
+        done
         if lsof -nP -iUDP:19132 >/dev/null 2>&1; then
             echo "UDP 19132 is still occupied by a Geyser process not managed by ScenarioCraft." >&2
-            exit 1
+            return 1
         fi
     fi
 }
 
 install_geyser() {
-    local metadata expected actual
+    local actual
     mkdir -p "$runtime_dir"
-    metadata=$(curl -fsSL https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest)
-    expected=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["downloads"]["standalone"]["sha256"])' <<<"$metadata")
     if [[ -f "$geyser_jar" ]]; then
         actual=$(shasum -a 256 "$geyser_jar" | awk '{print $1}')
     else
         actual=
     fi
-    if [[ "$actual" != "$expected" ]]; then
-        curl -fsSL -o "$geyser_jar.tmp" https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/standalone
+    if [[ "$actual" != "$geyser_sha256" ]]; then
+        curl -fsSL -o "$geyser_jar.tmp" "$geyser_url"
         actual=$(shasum -a 256 "$geyser_jar.tmp" | awk '{print $1}')
-        if [[ "$actual" != "$expected" ]]; then
+        if [[ "$actual" != "$geyser_sha256" ]]; then
             rm -f "$geyser_jar.tmp"
             echo "Downloaded Geyser checksum did not match its release metadata." >&2
             exit 1
@@ -235,14 +270,16 @@ case "${1:-up}" in
             wait_for_paper
             start_macos_geyser
         else
-            compose_cmd up -d --build
+            SCENARIOCRAFT_BEDROCK_PORT=19132 compose_cmd up -d --build
             wait_for_paper
             raknet_probe 127.0.0.1
         fi
+        verify_floodgate_health
         echo "ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132."
         ;;
     status)
         compose_cmd ps
+        verify_floodgate_health
         if raknet_probe 127.0.0.1; then
             echo "Bedrock UDP 19132 answered a RakNet discovery probe."
         else
@@ -251,10 +288,12 @@ case "${1:-up}" in
         fi
         ;;
     down)
+        down_status=0
         if [[ $(uname -s) == Darwin ]]; then
-            unload_macos_geyser true
+            unload_macos_geyser true || down_status=$?
         fi
-        compose_cmd down
+        compose_cmd down || down_status=$?
+        exit "$down_status"
         ;;
     *)
         echo "Usage: $0 {up|status|down}" >&2

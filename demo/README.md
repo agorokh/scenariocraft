@@ -16,7 +16,8 @@ The local demo intentionally uses Paper 1.21.11 in offline mode so a submission 
 join without account-server setup. Geyser, Floodgate, and ViaVersion are installed by Compose.
 On Linux the Geyser plugin owns UDP `19132`. On macOS the start command installs a host
 LaunchAgent because Colima and some Docker Desktop configurations do not expose container UDP
-to LAN discovery; it verifies the Geyser download, copies Floodgate's key from the live Paper
+to LAN discovery; it verifies pinned Geyser Standalone 2.11.0 build 1201, copies and compares
+Floodgate's key with the live Paper
 container, and refuses to report success until a real RakNet probe answers. This is automatic,
 not a manual standalone-Geyser procedure. The default family configuration uses the complete
 prompt deck and a 10-minute build phase. Do not expose it to an untrusted network. RCON is enabled
@@ -101,6 +102,10 @@ waits for Geyser UDP 19132, and sends the same RakNet probe before tearing down 
 That is runtime wiring evidence, not a substitute for a real Bedrock player completing a
 round.
 
+CI also runs `make family-server-check`, a mocked Linux lifecycle that exercises the
+documented `up`, successful and failed `status`, and `down` paths while proving inherited
+proof timing and alternate-port variables cannot change the family contract.
+
 ### How players join
 
 - A Java PC connects to the Docker host on port `25565`.
@@ -118,8 +123,8 @@ evidence.
 
 The Compose overlay alone is not a working Bedrock path on Docker Desktop or Colima on
 macOS: container Geyser can be healthy while forwarded UDP still times out. `make family-up`
-therefore moves container Geyser to fallback host port `19133`, downloads checksum-verified
-Geyser Standalone under ignored `.local/geyser/`, generates its Floodgate configuration,
+therefore moves container Geyser to fallback host port `19133`, downloads pinned,
+checksum-verified Geyser Standalone 2.11.0 build 1201 under ignored `.local/geyser/`, generates its Floodgate configuration,
 copies the live key without printing it, installs a persistent user LaunchAgent on UDP
 `19132`, and refuses success unless `demo/check-bedrock.sh` receives a valid Speed Build
 RakNet pong. This is the supported path; no manual config edit, key copy, or second command

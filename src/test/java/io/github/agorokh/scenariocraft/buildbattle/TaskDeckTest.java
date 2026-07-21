@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -71,5 +73,26 @@ class TaskDeckTest {
         TaskDeck restarted =
                 new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
         assertEquals("Rocket", restarted.draw());
+    }
+
+    @Test
+    void flushWaitsForPendingHistoryWrite() {
+        Path history = temporaryDirectory.resolve("flushed-task-history.txt");
+        try (ExecutorService writer = Executors.newSingleThreadExecutor()) {
+            TaskDeck deck =
+                    new TaskDeck(
+                            List.of("Castle", "Rocket"),
+                            ignored -> 0,
+                            history,
+                            null,
+                            writer);
+
+            assertEquals("Castle", deck.draw());
+            deck.flushHistory();
+
+            TaskDeck restarted =
+                    new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
+            assertEquals("Rocket", restarted.draw());
+        }
     }
 }

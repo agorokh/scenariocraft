@@ -12,6 +12,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.IntUnaryOperator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -116,6 +118,23 @@ final class TaskDeck {
             }
         } catch (IOException failure) {
             logHistoryFailure("write", failure);
+        }
+    }
+
+    void flushHistory() {
+        CompletableFuture<Void> write;
+        synchronized (this) {
+            write = pendingWrite;
+        }
+        try {
+            write.get(5, TimeUnit.SECONDS);
+        } catch (TimeoutException failure) {
+            logHistoryFailure("flush", failure);
+        } catch (InterruptedException failure) {
+            Thread.currentThread().interrupt();
+            logHistoryFailure("flush", failure);
+        } catch (Exception failure) {
+            logHistoryFailure("flush", failure);
         }
     }
 

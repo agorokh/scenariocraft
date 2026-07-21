@@ -78,8 +78,9 @@ publishes Java TCP `25565` and Bedrock UDP `19132`, and is intended only for a t
 network. The family configuration gives builders 10 minutes and uses the complete prompt deck.
 On Linux, Geyser runs in Paper's container. On macOS, where Colima and some Docker Desktop
 setups do not make container UDP discoverable to Xbox/iPad clients, `make family-up`
-automatically runs Geyser as a host LaunchAgent. It downloads the current standalone jar,
-verifies its published checksum, synchronizes Floodgate's key from Paper, and probes UDP
+automatically runs Geyser as a host LaunchAgent. It downloads pinned Geyser Standalone
+2.11.0 build 1201, verifies its committed checksum, synchronizes and compares Floodgate's
+key with Paper, and probes UDP
 `19132` before reporting that the server is ready. There is no manual key-copy step.
 Paper and the judge use Docker's `unless-stopped` restart policy; the macOS Geyser LaunchAgent
 also restarts automatically. Run `make family-status` to check both Compose and the real
