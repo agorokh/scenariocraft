@@ -1,5 +1,13 @@
 # ScenarioCraft
 
+<p align="center">
+  <a href="https://agorokh.github.io/scenariocraft/">
+    <img src="site/assets/branding/speed-build-logo.png" width="480"
+         alt="Speed Build logo: a grass-block S and deepslate B with speed streaks">
+  </a><br>
+  <strong><a href="https://agorokh.github.io/scenariocraft/">How to Play Speed Build</a></strong>
+</p>
+
 ScenarioCraft turns our kids' game ideas into playable family rituals: they invent a scenario,
 we shape it into a spec together, an AI coding agent builds it, and an AI panel referees the
 match while we play. Build Battle is reference scenario #1, not the product. The product is
@@ -37,6 +45,13 @@ can build the scaffold now with Java 21:
 ```
 
 The plugin jar is written to `build/libs/`.
+
+## Publishing the How to Play page
+
+The `Deploy Pages` workflow uploads the literal `site/` directory. Repository Settings must
+keep **Pages > Build and deployment > Source** set to **GitHub Actions**, and the
+`github-pages` environment must allow Pages deployments. If deployment reports `Get Pages
+site failed` or a 404, restore those settings and rerun the workflow.
 
 ## Build Battle operator notes
 

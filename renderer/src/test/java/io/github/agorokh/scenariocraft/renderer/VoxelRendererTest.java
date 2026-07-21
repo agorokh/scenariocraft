@@ -81,6 +81,18 @@ class VoxelRendererTest {
     }
 
     @Test
+    void howToPlayImagesMatchCommittedVoxelFixture() throws Exception {
+        VoxelPlot plot = VoxelPlot.read(fixture("speed-build-candy-volcano.voxels.json"));
+        Path output = temporaryDirectory.resolve("how-to-play");
+
+        new VoxelRenderer().render(plot, output);
+
+        assertSiteImageMatches(output, "iso-ne.png", "candy-volcano-iso.png");
+        assertSiteImageMatches(output, "cut-z.png", "candy-volcano-cutaway.png");
+        assertSiteImageMatches(output, "plan.png", "candy-volcano-plan.png");
+    }
+
+    @Test
     void emptyPlotProducesSevenTransparentImages() throws Exception {
         VoxelPlot plot = VoxelPlot.read(fixture("empty-plot.voxels.json"));
         Path output = temporaryDirectory.resolve("empty");
@@ -114,6 +126,13 @@ class VoxelRendererTest {
 
     private Path fixture(String name) {
         return repoRoot().resolve("src/test/resources/fixtures").resolve(name);
+    }
+
+    private void assertSiteImageMatches(Path output, String renderedName, String siteName)
+            throws IOException {
+        Path committed = repoRoot().resolve("site/assets/scenes").resolve(siteName);
+        assertArrayEquals(Files.readAllBytes(committed),
+                Files.readAllBytes(output.resolve(renderedName)), siteName);
     }
 
     private Path repoRoot() {
