@@ -96,6 +96,7 @@ export async function generateRoundPage(siteDirectory) {
     `        <li><b>Round</b><span><code>${escapeHtml(manifest.round_id)}</code> · ${escapeHtml(manifest.date)} UTC</span></li>`,
     `        <li><b>Contestants</b><span>the contestants were open-source robot players (Mineflayer)</span></li>`,
     `        <li><b>Images</b><span>every image is rendered from the blocks they actually placed; displayed colors use explicit entries for their exported materials</span></li>`,
+    `        <li><b>Method</b><span>original renderer output; no game-client captures</span></li>`,
     `        <li><b>Verdicts</b><span>verdicts are unedited AI output; ${escapeHtml(paletteProvenance)}</span></li>`,
     `        <li><b>Source</b><span><code>site/data/rounds/${escapeHtml(roundId)}/</code></span></li>`,
     `      </ul>`
