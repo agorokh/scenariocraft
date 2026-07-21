@@ -54,6 +54,11 @@ session.
   recovery, unusable-respawn hub success did not clear the old plot border, and close could
   misclassify an arrival that settled before its confirmation task. All three paths now have
   focused regression tests.
+- The first pushed smoke extension used single-quoted command literals inside the workflow's
+  existing single-quoted `bash -c` program. Bash therefore ended the inner program early and
+  treated `minecraft:battle_world` as its working-directory argument. Double-quoted command
+  literals preserve the wrapper boundary; the extracted workflow program passes `bash -n` and
+  the complete local Paper smoke.
 
 ## Acceptance evidence
 
@@ -70,7 +75,9 @@ session.
 - `make ci-fast` passed on Java 21 with 114 plugin tests and 13 renderer tests, all green.
 - A local Paper 1.21.11 build 132 smoke run enabled ScenarioCraft, executed
   `minecraft:execute in minecraft:battle_world run minecraft:tp` against a marker entity,
-  confirmed its authoritative destination, and shut down with all dimensions saved.
+  confirmed its authoritative destination, and shut down with all dimensions saved. The run
+  used the exact YAML-extracted smoke program with only the port changed because another local
+  Paper server already owned the workflow default of 25565.
 - Production source scans found no direct `Player.teleport`, `teleportAsync`, or
   `PlayerMoveEvent`; console dispatch is isolated in `TeleportTransport`.
 - Independent `/review` against `code_review.md` found no P1 and no remaining actionable
