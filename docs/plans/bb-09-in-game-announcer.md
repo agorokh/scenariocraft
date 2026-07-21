@@ -43,6 +43,7 @@ session.
 | 2026-07-21 | Broaden copied-text rejection to self-harm/threat vocabulary, ignore `judge.yml` everywhere, and treat invalid optional RCON configuration as announcement failure rather than judging failure. | Player safety, credential containment, and durable publication must each fail independently at their own boundary. |
 | 2026-07-21 | Reject common profanity, sexual-assault language, and Minecraft formatting markers at the copied-result boundary, and describe missing verdicts truthfully instead of inventing praise. | Untrusted judge artifacts must not gain presentation capabilities or expose children to abusive text, while a provider failure cannot be represented as feedback the judge never supplied. |
 | 2026-07-21 | Bound completed-result candidates rather than round directories, recover the async read gate from unchecked filesystem failures, and enforce the judge's eight-plot/eight-persona presentation limits in the plugin parser. | Delayed judging and filesystem stream failures must not permanently disable replay, while copied artifacts must not amplify into an unbounded main-thread chat broadcast. |
+| 2026-07-21 | Require copied feedback to name a concrete build feature and positive effect, reject common identity slurs, isolate automatic polling from manual reads, and expose an export ID only after its directory is published successfully. | The last presentation boundary must preserve the genuine-strength contract, while a slow command or timestamp collision must never suppress or misdirect the active round announcement. |
 
 ## Surprises & Discoveries
 
@@ -82,11 +83,19 @@ session.
   an older usable result. Also, `Files.list` can surface iteration failures as unchecked
   exceptions, so the off-thread read gate must recover from both checked and runtime
   filesystem paths.
+- One shared asynchronous gate made a harmless manual replay capable of consuming a short
+  REVEAL's only polling window. Timestamp-derived IDs also cannot be treated as published
+  until the atomic directory write succeeds, because clocks can move backwards into an
+  existing round name.
+- Structural and word-level safety are not enough for copied feedback: a bland or purely
+  corrective sentence can still violate the project's genuine-strength rule. The plugin
+  therefore applies the same concrete-feature plus positive-effect semantic floor before
+  any copied comment reaches chat.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 254 tests, judge 74 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 256 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -114,6 +123,10 @@ session.
 - Replay regressions keep an older completed result visible behind 257 unjudged exports,
   async-read regression proves an unchecked filesystem failure releases the next request,
   and the parser rejects feedback beyond the eight-persona judging limit.
+- Boundary regressions reject slurs and feedback without a concrete positive build effect;
+  an intentionally queued manual read no longer prevents an active-round poll. Export
+  tests expose no current round ID before publication and keep it empty after a directory
+  collision fails.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.

@@ -7,7 +7,7 @@ import java.util.Optional;
 interface RoundExporter extends AutoCloseable {
     void export(RoundExportRequest request);
 
-    /** Identifies the round most recently accepted by this exporter. */
+    /** Identifies the round most recently published successfully by this exporter. */
     default Optional<String> currentRoundId() {
         return Optional.empty();
     }

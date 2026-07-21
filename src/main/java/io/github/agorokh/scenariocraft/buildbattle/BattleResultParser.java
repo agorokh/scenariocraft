@@ -23,6 +23,21 @@ final class BattleResultParser {
             Pattern.compile("  (.{1,64}): [0-9]+(?:\\.[0-9]{1,2})? — (.{1,500})");
     private static final Pattern WINNER =
             Pattern.compile("Winner: (.{1,80}) with [0-9]+(?:\\.[0-9]{1,2})?");
+    private static final Pattern BUILD_FEATURE =
+            Pattern.compile(
+                    "\\b(?:arch|bridge|build|chimney|color|colour|detail|design|door|doorway|"
+                            + "flag|floor|foundation|garden|idea|lighting|outline|palette|path|"
+                            + "pattern|proportion|roof|room|shape|silhouette|structure|support|"
+                            + "texture|tower|trim|wall|window)s?\\b",
+                    Pattern.CASE_INSENSITIVE);
+    private static final Pattern POSITIVE_EFFECT =
+            Pattern.compile(
+                    "\\b(?:anchors?|balanced|beautiful|bold|bright|charming|clear|clever|"
+                            + "colorful|colourful|cozy|creative|creates?|delightful|detailed|"
+                            + "draws?|excellent|fantastic|fits?|frames?|gives?|good|great|"
+                            + "impressive|inviting|leads?|lovely|makes?|neat|recognizable|solid|"
+                            + "stands? out|strong|sturdy|supports?|tidy|warm|welcoming|works?)\\b",
+                    Pattern.CASE_INSENSITIVE);
     private static final Pattern UNSAFE_LANGUAGE =
             Pattern.compile(
                     "\\b(?:awful|bad|boring|disgusting|dumb|embarrassing|failure|garbage|gross|"
@@ -35,7 +50,9 @@ final class BattleResultParser {
                             + "\\b(?:arsehole|asshole|bastard|bitch|bullshit|crap|cunt|damn|"
                             + "dick|douche|fuck(?:ed|er|ing)?|motherfucker|piss|prick|shit(?:ty)?)\\b|"
                             + "\\b(?:molest(?:ed|er|ing|ation)?|rape(?:d|s)?|raping|rapist|"
-                            + "sexual (?:abuse|assault|violence))\\b",
+                            + "sexual (?:abuse|assault|violence))\\b|"
+                            + "\\b(?:chinks?|coons?|fags?|faggots?|gooks?|kikes?|"
+                            + "n[i1]gg(?:a|er)s?|retards?|spics?|trann(?:y|ies)|wetbacks?)\\b",
                     Pattern.CASE_INSENSITIVE);
 
     BattleResult read(Path path) throws IOException {
@@ -113,7 +130,7 @@ final class BattleResultParser {
                 feedback.add(
                         new BattleResult.Feedback(
                                 displayText(verdict.group(1), 64, "persona"),
-                                displayText(verdict.group(2), 500, "comment")));
+                                feedbackText(verdict.group(2))));
                 continue;
             }
             throw invalid("contains an unexpected line");
@@ -166,6 +183,15 @@ final class BattleResultParser {
         }
         if (UNSAFE_LANGUAGE.matcher(normalized).find()) {
             throw invalid(label + " must use kid-appropriate language");
+        }
+        return normalized;
+    }
+
+    private static String feedbackText(String value) {
+        String normalized = displayText(value, 500, "comment");
+        if (!BUILD_FEATURE.matcher(normalized).find()
+                || !POSITIVE_EFFECT.matcher(normalized).find()) {
+            throw invalid("comment must name a concrete strength");
         }
         return normalized;
     }

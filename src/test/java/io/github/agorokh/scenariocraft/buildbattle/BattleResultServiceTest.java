@@ -135,10 +135,44 @@ class BattleResultServiceTest {
         rig.service.close();
     }
 
+    @Test
+    void manualReplayReadDoesNotSuppressActiveRevealPolling() {
+        BattleResult active =
+                new BattleResultParser()
+                        .parse(BattleResultRepositoryTest.validResult("round-20260721-193000"));
+        BattleResultReader reader =
+                new BattleResultReader() {
+                    @Override
+                    public Optional<BattleResult> latest() {
+                        return Optional.empty();
+                    }
+
+                    @Override
+                    public Optional<BattleResult> round(String roundId) {
+                        return Optional.of(active);
+                    }
+                };
+        ServiceRig rig =
+                new ServiceRig(
+                        reader,
+                        RoundPhase.REVEAL,
+                        "round-20260721-193000",
+                        false);
+
+        rig.service.showLatest(sender(new ArrayList<>()));
+        rig.poll.get().run();
+
+        assertEquals(2, rig.asyncReads.size());
+        rig.asyncReads.get(1).run();
+        assertEquals(1, rig.titles.size());
+        rig.service.close();
+    }
+
     private static final class ServiceRig {
         private final AtomicReference<Runnable> poll = new AtomicReference<>();
         private final List<String> messages = new ArrayList<>();
         private final List<String> titles = new ArrayList<>();
+        private final List<Runnable> asyncReads = new ArrayList<>();
         private final BattleResultService service;
 
         private ServiceRig(Path rounds, RoundPhase phase) {
@@ -150,6 +184,14 @@ class BattleResultServiceTest {
         }
 
         private ServiceRig(BattleResultReader reader, RoundPhase phase, String resultRoundId) {
+            this(reader, phase, resultRoundId, true);
+        }
+
+        private ServiceRig(
+                BattleResultReader reader,
+                RoundPhase phase,
+                String resultRoundId,
+                boolean runAsyncImmediately) {
             BukkitTask task = proxy(BukkitTask.class, (ignored, method, arguments) -> null);
             BukkitScheduler scheduler =
                     proxy(
@@ -157,8 +199,15 @@ class BattleResultServiceTest {
                             (ignored, method, arguments) -> {
                                 switch (method.getName()) {
                                     case "runTaskTimer" -> poll.set((Runnable) arguments[1]);
-                                    case "runTaskAsynchronously", "runTask", "runTaskLater" ->
-                                            ((Runnable) arguments[1]).run();
+                                    case "runTaskAsynchronously" -> {
+                                        Runnable read = (Runnable) arguments[1];
+                                        if (runAsyncImmediately) {
+                                            read.run();
+                                        } else {
+                                            asyncReads.add(read);
+                                        }
+                                    }
+                                    case "runTask", "runTaskLater" -> ((Runnable) arguments[1]).run();
                                     default -> {}
                                 }
                                 return task;

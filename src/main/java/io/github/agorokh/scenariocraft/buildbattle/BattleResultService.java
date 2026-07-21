@@ -32,7 +32,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private final Supplier<Optional<String>> resultRoundId;
     private final Function<String, Optional<Location>> winnerLocation;
     private final Logger logger;
-    private final AtomicBoolean readInFlight = new AtomicBoolean();
+    private final AtomicBoolean commandReadInFlight = new AtomicBoolean();
+    private final AtomicBoolean pollReadInFlight = new AtomicBoolean();
     private final BukkitTask pollingTask;
     private String announcedRoundId;
     private String pollingRoundId;
@@ -96,7 +97,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                         sender.sendMessage(line);
                     }
                 },
-                sender);
+                sender,
+                commandReadInFlight);
     }
 
     @Override
@@ -123,7 +125,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                     announce(result.orElseThrow());
                     sender.sendMessage("ScenarioCraft announced " + roundId + ".");
                 },
-                sender);
+                sender,
+                commandReadInFlight);
     }
 
     private void pollDuringReveal() {
@@ -141,7 +144,7 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             pollingRoundId = expectedRoundId;
             ticksUntilPoll = 0L;
         }
-        if (readInFlight.get()) {
+        if (pollReadInFlight.get()) {
             return;
         }
         if (ticksUntilPoll > 0L) {
@@ -157,7 +160,8 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                         result.ifPresent(this::announce);
                     }
                 },
-                null);
+                null,
+                pollReadInFlight);
     }
 
     private void announce(BattleResult result) {
@@ -203,8 +207,9 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
     private void readAsync(
             ResultRead read,
             java.util.function.Consumer<Optional<BattleResult>> completion,
-            CommandSender failureRecipient) {
-        if (closed || !readInFlight.compareAndSet(false, true)) {
+            CommandSender failureRecipient,
+            AtomicBoolean readGate) {
+        if (closed || !readGate.compareAndSet(false, true)) {
             if (failureRecipient != null) {
                 failureRecipient.sendMessage("The results are already being checked — just a moment!");
             }
@@ -232,15 +237,21 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
                                 try {
                                     server.getScheduler()
                                             .runTask(
-                                                    plugin,
-                                                    () -> finishRead(completedResult, completedFailure, completion, failureRecipient));
+                                            plugin,
+                                                    () ->
+                                                            finishRead(
+                                                                    completedResult,
+                                                                    completedFailure,
+                                                                    completion,
+                                                                    failureRecipient,
+                                                                    readGate));
                                 } catch (RuntimeException schedulingFailure) {
-                                    readInFlight.set(false);
+                                    readGate.set(false);
                                     logger.log(Level.WARNING, "Could not return judge results to the server thread", schedulingFailure);
                                 }
                             });
         } catch (RuntimeException schedulingFailure) {
-            readInFlight.set(false);
+            readGate.set(false);
             logger.log(Level.WARNING, "Could not schedule judge result reading", schedulingFailure);
             if (failureRecipient != null) {
                 failureRecipient.sendMessage("The judging results could not be checked right now.");
@@ -252,8 +263,9 @@ public final class BattleResultService implements BattleResultCommands, AutoClos
             Optional<BattleResult> result,
             IOException failure,
             java.util.function.Consumer<Optional<BattleResult>> completion,
-            CommandSender failureRecipient) {
-        readInFlight.set(false);
+            CommandSender failureRecipient,
+            AtomicBoolean readGate) {
+        readGate.set(false);
         if (closed) {
             return;
         }

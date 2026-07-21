@@ -86,8 +86,9 @@ final class RoundExportService implements RoundExporter {
         if (activeSnapshot != null || writing) {
             throw new IllegalStateException("a round export is already in progress");
         }
-        currentRoundId = ROUND_ID_FORMAT.format(clock.instant());
-        activeSnapshot = new BatchedRoundSnapshot(currentRoundId, request);
+        currentRoundId = null;
+        String roundId = ROUND_ID_FORMAT.format(clock.instant());
+        activeSnapshot = new BatchedRoundSnapshot(roundId, request);
         preparingChunks = true;
         prepareChunks(request, ++preparationGeneration);
     }
@@ -313,6 +314,9 @@ final class RoundExportService implements RoundExporter {
     private void writeSnapshot(RoundSnapshot snapshot) {
         try {
             Path output = writer.write(snapshot);
+            synchronized (this) {
+                currentRoundId = snapshot.roundId();
+            }
             logger.info(
                     "Round export complete: "
                             + snapshot.plots().size()

@@ -100,7 +100,7 @@ class BattleResultParserTest {
     }
 
     @Test
-    void rejectsProfanitySexualAssaultLanguageAndMinecraftFormattingCodes() {
+    void rejectsProfanityAssaultSlursAndMinecraftFormattingCodes() {
         String template =
                 """
                 Round: round-20260721-193000
@@ -120,7 +120,31 @@ class BattleResultParserTest {
                 () -> parser.parse(template.formatted("I hope you get raped.")));
         assertThrows(
                 IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("You are a nigger.")));
+        assertThrows(
+                IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("The §kobfuscated roof is clever.")));
+    }
+
+    @Test
+    void copiedFeedbackMustNameAConcreteStrength() {
+        String template =
+                """
+                Round: round-20260721-193000
+                Task: A moon base for cats
+
+                Alex (p1)
+                  Captain Comet: 2.00 — %s
+
+                Winner: Alex with 2.00
+                """;
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("I don't know.")));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("Try adding more.")));
     }
 
     @Test
