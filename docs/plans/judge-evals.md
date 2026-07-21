@@ -69,9 +69,13 @@ session.
 - Provenance co-review found that resolving `artifact_commit` alone accepted an unrelated commit.
   Family metadata now names the voxel and response paths, verifies both hashes from the cited
   commit, rejects unexpected ground-truth files, and uses full Git history in the CI build job.
-- Judge-parity co-review found that the Python tone vocabulary lagged the production Java
-  contract. Both feature and positive-effect terms are now synchronized for doorway/create-style
-  comments, with a focused parity regression test.
+- Judge-parity co-review found that duplicating persona-YAML, sentence, and tone parsing in Python
+  repeatedly lagged the production Java contract. The runner now delegates those rules to the
+  production validator and keeps Python focused on eval-specific bands, bans, ordering, provenance,
+  aggregates, and field order.
+- Review also caught that the empty fixture used a zero-height volume, which could make a live
+  renderer fail before judging. It now uses a positive-height all-air volume while remaining an
+  actually empty build.
 
 ## Acceptance evidence
 

@@ -128,7 +128,8 @@ friendly message rather than displayed.
 
 ## Judge regression evals
 
-Run the deterministic recorded-response suite used by CI from the repository root:
+The eval runner requires Python 3.10 or newer. Run the deterministic recorded-response suite
+used by CI from the repository root:
 
 ```sh
 ./evals/run.sh --dry-run
@@ -140,8 +141,10 @@ their responses as hand-authored production-schema goldens; family-round cases m
 exact live recording by round, plot, artifact commit, repository artifact paths, and SHA-256.
 The runner reads both artifacts from the cited commit and verifies their hashes. The `.yml` files use the
 JSON-compatible subset of YAML so CI needs no extra parser package. Assertions cover score bands,
-cross-case ordering, a genuine concrete positive, banned phrasing, the production result schema,
-configured persona panel, calculated mean, and reasoning-before-score field order.
+cross-case ordering, banned phrasing, the production result schema, calculated mean, and
+reasoning-before-score field order. The production Java validator owns persona-YAML parsing,
+kid-safe concrete praise, sentence structure, and configured-panel validation so the eval runner
+cannot drift from the judge contract.
 
 For a live GPT-5.6 pass, provide the API key only through the process environment and omit
 `--dry-run`; the runner first rebuilds the installed judge from the current checkout:

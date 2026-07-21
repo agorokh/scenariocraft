@@ -1,5 +1,6 @@
 import importlib.util
 import contextlib
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -149,6 +150,13 @@ class EvalRunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(scenario_evals.EvalError, "mean does not match"):
             scenario_evals.validate_results(value, "Build a tiny tower", "case")
 
+    def test_python_schema_delegates_comment_rules_to_production_java(self):
+        value = response("Build a tiny tower", 5)
+        value["contestants"][0]["verdicts"][0]["comment"] = (
+            "Your doorway creates a clear start; add roof texture next."
+        )
+        scenario_evals.validate_results(value, "Build a tiny tower", "case")
+
     def test_voxel_volume_mismatch_is_rejected(self):
         value = {
             "schema": 1,
@@ -266,13 +274,25 @@ class EvalRunnerTest(unittest.TestCase):
         ).stdout.strip()
         voxel_path = "evals/cases/empty-plot/voxels.json"
         response_path = "evals/cases/empty-plot/recorded-response.json"
+        committed_voxel = subprocess.run(
+            ["git", "show", f"{commit}:{voxel_path}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+        ).stdout
+        committed_response = subprocess.run(
+            ["git", "show", f"{commit}:{response_path}"],
+            cwd=repo_root,
+            capture_output=True,
+            check=True,
+        ).stdout
         source = {
             "kind": "family-round",
             "artifact_commit": commit,
             "voxel_artifact_path": voxel_path,
             "response_artifact_path": response_path,
-            "voxel_sha256": scenario_evals.file_sha256(repo_root / voxel_path),
-            "response_sha256": scenario_evals.file_sha256(repo_root / response_path),
+            "voxel_sha256": hashlib.sha256(committed_voxel).hexdigest(),
+            "response_sha256": hashlib.sha256(committed_response).hexdigest(),
         }
         spec = scenario_evals.CaseSpec(
             "family-case", RUNNER.parent, "Task", {}, {"source": source}
@@ -281,12 +301,6 @@ class EvalRunnerTest(unittest.TestCase):
         source["voxel_sha256"] = "0" * 64
         with self.assertRaisesRegex(scenario_evals.EvalError, "does not match"):
             scenario_evals.verify_family_commits([spec], repo_root)
-
-    def test_python_tone_vocabularies_accept_production_terms(self):
-        comment = "Your doorway creates a focal point. Add roof texture next."
-        self.assertIsNotNone(scenario_evals.FEATURE.search(comment))
-        self.assertIsNotNone(scenario_evals.POSITIVE.search(comment))
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,21 +27,6 @@ from typing import Any
 CRITERIA = ("theme_fit", "creativity", "effort", "detail")
 CASE_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BLOCK_ID = re.compile(r"^[a-z0-9._-]+:[a-z0-9/._-]+$")
-POSITIVE = re.compile(
-    r"\b(?:anchors?|balanced|beautiful|bold|bright|charming|clear|clever|colorful|"
-    r"colourful|cozy|creative|creates?|delightful|detailed|draws?|excellent|"
-    r"fantastic|fits?|frames?|gives?|good|great|impressive|inviting|leads?|lovely|"
-    r"makes?|neat|recognizable|solid|stands? out|strong|sturdy|supports?|tidy|warm|"
-    r"welcoming|works?)\b",
-    re.IGNORECASE,
-)
-FEATURE = re.compile(
-    r"\b(?:arch|block|bridge|build|chimney|color|colour|detail|design|door|"
-    r"doorway|flag|floor|foundation|garden|idea|interior|lighting|outline|palette|"
-    r"path|pattern|proportion|roof|room|shape|silhouette|structure|support|texture|"
-    r"tower|trim|wall|window)s?\b",
-    re.IGNORECASE,
-)
 MAX_JSON_BYTES = 16 * 1024 * 1024
 MAX_TEXT_BYTES = 64 * 1024
 
@@ -111,17 +96,6 @@ def load_task(path: Path) -> str:
     if not task or len(task) > 512 or has_unsafe_text(task):
         raise EvalError(f"task must be safe, non-blank text of at most 512 characters: {path}")
     return task
-
-
-def load_persona_names(path: Path) -> set[str]:
-    try:
-        text = _read_bytes(path, MAX_TEXT_BYTES).decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise EvalError(f"persona config must be UTF-8: {path}") from exc
-    names = set(re.findall(r'^\s*-\s+name:\s+"([^"\r\n]+)"\s*$', text, re.MULTILINE))
-    if len(names) < 2 or len(names) > 8 or any(has_unsafe_text(name) for name in names):
-        raise EvalError(f"could not read the bounded persona panel from {path}")
-    return names
 
 
 def require_keys(value: Any, expected: set[str], label: str) -> dict[str, Any]:
@@ -472,7 +446,6 @@ def validate_results(
     value: Any,
     task: str,
     label: str,
-    expected_personas: set[str] | None = None,
     expected_round_id: str | None = None,
     expected_plot_id: str | None = None,
 ) -> list[dict[str, Any]]:
@@ -503,7 +476,6 @@ def validate_results(
     verdicts = contestant["verdicts"]
     if not isinstance(verdicts, list) or len(verdicts) < 2:
         raise EvalError(f"{label} must contain at least two verdicts")
-    personas: set[str] = set()
     verdict_means: list[float] = []
     for index, raw in enumerate(verdicts):
         verdict = require_keys(
@@ -518,12 +490,6 @@ def validate_results(
                 raise EvalError(f"{label} verdict {index} {field} contains control text")
         if len(verdict["reasoning"]) > 4000 or len(verdict["comment"]) > 500:
             raise EvalError(f"{label} verdict {index} text exceeds the production limit")
-        if verdict["persona"] in personas:
-            raise EvalError(f"{label} verdict personas must be unique")
-        personas.add(verdict["persona"])
-        sentence_ends = re.findall(r"[.!?]+(?=\s+|$)", verdict["comment"])
-        if len(sentence_ends) != 2 or not re.search(r"[.!?]+$", verdict["comment"]):
-            raise EvalError(f"{label} verdict {index} comment must contain two sentences")
         score = require_keys(verdict["scores"], set(CRITERIA), f"{label} verdict {index} scores")
         for criterion in CRITERIA:
             require_integer(score[criterion], f"{label} verdict {index} {criterion}", 1, 10)
@@ -549,15 +515,12 @@ def validate_results(
         or abs(winner["mean"] - computed_mean) > 1e-9
     ):
         raise EvalError(f"{label} winner does not match the scored contestant")
-    if expected_personas is not None and personas != expected_personas:
-        raise EvalError(f"{label} verdict personas do not match the configured panel")
     return verdicts
 
 
 def evaluate_case(
     spec: CaseSpec,
     response: Any,
-    expected_personas: set[str] | None = None,
     expected_round_id: str | None = None,
     expected_plot_id: str | None = None,
 ) -> CaseResult:
@@ -567,7 +530,6 @@ def evaluate_case(
             response,
             spec.task,
             f"{spec.case_id} response",
-            expected_personas,
             expected_round_id,
             expected_plot_id,
         )
@@ -588,9 +550,6 @@ def evaluate_case(
         found = next((phrase for phrase in banned if phrase in combined), None)
         if found:
             failures.append(f"verdict {index} contains banned phrase: {found}")
-        first_sentence = re.split(r"[.!?]", verdict["comment"], maxsplit=1)[0]
-        if not FEATURE.search(first_sentence) or not POSITIVE.search(first_sentence):
-            failures.append(f"verdict {index} does not name a genuine concrete positive first")
     overall = sum(criterion_means.values()) / len(CRITERIA)
     return CaseResult(spec.case_id, overall, failures)
 
@@ -740,7 +699,6 @@ def run(
         prepare_live_judge(repo_root)
     elif production_validation:
         build_current_judge(repo_root)
-    expected_personas = load_persona_names(repo_root / "judge" / "personas.yml")
     results: dict[str, CaseResult] = {}
     for spec in specs:
         response = (
@@ -755,7 +713,6 @@ def run(
         results[spec.case_id] = evaluate_case(
             spec,
             response,
-            expected_personas,
             source["round_id"] if family_recording else None,
             source["plot_id"] if family_recording else None,
         )
