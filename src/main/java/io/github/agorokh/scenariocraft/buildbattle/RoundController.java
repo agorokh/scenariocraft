@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -78,7 +79,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TaskDeck taskDeck;
     private final Consumer<String> taskBookPlacer;
     private final RoundExporter roundExporter;
-    private String activeResultRoundId;
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
     private final DemoSampleBuild demoSampleBuild;
@@ -106,6 +106,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private boolean movingContestantsToPlots;
     private boolean plotEntryFailed;
     private boolean awaitingPlotEntries;
+    private String resultRoundId;
+    private boolean resultExportStarted;
 
     public RoundController(
             Plugin plugin,
@@ -200,7 +202,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 logger,
                 randomIndex,
                 taskBookPlacer,
-                ignored -> "round-19700101-000000",
+                ignored -> {},
                 new TeleportTransport(plugin.getServer()),
                 TeleportRecoveryStore.inMemory(),
                 DemoSampleBuild.empty());
@@ -344,6 +346,36 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         return state.phase();
     }
 
+    public Optional<Location> winnerCelebrationLocation(String playerName) {
+        Objects.requireNonNull(playerName, "playerName");
+        if (phase() != RoundPhase.REVEAL) {
+            return Optional.empty();
+        }
+        return contestants.values().stream()
+                .filter(contestant -> contestant.playerName().equalsIgnoreCase(playerName))
+                .findFirst()
+                .map(
+                        contestant ->
+                                new Location(
+                                        arena.world(),
+                                        contestant.plot().centerX() + 0.5,
+                                        arena.floorY() + 3.0,
+                                        contestant.plot().centerZ() + 0.5));
+    }
+
+    public Optional<String> resultRoundId() {
+        if (phase() != RoundPhase.REVEAL) {
+            return Optional.empty();
+        }
+        if (!resultExportStarted) {
+            return Optional.empty();
+        }
+        if (resultRoundId == null) {
+            resultRoundId = roundExporter.currentRoundId().orElse(null);
+        }
+        return Optional.ofNullable(resultRoundId);
+    }
+
     /** Returns the current plot center used for a short winner-particle celebration. */
     public Location resultCelebrationLocation(String plotId) {
         if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
@@ -367,8 +399,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     @Override
-    public java.util.Optional<String> activeResultRoundId() {
-        return java.util.Optional.ofNullable(activeResultRoundId);
+    public Optional<String> activeResultRoundId() {
+        return resultRoundId();
     }
 
     ActiveArenaMutationListener mutationListener() {
@@ -397,8 +429,6 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     "The last build is still being packed up safely — just a moment!");
             return;
         }
-        activeResultRoundId = null;
-
         List<Player> players =
                 server.getOnlinePlayers().stream()
                         .map(Player.class::cast)
@@ -456,6 +486,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         contestants.clear();
+        resultRoundId = null;
+        resultExportStarted = false;
         try {
             for (int index = 0; index < players.size(); index++) {
                 Player player = players.get(index);
@@ -1109,41 +1141,41 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     }
 
     private void exportRound() {
-        activeResultRoundId = null;
         if (currentTask == null) {
             logger.severe("SCENARIOCRAFT_EXPORT_FAILURE no task is available at REVEAL");
             return;
         }
-        int originY = Math.addExact(arena.floorY(), 1);
-        int plotHeight = settings.arena().wallHeight();
-        List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
-        Map<PlotBounds, Contestant> contestantsByPlot = new LinkedHashMap<>();
-        for (Contestant contestant : contestants.values()) {
-            contestantsByPlot.put(contestant.plot(), contestant);
-        }
-        for (int plotIndex = 0; plotIndex < plots.size(); plotIndex++) {
-            PlotBounds plot = plots.get(plotIndex);
-            Contestant contestant = contestantsByPlot.get(plot);
-            if (contestant == null && !settings.demoMode()) {
-                continue;
-            }
-            exportPlots.add(
-                    new RoundExportRequest.Plot(
-                            "p" + (plotIndex + 1),
-                            contestant == null
-                                    ? "ScenarioCraft Sample " + (plotIndex + 1)
-                                    : contestant.playerName(),
-                            plot.minX(),
-                            originY,
-                            plot.minZ(),
-                            plot.width(),
-                            plotHeight,
-                            plot.depth()));
-        }
         try {
-            activeResultRoundId = roundExporter.export(
+            int originY = Math.addExact(arena.floorY(), 1);
+            int plotHeight = settings.arena().wallHeight();
+            List<RoundExportRequest.Plot> exportPlots = new java.util.ArrayList<>();
+            Map<PlotBounds, Contestant> contestantsByPlot = new LinkedHashMap<>();
+            for (Contestant contestant : contestants.values()) {
+                contestantsByPlot.put(contestant.plot(), contestant);
+            }
+            for (int plotIndex = 0; plotIndex < plots.size(); plotIndex++) {
+                PlotBounds plot = plots.get(plotIndex);
+                Contestant contestant = contestantsByPlot.get(plot);
+                if (contestant == null && !settings.demoMode()) {
+                    continue;
+                }
+                exportPlots.add(
+                        new RoundExportRequest.Plot(
+                                "p" + (plotIndex + 1),
+                                contestant == null
+                                        ? "ScenarioCraft_Sample_" + (plotIndex + 1)
+                                        : contestant.playerName(),
+                                plot.minX(),
+                                originY,
+                                plot.minZ(),
+                                plot.width(),
+                                plotHeight,
+                                plot.depth()));
+            }
+            roundExporter.export(
                     new RoundExportRequest(
                             currentTask, arena.world().getName(), exportPlots));
+            resultExportStarted = true;
         } catch (RuntimeException failure) {
             logger.log(Level.SEVERE, "SCENARIOCRAFT_EXPORT_FAILURE export did not start", failure);
         }

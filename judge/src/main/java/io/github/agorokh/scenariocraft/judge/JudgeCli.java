@@ -79,6 +79,25 @@ public final class JudgeCli {
                     + "; set SCENARIOCRAFT_JUDGE_CONFIG_DIR to their directory.");
             return 2;
         }
+        ResultAnnouncer announcer = ignored -> {};
+        try {
+            java.util.Optional<RconSettings> rcon =
+                    RconSettings.load(configDirectory.resolve("judge.yml"), environment);
+            if (rcon.isPresent()) {
+                RconClient client = new RconClient();
+                announcer =
+                        roundId ->
+                                client.execute(
+                                        rcon.orElseThrow(), "battle announce " + roundId);
+            } else {
+                diagnostics.println(
+                        "RCON announcement is not configured; results will still be written for plugin polling.");
+            }
+        } catch (java.io.IOException | IllegalArgumentException exception) {
+            diagnostics.println(
+                    "RCON configuration is invalid; results will still be written for plugin polling: "
+                            + exception.getMessage());
+        }
         return new JudgeApplication().run(
                 roundDirectory,
                 personasPath,
@@ -86,8 +105,7 @@ public final class JudgeCli {
                 judge,
                 output,
                 diagnostics,
-                new RconResultAnnouncer(
-                        configDirectory.resolve("judge.yml"), environment));
+                announcer);
     }
 
     static Path configDirectory(Map<String, String> environment) {

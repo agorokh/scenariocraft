@@ -5,3 +5,6 @@ build/
 out/
 run/
 *.iml
+
+# Local judge RCON configuration contains a server credential.
+judge.yml

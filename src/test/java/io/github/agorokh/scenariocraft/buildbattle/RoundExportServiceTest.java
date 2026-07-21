@@ -131,8 +131,9 @@ class RoundExportServiceTest {
                                 new RoundExportRequest.Plot(
                                         "p1", "KidAva", 100, 64, 200, 2, 2, 2)));
 
-        assertEquals("round-20260720-204209", exporter.export(request));
+        exporter.export(request);
         assertTrue(exporter.isBusy());
+        assertTrue(exporter.currentRoundId().isEmpty());
         exporter.cancel();
         assertFalse(exporter.isBusy());
         snapshotTick.get().run();
@@ -153,6 +154,15 @@ class RoundExportServiceTest {
         assertTrue(Files.isRegularFile(roundDirectory.resolve("manifest.json")));
         assertTrue(Files.isRegularFile(roundDirectory.resolve("p1.voxels.json")));
         assertFalse(exporter.isBusy());
+        assertTrue(exporter.currentRoundId().filter("round-20260720-204209"::equals).isPresent());
+
+        exporter.export(request);
+        assertTrue(exporter.currentRoundId().isEmpty());
+        snapshotTick.get().run();
+        snapshotTick.get().run();
+        asyncWrite.get().run();
+
+        assertTrue(exporter.currentRoundId().isEmpty());
         exporter.close();
     }
 

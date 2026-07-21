@@ -23,6 +23,7 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
     private static final int MAX_TASK_LENGTH = 512;
     private static final int MAX_WORLD_LENGTH = 128;
     private static final int MAX_PLAYER_LENGTH = 64;
+    private static final String PLAYER_IDENTIFIER = "(?=.{1,64}$)[._*#~+\\-]*[A-Za-z0-9_]+";
     private static final Set<String> ROOT_KEYS =
             Set.of("schema", "round_id", "task", "world", "plots");
     private static final Set<String> PLOT_KEYS =
@@ -182,6 +183,9 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
                 throw new IllegalArgumentException("player must be non-blank");
             }
             requireSafeText(player, "player");
+            if (!player.matches(PLAYER_IDENTIFIER)) {
+                throw new IllegalArgumentException("player must be a valid player identifier");
+            }
             origin = List.copyOf(origin);
             size = List.copyOf(size);
             if (origin.size() != 3 || size.size() != 3) {

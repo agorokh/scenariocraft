@@ -8,9 +8,21 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class JudgeApplication {
     static final long MAX_ROUND_IMAGE_BYTES = 32L * 1024 * 1024;
+    private static final Set<String> SAFE_RCON_DIAGNOSTICS =
+            Set.of(
+                    "RCON authentication failed",
+                    "RCON authentication returned an unexpected request id",
+                    "RCON command returned an unexpected request id",
+                    "RCON server rejected the announcement command",
+                    "RCON hostname resolved to no addresses",
+                    "RCON hostname resolution was interrupted",
+                    "RCON hostname resolution failed",
+                    "RCON returned an invalid packet length",
+                    "RCON response is missing terminators");
 
     int run(
             Path roundDirectory,
@@ -18,7 +30,7 @@ final class JudgeApplication {
             Path rubricPath,
             PersonaJudge judge,
             PrintWriter output,
-            PrintWriter diagnostics) {
+        PrintWriter diagnostics) {
         return run(
                 roundDirectory,
                 personasPath,
@@ -26,7 +38,7 @@ final class JudgeApplication {
                 judge,
                 output,
                 diagnostics,
-                (round, results) -> {});
+                ignored -> {});
     }
 
     int run(
@@ -36,7 +48,7 @@ final class JudgeApplication {
             PersonaJudge judge,
             PrintWriter output,
             PrintWriter diagnostics,
-            RoundResultAnnouncer announcer) {
+            ResultAnnouncer announcer) {
         try {
             if (!Files.isDirectory(roundDirectory, LinkOption.NOFOLLOW_LINKS)
                     || Files.isSymbolicLink(roundDirectory)) {
@@ -65,15 +77,12 @@ final class JudgeApplication {
             output.print(ResultsWriter.humanReadable(results));
             output.flush();
             try {
-                announcer.announce(round, results);
-            } catch (IOException announcementFailure) {
+                announcer.announce(results.roundId());
+            } catch (IOException | RuntimeException announcementFailure) {
                 diagnostics.println(
-                        "RCON announcement failed ("
-                                + safeTransportReason(announcementFailure)
-                                + "); results remain available on disk.");
-            } catch (IllegalArgumentException announcementFailure) {
-                diagnostics.println(
-                        "RCON announcement configuration is invalid; results remain available on disk.");
+                        "RCON announcement failed. Results were saved: "
+                                + safeDiagnostic(announcementFailure)
+                                + "; results remain available on disk.");
             }
             diagnostics.flush();
             return results.hasWinner() ? 0 : 1;
@@ -84,22 +93,11 @@ final class JudgeApplication {
         }
     }
 
-    private static String safeTransportReason(IOException failure) {
-        if (failure instanceof java.net.SocketTimeoutException) {
-            return "connection timed out";
-        }
-        if (failure instanceof java.net.ConnectException) {
-            return "connection failed";
-        }
-        if (failure instanceof java.io.EOFException) {
-            return "connection closed early";
-        }
+    private static String safeDiagnostic(Exception failure) {
         String message = failure.getMessage();
-        if (message != null && message.startsWith("RCON ")
-                && message.length() <= 200
-                && message.codePoints().noneMatch(Character::isISOControl)) {
+        if (message != null && SAFE_RCON_DIAGNOSTICS.contains(message)) {
             return message;
         }
-        return "transport error";
+        return failure instanceof IOException ? "RCON transport failure" : "RCON announcement failure";
     }
 }

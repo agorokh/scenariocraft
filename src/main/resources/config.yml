@@ -18,6 +18,9 @@ reveal-linger-seconds: 900
 # Frequency for checking newly published judge results while the round is in REVEAL
 results-poll-ticks: 20
 
+results-celebration-bursts: 3
+results-celebration-interval-ticks: 10
+
 # Design-council deck: short, kid-friendly prompts that work in a compact plot
 tasks:
   - A dragon treehouse

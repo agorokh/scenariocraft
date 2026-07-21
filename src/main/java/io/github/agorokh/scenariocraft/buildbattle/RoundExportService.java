@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
@@ -40,6 +41,7 @@ final class RoundExportService implements RoundExporter {
     private boolean preparingChunks;
     private boolean writing;
     private boolean closed;
+    private String currentRoundId;
 
     RoundExportService(
             Plugin plugin,
@@ -76,7 +78,7 @@ final class RoundExportService implements RoundExporter {
     }
 
     @Override
-    public synchronized String export(RoundExportRequest request) {
+    public synchronized void export(RoundExportRequest request) {
         Objects.requireNonNull(request, "request");
         if (closed) {
             throw new IllegalStateException("round exporter is closed");
@@ -84,11 +86,16 @@ final class RoundExportService implements RoundExporter {
         if (activeSnapshot != null || writing) {
             throw new IllegalStateException("a round export is already in progress");
         }
+        currentRoundId = null;
         String roundId = ROUND_ID_FORMAT.format(clock.instant());
         activeSnapshot = new BatchedRoundSnapshot(roundId, request);
         preparingChunks = true;
         prepareChunks(request, ++preparationGeneration);
-        return roundId;
+    }
+
+    @Override
+    public synchronized Optional<String> currentRoundId() {
+        return Optional.ofNullable(currentRoundId);
     }
 
     @Override
@@ -307,6 +314,9 @@ final class RoundExportService implements RoundExporter {
     private void writeSnapshot(RoundSnapshot snapshot) {
         try {
             Path output = writer.write(snapshot);
+            synchronized (this) {
+                currentRoundId = snapshot.roundId();
+            }
             logger.info(
                     "Round export complete: "
                             + snapshot.plots().size()
