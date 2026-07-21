@@ -35,6 +35,7 @@ session.
 | 2026-07-20 | Exercise the production `minecraft:execute ... run minecraft:tp` path in the pinned real-Paper smoke job. | Plugin enable and unit command-map checks do not prove that the exact console dispatch path parses and executes on the supported Paper build. |
 | 2026-07-20 | Prioritize pending durable recovery before active-round re-entry on join. | A contestant who disconnected during a failed relocation must reach the hub before the controller may reapply the current phase. |
 | 2026-07-20 | Settle an owned teleport as successful during close when the player has already reached its authoritative destination. | A move can arrive after dispatch but before its delayed confirmation; shutdown must not convert that real success into a false recovery failure. |
+| 2026-07-20 | Isolate the real-Paper teleport probe from generated terrain and document inspection without a force-clear control. | The smoke should test the command path rather than block geometry, while manual registry deletion would violate the requirement to clear only after authoritative hub arrival and player-data persistence. |
 
 ## Surprises & Discoveries
 
@@ -59,6 +60,10 @@ session.
   treated `minecraft:battle_world` as its working-directory argument. Double-quoted command
   literals preserve the wrapper boundary; the extracted workflow program passes `bash -n` and
   the complete local Paper smoke.
+- Current-head external review found that the smoke marker could depend on generated terrain
+  at Y=100. The probe now clears a bounded air pocket and gives the marker no gravity before
+  dispatch; the operator runbook also names the durable registry and makes its safe automatic
+  clear boundary explicit.
 
 ## Acceptance evidence
 

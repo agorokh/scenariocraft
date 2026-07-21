@@ -69,6 +69,12 @@ registry under the ScenarioCraft data folder retains pending player UUIDs even w
 player-data save fails, so enable and rejoin rediscover the recovery after a restart. Verify
 that the player is at the hub with the default world border and can drop/pick up items before
 starting the next round. Operators who join while recovery is pending receive another alert.
+To inspect the durable queue, read
+`plugins/ScenarioCraft/pending-teleport-recovery.txt`; it contains one pending player UUID per
+line. Do not manually remove an entry: reconnect that player and let ScenarioCraft clear the
+entry only after it confirms the hub arrival and saves the player data. If the entry remains,
+keep the player contained and use the persistence alert's exception in the server log to fix
+the underlying storage problem before reconnecting them again.
 
 Alerts are also sent to the server console and to online players with the
 `scenariocraft.alerts` permission, which defaults to operators.
