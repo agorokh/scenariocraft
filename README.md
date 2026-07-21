@@ -90,7 +90,7 @@ every relocation checks again before production dispatch, and CI executes the fu
 path on real Paper. Keep both exact namespaced commands available in server configuration.
 A failed
 move logs `SCENARIOCRAFT_TELEPORT_FAILURE` and alerts every online operator. Run
-`/battle stop`, move the named player safely if needed, and have them reconnect. Rejoin
+`/speedbuild stop`, move the named player safely if needed, and have them reconnect. Rejoin
 retries a confirmed hub return; a successful recovery is logged and clears temporary
 containment only after the hub arrival and player data are saved. An atomic plugin-owned
 registry under the ScenarioCraft data folder retains pending player UUIDs even when a
@@ -122,7 +122,7 @@ Judge output is read from timestamped directories under
 published `results.txt` at the configured `results-poll-ticks` interval and announces its
 winner through titles, compact chat lines, and winner-plot particles. The judge can request
 the same deduplicated announcement over RCON; if RCON is down, the file poll remains the local
-fallback. Players can use `/battle results` to replay the latest result, including after the
+fallback. Players can use `/speedbuild results` to replay the latest result, including after the
 round leaves REVEAL. Malformed, oversized, symbolic-link, or raw-JSON input is rejected with a
 friendly message rather than displayed.
 

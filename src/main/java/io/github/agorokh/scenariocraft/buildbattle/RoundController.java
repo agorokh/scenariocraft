@@ -1840,7 +1840,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         + affectedPlayer.getName()
                         + " could not move to "
                         + destinationWorld.getKey()
-                        + ". Run /battle stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
+                        + ". Run /speedbuild stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
         server.getConsoleSender().sendMessage(alert);
         for (Player onlinePlayer : server.getOnlinePlayers()) {
             if (receivesOperatorAlerts(onlinePlayer)) {
