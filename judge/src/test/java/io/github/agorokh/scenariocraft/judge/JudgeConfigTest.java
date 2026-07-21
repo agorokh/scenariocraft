@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -62,6 +65,20 @@ class JudgeConfigTest {
         for (String criterion : JudgeConfig.CRITERIA) {
             assertTrue(config.rubric().contains(criterion), criterion);
         }
+    }
+
+    @Test
+    void rejectsConfigurationFilesAboveThePromptBound() throws Exception {
+        Path oversized = temporaryDirectory.resolve("rubric.md");
+        try (FileChannel channel = FileChannel.open(
+                oversized, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            channel.position(JudgeConfig.MAX_CONFIG_BYTES);
+            channel.write(ByteBuffer.wrap(new byte[] {0}));
+        }
+
+        assertThrows(
+                java.io.IOException.class,
+                () -> JudgeConfig.load(personasFixture(), oversized));
     }
 
     private Path personasFixture() {

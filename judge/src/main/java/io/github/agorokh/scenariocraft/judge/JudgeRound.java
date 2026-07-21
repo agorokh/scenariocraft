@@ -7,15 +7,21 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import java.io.IOException;
-import java.io.Reader;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 record JudgeRound(int schema, String roundId, String task, String world, List<Plot> plots) {
+    static final int MAX_MANIFEST_BYTES = 1024 * 1024;
+    static final int MAX_PLOTS = 16;
+    private static final int MAX_TASK_LENGTH = 512;
+    private static final int MAX_WORLD_LENGTH = 128;
+    private static final int MAX_PLAYER_LENGTH = 64;
     private static final Set<String> ROOT_KEYS =
             Set.of("schema", "round_id", "task", "world", "plots");
     private static final Set<String> PLOT_KEYS =
@@ -29,13 +35,15 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
         if (roundId == null || !roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
             throw new IllegalArgumentException("round_id has an invalid format");
         }
-        if (task == null || task.isBlank() || world == null || world.isBlank()) {
+        if (task == null || task.isBlank() || task.length() > MAX_TASK_LENGTH
+                || world == null || world.isBlank() || world.length() > MAX_WORLD_LENGTH) {
             throw new IllegalArgumentException("manifest task and world must be non-blank");
         }
         requireSafeText(task, "manifest task");
         requireSafeText(world, "manifest world");
-        if (plots.isEmpty()) {
-            throw new IllegalArgumentException("manifest must contain at least one plot");
+        if (plots.isEmpty() || plots.size() > MAX_PLOTS) {
+            throw new IllegalArgumentException(
+                    "manifest must contain from 1 to " + MAX_PLOTS + " plots");
         }
         Set<String> ids = new HashSet<>();
         for (Plot plot : plots) {
@@ -46,8 +54,15 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
     }
 
     static JudgeRound read(Path path) throws IOException {
-        try (Reader reader = Files.newBufferedReader(path)) {
-            JsonElement root = JsonParser.parseReader(reader);
+        try {
+            byte[] bytes;
+            try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+                bytes = input.readNBytes(MAX_MANIFEST_BYTES + 1);
+            }
+            if (bytes.length > MAX_MANIFEST_BYTES) {
+                throw new IOException("manifest.json exceeds the byte limit");
+            }
+            JsonElement root = JsonParser.parseString(new String(bytes, StandardCharsets.UTF_8));
             if (!root.isJsonObject()) {
                 throw new IllegalArgumentException("manifest.json must contain an object");
             }
@@ -162,7 +177,7 @@ record JudgeRound(int schema, String roundId, String task, String world, List<Pl
             if (plotId == null || !plotId.matches("p[1-9][0-9]*")) {
                 throw new IllegalArgumentException("plot_id has an unsafe format");
             }
-            if (player == null || player.isBlank()) {
+            if (player == null || player.isBlank() || player.length() > MAX_PLAYER_LENGTH) {
                 throw new IllegalArgumentException("player must be non-blank");
             }
             requireSafeText(player, "player");

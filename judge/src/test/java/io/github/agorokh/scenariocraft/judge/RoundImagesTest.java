@@ -113,7 +113,25 @@ class RoundImagesTest {
         IOException exception = assertThrows(
                 IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
 
-        assertTrue(exception.getMessage().contains("not a valid PNG"));
+        assertTrue(exception.getMessage().contains("valid PNG"));
+    }
+
+    @Test
+    void rejectsImageSetsAboveTheAggregateRequestLimit() throws Exception {
+        Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
+        for (String name : RoundImages.NAMES) {
+            Path image = output.resolve(name);
+            try (FileChannel channel = FileChannel.open(
+                    image, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                channel.position(3L * 1024 * 1024);
+                channel.write(ByteBuffer.wrap(new byte[] {0}));
+            }
+        }
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+
+        assertTrue(exception.getMessage().contains("aggregate byte limit"));
     }
 
     private Path workedExample() {

@@ -167,6 +167,10 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         if (images.size() != 7) {
             throw new IllegalArgumentException("exactly seven images are required");
         }
+        long totalImageBytes = images.stream().mapToLong(image -> image.bytes().length).sum();
+        if (totalImageBytes > RoundImages.MAX_TOTAL_IMAGE_BYTES) {
+            throw new IllegalArgumentException("judge image set exceeds the aggregate byte limit");
+        }
         JsonObject request = new JsonObject();
         request.addProperty("model", MODEL);
         request.addProperty("store", false);

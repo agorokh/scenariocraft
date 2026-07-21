@@ -14,6 +14,7 @@ import java.util.Objects;
 
 final class RoundImages {
     static final long MAX_VOXEL_BYTES = 16L * 1024 * 1024;
+    static final long MAX_TOTAL_IMAGE_BYTES = 16L * 1024 * 1024;
     static final List<String> NAMES = List.of(
             "iso-ne.png", "iso-se.png", "iso-sw.png", "iso-nw.png",
             "plan.png", "cut-x.png", "cut-z.png");
@@ -66,6 +67,13 @@ final class RoundImages {
 
     private static List<JudgeImage> snapshotImages(Path allowedRoot, List<Path> images)
             throws IOException {
+        long totalBytes = 0;
+        for (Path image : images) {
+            totalBytes = Math.addExact(totalBytes, Files.size(image));
+            if (totalBytes > MAX_TOTAL_IMAGE_BYTES) {
+                throw new IOException("Judge image set exceeds the aggregate byte limit");
+            }
+        }
         List<JudgeImage> snapshots = new ArrayList<>(images.size());
         for (Path image : images) {
             snapshots.add(JudgeImage.read(image, allowedRoot));

@@ -2,7 +2,9 @@ package io.github.agorokh.scenariocraft.judge;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -11,11 +13,19 @@ import org.snakeyaml.engine.v2.api.Load;
 import org.snakeyaml.engine.v2.api.LoadSettings;
 
 record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
+    static final int MAX_CONFIG_BYTES = 64 * 1024;
+    static final int MAX_PERSONAS = 8;
+    private static final int MAX_RUBRIC_LENGTH = 16 * 1024;
+    private static final int MAX_PERSONA_NAME_LENGTH = 64;
+    private static final int MAX_PERSONA_VOICE_LENGTH = 512;
     static final List<String> CRITERIA =
             List.of("theme_fit", "creativity", "effort", "detail");
 
     JudgeConfig {
         personas = List.copyOf(personas);
+        if (personas.size() > MAX_PERSONAS) {
+            throw new IllegalArgumentException("persona count exceeds " + MAX_PERSONAS);
+        }
         if (minJudges < 2) {
             throw new IllegalArgumentException("min_judges must be at least 2");
         }
@@ -25,7 +35,7 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
         if (personas.stream().map(Persona::name).distinct().count() != personas.size()) {
             throw new IllegalArgumentException("persona names must be unique");
         }
-        if (rubric == null || rubric.isBlank()) {
+        if (rubric == null || rubric.isBlank() || rubric.length() > MAX_RUBRIC_LENGTH) {
             throw new IllegalArgumentException("rubric.md must be non-blank");
         }
         for (String criterion : CRITERIA) {
@@ -37,13 +47,13 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
     }
 
     static JudgeConfig load(Path personasPath, Path rubricPath) throws IOException {
-        String rubric = Files.readString(rubricPath);
+        String rubric = readBounded(rubricPath);
         LoadSettings settings = LoadSettings.builder()
                 .setLabel(personasPath.toString())
                 .setAllowDuplicateKeys(false)
                 .setMaxAliasesForCollections(10)
                 .build();
-        Object loaded = new Load(settings).loadFromString(Files.readString(personasPath));
+        Object loaded = new Load(settings).loadFromString(readBounded(personasPath));
         if (!(loaded instanceof Map<?, ?> root)) {
             throw new IllegalArgumentException("personas.yml must contain a mapping");
         }
@@ -60,8 +70,10 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
             }
             requireExactKeys(persona, Set.of("name", "voice"), "persona " + index);
             personas.add(new Persona(
-                    requireString(persona.get("name"), "persona name"),
-                    requireString(persona.get("voice"), "persona voice")));
+                    requireString(
+                            persona.get("name"), "persona name", MAX_PERSONA_NAME_LENGTH),
+                    requireString(
+                            persona.get("voice"), "persona voice", MAX_PERSONA_VOICE_LENGTH)));
         }
         return new JudgeConfig(minJudges, personas, rubric);
     }
@@ -83,10 +95,21 @@ record JudgeConfig(int minJudges, List<Persona> personas, String rubric) {
         return integer;
     }
 
-    private static String requireString(Object value, String label) {
-        if (!(value instanceof String text) || text.isBlank()) {
+    private static String requireString(Object value, String label, int maxLength) {
+        if (!(value instanceof String text) || text.isBlank() || text.length() > maxLength) {
             throw new IllegalArgumentException(label + " must be a non-blank string");
         }
         return text;
+    }
+
+    private static String readBounded(Path path) throws IOException {
+        byte[] bytes;
+        try (var input = Files.newInputStream(path, LinkOption.NOFOLLOW_LINKS)) {
+            bytes = input.readNBytes(MAX_CONFIG_BYTES + 1);
+        }
+        if (bytes.length > MAX_CONFIG_BYTES) {
+            throw new IOException(path.getFileName() + " exceeds the byte limit");
+        }
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 }

@@ -11,8 +11,8 @@ record JudgeVerdict(String persona, String reasoning, Scores scores, String comm
             "\\b(?:awful|bad|boring|disgusting|dumb|embarrassing|failure|garbage|gross|"
                     + "hate|horrible|idiot|incompetent|lazy|loser|nobody|pathetic|pointless|"
                     + "shame|stupid|sucks?|talentless|terrible|trash|ugly|useless|"
-                    + "worthless|worst)\\b|\\b(?:can't|cannot|don't|doesn't|isn't|lack|"
-                    + "lacks|never|no|not|nothing|without|won't)\\b",
+                    + "worthless|worst)\\b|\\b(?:no|without) talent\\b|"
+                    + "\\black(?:s|ing)? talent\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern IMPROVEMENT_START = Pattern.compile(
             "^(?:add|build|consider|experiment|focus|for the next round|give|keep|make|"

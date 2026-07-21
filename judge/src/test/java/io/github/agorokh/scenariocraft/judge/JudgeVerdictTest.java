@@ -39,6 +39,12 @@ class JudgeVerdictTest {
     }
 
     @Test
+    void acceptsNeutralNegativeWordsInsideConcretePraise() {
+        assertDoesNotThrow(() -> verdict(
+                "The roof is strong without extra trim. Add a chimney next."));
+    }
+
+    @Test
     void rejectsMultilineComments() {
         assertThrows(IllegalArgumentException.class, () -> verdict(
                 "Your roof has a strong shape.\nAdd more blocks next."));
