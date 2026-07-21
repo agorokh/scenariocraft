@@ -32,7 +32,7 @@ class BattleResultParserTest {
 
         assertEquals("Alex wins!", formatter.title(result));
         assertTrue(lines.stream().allMatch(line -> line.length() <= BattleResultFormatter.MAX_CHAT_LENGTH));
-        assertTrue(lines.stream().anyMatch(line -> line.contains("Captain Comet on Alex:")));
+        assertTrue(lines.stream().anyMatch(line -> line.contains("Judge 1 on Alex:")));
         assertTrue(lines.stream().anyMatch(line -> line.contains("positive detail stood out in the roof")));
         assertFalse(lines.stream().anyMatch(line -> line.contains("{") || line.contains("}")));
         assertFalse(lines.stream().anyMatch(line -> line.contains("sparkly")));
@@ -152,6 +152,19 @@ class BattleResultParserTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> parser.parse(template.formatted("The §kobfuscated roof is clever.")));
+
+        BattleResult unsafePersona =
+                parser.parse(
+                        """
+                        Round: round-20260721-193000
+                        Task: A moon base for cats
+
+                        Alex (p1)
+                          Go jump off a bridge: 2.00 — The bright roof is welcoming.
+                        Winner: Alex with 2.00
+                        """);
+        assertEquals("Judge 1", unsafePersona.contestants().getFirst().feedback().getFirst().persona());
+        assertFalse(formatter.chatLines(unsafePersona).toString().contains("jump"));
     }
 
     @Test

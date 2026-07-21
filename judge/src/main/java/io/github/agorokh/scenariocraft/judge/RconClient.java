@@ -5,25 +5,50 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 final class RconClient {
     private static final int AUTH_TYPE = 3;
     private static final int COMMAND_TYPE = 2;
     private static final int MAX_PACKET_BYTES = 1024 * 1024;
     private static final int REQUEST_ID = 0x5343;
+    private final HostResolver resolver;
+
+    RconClient() {
+        this(InetAddress::getAllByName);
+    }
+
+    RconClient(HostResolver resolver) {
+        this.resolver = Objects.requireNonNull(resolver, "resolver");
+    }
 
     void execute(RconSettings settings, String command) throws IOException {
         if (command == null || command.isBlank() || command.length() > 512
                 || command.codePoints().anyMatch(Character::isISOControl)) {
             throw new IllegalArgumentException("RCON command must be a non-blank safe command");
         }
+        long connectTimeoutNanos = settings.connectTimeout().toNanos();
+        long connectDeadline = System.nanoTime() + connectTimeoutNanos;
+        InetAddress address = resolve(settings.host(), settings.connectTimeout().toMillis());
+        long remainingNanos = connectDeadline - System.nanoTime();
+        if (remainingNanos <= 0L) {
+            throw new SocketTimeoutException("RCON hostname resolution exhausted the connect timeout");
+        }
+        int remainingMillis =
+                Math.toIntExact(
+                        Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos)));
         try (Socket socket = new Socket()) {
             socket.connect(
-                    new InetSocketAddress(settings.host(), settings.port()),
-                    Math.toIntExact(settings.connectTimeout().toMillis()));
+                    new InetSocketAddress(address, settings.port()), remainingMillis);
             socket.setSoTimeout(Math.toIntExact(settings.readTimeout().toMillis()));
             writePacket(socket.getOutputStream(), REQUEST_ID, AUTH_TYPE, settings.password());
             Packet auth = readPacket(socket.getInputStream());
@@ -44,6 +69,34 @@ final class RconClient {
             if (response.id() != REQUEST_ID + 1) {
                 throw new IOException("RCON command returned an unexpected request id");
             }
+        }
+    }
+
+    private InetAddress resolve(String host, long timeoutMillis) throws IOException {
+        FutureTask<InetAddress[]> resolution =
+                new FutureTask<>(() -> resolver.resolve(host));
+        Thread.ofPlatform()
+                .daemon(true)
+                .name("scenariocraft-rcon-dns")
+                .start(resolution);
+        try {
+            InetAddress[] addresses = resolution.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (addresses.length == 0) {
+                throw new IOException("RCON hostname resolved to no addresses");
+            }
+            return addresses[0];
+        } catch (TimeoutException exception) {
+            resolution.cancel(true);
+            throw new SocketTimeoutException("RCON hostname resolution timed out");
+        } catch (InterruptedException exception) {
+            resolution.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new IOException("RCON hostname resolution was interrupted", exception);
+        } catch (ExecutionException exception) {
+            if (exception.getCause() instanceof IOException ioFailure) {
+                throw ioFailure;
+            }
+            throw new IOException("RCON hostname resolution failed", exception.getCause());
         }
     }
 
@@ -101,4 +154,9 @@ final class RconClient {
     }
 
     private record Packet(int id, int type, String body) {}
+
+    @FunctionalInterface
+    interface HostResolver {
+        InetAddress[] resolve(String host) throws IOException;
+    }
 }

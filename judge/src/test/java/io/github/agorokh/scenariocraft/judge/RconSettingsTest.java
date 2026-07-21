@@ -49,6 +49,28 @@ class RconSettingsTest {
     }
 
     @Test
+    void completeEnvironmentConfigurationIgnoresMalformedJudgeYaml() throws Exception {
+        Path config = temporaryDirectory.resolve("judge.yml");
+        Files.writeString(config, "not: [valid");
+
+        RconSettings settings =
+                RconSettings.load(
+                                config,
+                                Map.of(
+                                        "SCENARIOCRAFT_RCON_HOST", "127.0.0.1",
+                                        "SCENARIOCRAFT_RCON_PORT", "25580",
+                                        "SCENARIOCRAFT_RCON_PASSWORD", "environment-example",
+                                        "SCENARIOCRAFT_RCON_CONNECT_TIMEOUT_SECONDS", "3",
+                                        "SCENARIOCRAFT_RCON_READ_TIMEOUT_SECONDS", "7"))
+                        .orElseThrow();
+
+        assertEquals("127.0.0.1", settings.host());
+        assertEquals(25_580, settings.port());
+        assertEquals(Duration.ofSeconds(3), settings.connectTimeout());
+        assertEquals(Duration.ofSeconds(7), settings.readTimeout());
+    }
+
+    @Test
     void partialConfigurationWithoutPasswordFailsEarly() {
         assertThrows(
                 IllegalArgumentException.class,

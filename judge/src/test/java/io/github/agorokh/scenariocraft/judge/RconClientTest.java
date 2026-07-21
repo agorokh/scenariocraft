@@ -1,8 +1,11 @@
 package io.github.agorokh.scenariocraft.judge;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.EOFException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -44,6 +47,35 @@ class RconClientTest {
 
             exchange.get(3, TimeUnit.SECONDS);
         }
+    }
+
+    @Test
+    void hostnameResolutionCannotOutliveTheConnectTimeout() {
+        RconClient client =
+                new RconClient(
+                        ignored -> {
+                            try {
+                                Thread.sleep(10_000L);
+                            } catch (InterruptedException exception) {
+                                Thread.currentThread().interrupt();
+                                throw new IOException("test resolver interrupted", exception);
+                            }
+                            return new InetAddress[] {InetAddress.getLoopbackAddress()};
+                        });
+        RconSettings settings =
+                new RconSettings(
+                        "stalled.example",
+                        25_575,
+                        "example-value",
+                        Duration.ofMillis(50),
+                        Duration.ofSeconds(1));
+        long started = System.nanoTime();
+
+        assertThrows(
+                java.net.SocketTimeoutException.class,
+                () -> client.execute(settings, "battle announce round-20260721-193000"));
+
+        assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(1)) < 0);
     }
 
     private static Packet readPacket(InputStream input) throws Exception {

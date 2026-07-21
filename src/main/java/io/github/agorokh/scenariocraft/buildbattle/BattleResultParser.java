@@ -152,7 +152,7 @@ final class BattleResultParser {
                 }
                 feedback.add(
                         new BattleResult.Feedback(
-                                displayText(verdict.group(1), 64, "persona"),
+                                personaLabel(verdict.group(1), feedback.size() + 1),
                                 feedbackText(verdict.group(2))));
                 continue;
             }
@@ -238,6 +238,11 @@ final class BattleResultParser {
                         + ".",
                 500,
                 "comment");
+    }
+
+    private static String personaLabel(String value, int ordinal) {
+        structuralText(value, 64, "persona");
+        return displayText("Judge " + ordinal, 64, "persona");
     }
 
     private static boolean unsafeCodePoint(int codePoint) {

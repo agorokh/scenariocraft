@@ -47,7 +47,9 @@ record RconSettings(
     static Optional<RconSettings> load(Path path, Map<String, String> environment) throws IOException {
         Map<?, ?> yaml = Map.of();
         boolean fileConfigured = Files.exists(path, LinkOption.NOFOLLOW_LINKS);
-        if (fileConfigured) {
+        boolean environmentComplete =
+                ENVIRONMENT_KEYS.stream().allMatch(environment::containsKey);
+        if (fileConfigured && !environmentComplete) {
             if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
                 throw new IOException("judge.yml must be a regular file");
             }
