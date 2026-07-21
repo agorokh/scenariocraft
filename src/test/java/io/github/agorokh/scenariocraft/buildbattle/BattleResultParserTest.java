@@ -67,6 +67,27 @@ class BattleResultParserTest {
     }
 
     @Test
+    void acceptsTheJudgeTaskLengthContractAndRejectsLongerTasks() {
+        String template =
+                """
+                Round: round-20260721-193000
+                Task: %s
+
+                Alex (p1)
+                  Captain Comet: 9.00 — The bright roof is welcoming.
+                Winner: Alex with 9.00
+                """;
+
+        BattleResult maximum = parser.parse(template.formatted("x".repeat(512)));
+
+        assertEquals(512, maximum.task().length());
+        assertTrue(formatter.chatLines(maximum).getFirst().length() <= BattleResultFormatter.MAX_CHAT_LENGTH);
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> parser.parse(template.formatted("x".repeat(513))));
+    }
+
+    @Test
     void rejectsCruelCopiedFeedbackBeforeItCanReachPlayers() {
         String cruel =
                 """

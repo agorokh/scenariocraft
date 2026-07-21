@@ -17,6 +17,7 @@ final class BattleResultParser {
     static final int MAX_RESULT_BYTES = 64 * 1024;
     static final int MAX_LINES = 160;
     static final int MAX_SOURCE_LINE_LENGTH = 640;
+    static final int MAX_TASK_LENGTH = 512;
     static final int MAX_CONTESTANTS = 8;
     static final int MAX_FEEDBACK_PER_CONTESTANT = 8;
     private static final Pattern CONTESTANT = Pattern.compile("(.{1,80}) \\((p[1-9][0-9]{0,2})\\)");
@@ -85,7 +86,11 @@ final class BattleResultParser {
         if (!roundId.matches("round-[0-9]{8}-[0-9]{6}")) {
             throw invalid("has an invalid round id");
         }
-        String task = displayText(prefixed(lines.get(1), "Task: ", "task"), 120, "task");
+        String task =
+                displayText(
+                        prefixed(lines.get(1), "Task: ", "task"),
+                        MAX_TASK_LENGTH,
+                        "task");
         List<BattleResult.Contestant> contestants = new ArrayList<>();
         String player = null;
         String plotId = null;

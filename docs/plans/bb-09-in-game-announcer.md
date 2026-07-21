@@ -45,6 +45,7 @@ session.
 | 2026-07-21 | Bound completed-result candidates rather than round directories, recover the async read gate from unchecked filesystem failures, and enforce the judge's eight-plot/eight-persona presentation limits in the plugin parser. | Delayed judging and filesystem stream failures must not permanently disable replay, while copied artifacts must not amplify into an unbounded main-thread chat broadcast. |
 | 2026-07-21 | Require copied feedback to name a concrete build feature and positive effect, render only that allowlisted feature in a fixed safe strength sentence, reject common identity slurs, isolate automatic polling from manual reads, and expose an export ID only after its directory is published successfully. | Arbitrary copied prose cannot be made safe by an ever-growing denylist; the last presentation boundary must preserve the genuine-strength signal without broadcasting the untrusted tail, while a slow command or timestamp collision must never suppress or misdirect the active round announcement. |
 | 2026-07-21 | Gate published-ID discovery on the current controller export having started, and require exactly one terminal result record after all contestants. | REVEAL begins before wall removal/export, so the exporter can still expose the prior round during that gap; copied files also must not override contradictory winner state through record ordering. |
+| 2026-07-21 | Accept the judge contract's full 512-character task length in copied results and clamp only at presentation. | A task that exports and judges successfully must not become unreadable solely because the plugin used a narrower trust-boundary length. |
 
 ## Surprises & Discoveries
 
@@ -100,11 +101,14 @@ session.
   controller now refuses exporter IDs until its own current export call has succeeded.
 - Line-level result parsing needs ordering semantics as well as syntax. A winner or no-winner
   line is accepted exactly once, after contestants, and no nonblank content may follow it.
+- Input safety limits must align across producer and consumer. The judge permits 512-character
+  tasks, so the plugin parser accepts the same bound while its chat/title formatter remains
+  responsible for the shorter display limits.
 
 ## Acceptance evidence
 
 - `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home make ci-fast`
-  passed on 2026-07-21 after merging current `main`: plugin 258 tests, judge 74 tests,
+  passed on 2026-07-21 after merging current `main`: plugin 259 tests, judge 74 tests,
   renderer 15 tests, zero failures.
 - `RconClientTest` exercises a real loopback TCP exchange: authentication packet, narrow
   `battle announce round-20260721-193000` command, and response framing.
@@ -140,6 +144,8 @@ session.
 - Controller regression hides a retained prior ID during early REVEAL and discovers only the
   new publication after export starts; parser regressions reject pre-contestant,
   contradictory, repeated, or nonterminal outcome records.
+- Task-bound regression accepts 512 characters, rejects 513, and verifies the accepted task
+  is still clamped to the chat presentation limit.
 - `JudgeApplicationTest.rconFailureLeavesPublishedResultsAvailable` forces an announcement
   connection failure after judging and verifies both result files remain published while
   the judge returns success.
