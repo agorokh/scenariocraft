@@ -2,6 +2,7 @@
 .idea/
 .scratch/
 build/
+node_modules/
 out/
 run/
 *.iml

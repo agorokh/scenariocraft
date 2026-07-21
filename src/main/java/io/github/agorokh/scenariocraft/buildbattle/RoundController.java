@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.IntUnaryOperator;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bukkit.GameMode;
@@ -68,6 +69,19 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private static final int MAX_SNAPSHOT_SLOTS = 128;
     private static final double TELEPORT_CONFIRMATION_EPSILON = 1.0E-6;
     private static final long[] TELEPORT_CONFIRMATION_DELAYS = {1L, 4L, 15L};
+    private static final Set<Material> ADJACENT_TARGET_ITEMS =
+            Set.of(
+                    Material.WATER_BUCKET,
+                    Material.LAVA_BUCKET,
+                    Material.POWDER_SNOW_BUCKET,
+                    Material.REDSTONE,
+                    Material.STRING,
+                    Material.FLINT_AND_STEEL,
+                    Material.FIRE_CHARGE,
+                    Material.ARMOR_STAND,
+                    Material.PAINTING,
+                    Material.ITEM_FRAME,
+                    Material.GLOW_ITEM_FRAME);
 
     private final Plugin plugin;
     private final Server server;
@@ -82,6 +96,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     private final TeleportTransport teleportTransport;
     private final TeleportRecoveryStore recoveryStore;
     private final DemoSampleBuild demoSampleBuild;
+    private final Predicate<Material> blockMaterialClassifier;
     private final ActiveArenaMutationPolicy mutationPolicy;
     private final ActiveArenaMutationListener mutationListener;
     private final RoundStateMachine state = new RoundStateMachine();
@@ -268,6 +283,34 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             TeleportTransport teleportTransport,
             TeleportRecoveryStore recoveryStore,
             DemoSampleBuild demoSampleBuild) {
+        this(
+                plugin,
+                settings,
+                arena,
+                blockEditor,
+                logger,
+                randomIndex,
+                taskBookPlacer,
+                roundExporter,
+                teleportTransport,
+                recoveryStore,
+                demoSampleBuild,
+                Material::isBlock);
+    }
+
+    RoundController(
+            Plugin plugin,
+            BattleSettings settings,
+            ArenaWorld arena,
+            BatchedBlockEditor blockEditor,
+            Logger logger,
+            IntUnaryOperator randomIndex,
+            Consumer<String> taskBookPlacer,
+            RoundExporter roundExporter,
+            TeleportTransport teleportTransport,
+            TeleportRecoveryStore recoveryStore,
+            DemoSampleBuild demoSampleBuild,
+            Predicate<Material> blockMaterialClassifier) {
         Objects.requireNonNull(plugin, "plugin");
         this.plugin = plugin;
         this.server = Objects.requireNonNull(plugin.getServer(), "server");
@@ -282,6 +325,8 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         this.teleportTransport = Objects.requireNonNull(teleportTransport, "teleportTransport");
         this.recoveryStore = Objects.requireNonNull(recoveryStore, "recoveryStore");
         this.demoSampleBuild = Objects.requireNonNull(demoSampleBuild, "demoSampleBuild");
+        this.blockMaterialClassifier =
+                Objects.requireNonNull(blockMaterialClassifier, "blockMaterialClassifier");
         if (settings.demoMode() && demoSampleBuild.isEmpty()) {
             throw new IllegalArgumentException("demo mode requires a bundled sample build");
         }
@@ -760,12 +805,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                     mayContestantEdit(
                             event.getPlayer(),
                             clicked.getRelative(event.getBlockFace()));
-            if (!editableClickedBlock) {
-                event.setUseInteractedBlock(Result.DENY);
-            }
             if (!editableClickedBlock
                     && editableAdjacentBlock
+                    && targetsAdjacentBlock(event.getItem())
                     && event.useItemInHand() != Result.DENY) {
+                // Paper treats DENY for the clicked block as a cancelled interaction,
+                // even when useItemInHand is ALLOW. Only placement-like items may
+                // bypass it; tools that transform the clicked floor stay cancelled.
+                event.setUseInteractedBlock(Result.DEFAULT);
                 event.setUseItemInHand(Result.ALLOW);
             } else if (!editableClickedBlock) {
                 event.setCancelled(true);
@@ -1545,6 +1592,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                 player.getUniqueId(),
                 position,
                 List.of(position));
+    }
+
+    private boolean targetsAdjacentBlock(ItemStack item) {
+        if (item == null) {
+            return false;
+        }
+        Material material = item.getType();
+        return ADJACENT_TARGET_ITEMS.contains(material) || blockMaterialClassifier.test(material);
     }
 
     private boolean isInsidePrivatePlot(Location destination) {

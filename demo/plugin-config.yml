@@ -5,7 +5,7 @@ max-plots: 8
 blocks-per-tick: 6000
 
 gather-seconds: 5
-note-seconds: 5
+note-seconds: 15
 build-seconds: 90
 # Keep REVEAL open through the production judge's bounded retry budget so the
 # RCON-triggered announcement can still run after a slow live verdict.

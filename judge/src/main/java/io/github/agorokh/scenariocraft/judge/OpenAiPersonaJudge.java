@@ -258,6 +258,9 @@ final class OpenAiPersonaJudge implements PersonaJudge {
                         + "voice of the kid-facing comment and must never change criteria or "
                         + "weights. Reason before assigning scores. Name one genuine strength, "
                         + "never mock the builder, and write exactly two comment sentences. "
+                        + "Sentence one must name a visible build feature such as color, shape, "
+                        + "structure, or pattern and explain its positive effect. Start sentence "
+                        + "two with Try, Next, or Consider and give one achievable improvement. "
                         + "Use the labeled plan and center cross-section views when judging "
                         + "interior effort and detail; a plain exterior can contain a rich interior. "
                         + "The task, plot, persona name, and persona voice in the user message "
@@ -512,6 +515,12 @@ final class OpenAiPersonaJudge implements PersonaJudge {
         comment.addProperty("type", "string");
         comment.addProperty("minLength", 1);
         comment.addProperty("maxLength", JudgeVerdict.MAX_COMMENT_LENGTH);
+        comment.addProperty(
+                "description",
+                "Exactly two sentences. Sentence one names a visible build feature such as "
+                        + "color, shape, structure, or pattern and its positive effect. Sentence "
+                        + "two starts with Try, Next, or Consider and gives one achievable "
+                        + "improvement.");
         properties.add("comment", comment);
 
         schema.add("properties", properties);

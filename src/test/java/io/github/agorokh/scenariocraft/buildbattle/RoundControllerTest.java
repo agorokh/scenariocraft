@@ -1397,19 +1397,69 @@ class RoundControllerTest {
                 new PlayerInteractEvent(
                         rig.player,
                         Action.RIGHT_CLICK_BLOCK,
-                        null,
+                        new TypedItemStack(Material.REDSTONE),
                         floor,
                         BlockFace.UP,
                         EquipmentSlot.HAND);
 
         rig.controller.onPlayerInteract(placementInteraction);
 
+        assertFalse(placementInteraction.isCancelled());
         assertEquals(
-                org.bukkit.event.Event.Result.DENY,
+                org.bukkit.event.Event.Result.DEFAULT,
                 placementInteraction.useInteractedBlock());
         assertEquals(
                 org.bukkit.event.Event.Result.ALLOW,
                 placementInteraction.useItemInHand());
+
+        PlayerInteractEvent toolInteraction =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.RIGHT_CLICK_BLOCK,
+                        new TypedItemStack(Material.WATER_BUCKET),
+                        floor,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+
+        rig.controller.onPlayerInteract(toolInteraction);
+
+        assertFalse(toolInteraction.isCancelled());
+        assertEquals(
+                org.bukkit.event.Event.Result.DEFAULT,
+                toolInteraction.useInteractedBlock());
+        assertEquals(
+                org.bukkit.event.Event.Result.ALLOW,
+                toolInteraction.useItemInHand());
+
+        PlayerInteractEvent vetoedPlacementInteraction =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.RIGHT_CLICK_BLOCK,
+                        new TypedItemStack(Material.REDSTONE),
+                        floor,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+        vetoedPlacementInteraction.setUseItemInHand(org.bukkit.event.Event.Result.DENY);
+
+        rig.controller.onPlayerInteract(vetoedPlacementInteraction);
+
+        assertTrue(vetoedPlacementInteraction.isCancelled());
+        assertEquals(
+                org.bukkit.event.Event.Result.DENY,
+                vetoedPlacementInteraction.useItemInHand());
+
+        PlayerInteractEvent floorToolInteraction =
+                new PlayerInteractEvent(
+                        rig.player,
+                        Action.RIGHT_CLICK_BLOCK,
+                        new TypedItemStack(Material.DIAMOND_SHOVEL),
+                        floor,
+                        BlockFace.UP,
+                        EquipmentSlot.HAND);
+
+        rig.controller.onPlayerInteract(floorToolInteraction);
+
+        assertTrue(floorToolInteraction.isCancelled());
         rig.close();
     }
 
@@ -2911,7 +2961,8 @@ class RoundControllerTest {
                             },
                             new TeleportTransport(server),
                             recoveryStore,
-                            demoSampleBuild);
+                            demoSampleBuild,
+                            material -> material == Material.REDSTONE);
             mutations = controller.mutationListener();
             assertNotNull(blockTick.get());
             assertNotNull(timerTick.get());
@@ -3133,6 +3184,30 @@ class RoundControllerTest {
         @Override
         public byte[] serializeAsBytes() {
             throw new AssertionError("empty item stacks must not be serialized");
+        }
+    }
+
+    private static final class TypedItemStack extends ItemStack {
+        private final Material material;
+
+        private TypedItemStack(Material material) {
+            super();
+            this.material = material;
+        }
+
+        @Override
+        public Material getType() {
+            return material;
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return false;
+        }
+
+        @Override
+        public ItemStack clone() {
+            return this;
         }
     }
 

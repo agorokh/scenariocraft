@@ -24,3 +24,15 @@ verdict has been announced. `SCENARIOCRAFT_DEMO_KEEP=true make demo` leaves the 
 and volumes running for inspection. Maintainers without an API key may exercise packaging
 with `make demo-dry-run`; that is test evidence only, not acceptance evidence for the live
 judge path.
+
+## Played-for-real documentation proof
+
+From a clean clone with `OPENAI_API_KEY` exported, run `make proof-round`.
+The target joins Blocky, Crafty, and Pixel through Mineflayer, drives the Secret Chest and a
+complete real round, waits for live judge results in game, and publishes the round's frozen data
+and renderer images under `site/`. Every step has a timeout and exits non-zero on failure. The
+services remain available for inspection; finish with `docker compose down --volumes`.
+
+Public CI never starts this path and never receives a judge key. It regenerates every renderer
+view from the committed voxel exports with `make proof-check`, compares the PNGs byte-for-byte,
+and confirms that `site/index.html` regenerates byte-for-byte from the bundle.

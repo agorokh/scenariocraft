@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "round_id": "round-20260721-214219",
+  "task": "A moon base for cats",
+  "world": "battle_world",
+  "plots": [
+    {
+      "plot_id": "p1",
+      "player": "Blocky",
+      "origin": [
+        -10,
+        -60,
+        -50
+      ],
+      "size": [
+        21,
+        3,
+        21
+      ]
+    },
+    {
+      "plot_id": "p2",
+      "player": "Crafty",
+      "origin": [
+        30,
+        -60,
+        -10
+      ],
+      "size": [
+        21,
+        3,
+        21
+      ]
+    },
+    {
+      "plot_id": "p3",
+      "player": "Pixel",
+      "origin": [
+        -50,
+        -60,
+        30
+      ],
+      "size": [
+        21,
+        3,
+        21
+      ]
+    }
+  ]
+}
