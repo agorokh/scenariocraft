@@ -40,9 +40,12 @@ jobs:
         run: |
           set -euo pipefail
           test -x judge/build/install/judge/bin/judge
-          cd judge/src/test/resources/fixtures/runtime
-          ../../../../../build/install/judge/bin/judge \
-            --round rounds/round-20260721-193000 --dry-run
+          cp -R judge/src/test/resources/fixtures/runtime \
+            "${RUNNER_TEMP}/judge-runtime"
+          SCENARIOCRAFT_JUDGE_CONFIG_DIR="${GITHUB_WORKSPACE}/judge" \
+            judge/build/install/judge/bin/judge \
+              --round "${RUNNER_TEMP}/judge-runtime/rounds/round-20260721-193000" \
+              --dry-run
 
       - name: Stage tested plugin jar
         shell: bash

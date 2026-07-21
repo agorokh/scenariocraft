@@ -92,6 +92,24 @@ class JudgeCouncilTest {
         assertEquals(1, calls.get());
     }
 
+    @Test
+    void failsClosedWhenContestantsHaveUnequalCouncilSizes() throws Exception {
+        PersonaJudge judge = (persona, task, rubric, plotId, images) -> {
+            if ("p1".equals(plotId) && "Three".equals(persona.name())) {
+                throw new JudgeException("persona unavailable");
+            }
+            return verdict(persona.name(), "p1".equals(plotId) ? 8 : 6);
+        };
+
+        RoundResults results = run(judge);
+
+        assertFalse(results.hasWinner());
+        assertEquals(true, results.noWinner());
+        assertTrue(results.reason().contains("unequal successful verdict counts"));
+        assertEquals(2, results.contestants().get(0).verdicts().size());
+        assertEquals(3, results.contestants().get(1).verdicts().size());
+    }
+
     private RoundResults run(PersonaJudge judge) throws JudgeException {
         JudgeRound round = new JudgeRound(
                 1,

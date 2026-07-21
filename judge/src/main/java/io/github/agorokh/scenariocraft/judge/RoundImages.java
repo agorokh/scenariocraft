@@ -17,13 +17,14 @@ final class RoundImages {
     private RoundImages() {}
 
     static List<Path> prepare(Path roundDirectory, String plotId) throws IOException {
+        Path roundRoot = roundDirectory.toRealPath();
         Path outputRoot = roundDirectory.resolve("out");
         Path outputDirectory = outputRoot.resolve(plotId);
         rejectSymbolicLink(outputRoot);
         rejectSymbolicLink(outputDirectory);
         List<Path> images = imagePaths(outputDirectory);
         rejectSymbolicLinks(images);
-        if (!allRegularFiles(images)) {
+        if (!isCompleteSafeImageSet(roundRoot, images)) {
             Path voxelFile = roundDirectory.resolve(plotId + ".voxels.json");
             if (!Files.isRegularFile(voxelFile, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IOException("Missing seven PNGs and voxel source for " + plotId);
@@ -36,7 +37,7 @@ final class RoundImages {
             images = imagePaths(outputDirectory);
             rejectSymbolicLinks(images);
         }
-        if (!allRegularFiles(images)) {
+        if (!isCompleteSafeImageSet(roundRoot, images)) {
             throw new IOException("Renderer did not produce seven PNGs for " + plotId);
         }
         return List.copyOf(images);
@@ -50,9 +51,29 @@ final class RoundImages {
         return images;
     }
 
-    private static boolean allRegularFiles(List<Path> images) {
-        return images.stream()
-                .allMatch(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS));
+    private static boolean isCompleteSafeImageSet(Path roundRoot, List<Path> images)
+            throws IOException {
+        for (Path image : images) {
+            if (!Files.isRegularFile(image, LinkOption.NOFOLLOW_LINKS)) {
+                return false;
+            }
+            Path realImage = image.toRealPath();
+            if (!realImage.startsWith(roundRoot)) {
+                throw new IOException("Judge image escapes the round directory: " + image);
+            }
+            Object linkCount;
+            try {
+                linkCount = Files.getAttribute(image, "unix:nlink", LinkOption.NOFOLLOW_LINKS);
+            } catch (UnsupportedOperationException exception) {
+                throw new IOException(
+                        "Filesystem cannot verify judge image link ownership: " + image,
+                        exception);
+            }
+            if (!(linkCount instanceof Number count) || count.longValue() != 1) {
+                throw new IOException("Hard-linked judge images are not allowed: " + image);
+            }
+        }
+        return true;
     }
 
     private static void rejectSymbolicLinks(List<Path> paths) throws IOException {

@@ -54,6 +54,18 @@ class RoundImagesTest {
         assertTrue(exception.getMessage().contains("does not match manifest plot p1"));
     }
 
+    @Test
+    void rejectsHardLinkedImagesInsteadOfUploadingExternalFileContents() throws Exception {
+        Path output = Files.createDirectories(temporaryDirectory.resolve("out/p1"));
+        Path target = Files.write(temporaryDirectory.resolve("outside.png"), new byte[] {1});
+        Files.createLink(output.resolve("iso-ne.png"), target);
+
+        IOException exception = assertThrows(
+                IOException.class, () -> RoundImages.prepare(temporaryDirectory, "p1"));
+
+        assertTrue(exception.getMessage().contains("Hard-linked judge images are not allowed"));
+    }
+
     private Path workedExample() {
         return Path.of(System.getProperty("scenariocraft.repoRoot"))
                 .resolve("src/test/resources/fixtures/worked-example.voxels.json");

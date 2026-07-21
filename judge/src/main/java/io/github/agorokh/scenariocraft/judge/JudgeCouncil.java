@@ -45,6 +45,14 @@ final class JudgeCouncil {
                     1, round.roundId(), round.task(), contestants,
                     null, true, quorumFailure);
         }
+        int expectedVerdictCount = contestants.getFirst().verdicts().size();
+        if (contestants.stream()
+                .anyMatch(contestant -> contestant.verdicts().size() != expectedVerdictCount)) {
+            String reason = "No winner: contestants received unequal successful verdict counts.";
+            return new RoundResults(
+                    1, round.roundId(), round.task(), contestants,
+                    null, true, reason);
+        }
         List<RoundResults.ContestantResult> ranked = contestants.stream()
                 .sorted(Comparator.comparingDouble(
                         (RoundResults.ContestantResult result) -> result.mean()).reversed())
