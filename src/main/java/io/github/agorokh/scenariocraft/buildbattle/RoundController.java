@@ -384,7 +384,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         }
         if (phase() != RoundPhase.IDLE) {
             sender.sendMessage(
-                    "A Build Battle is already in " + friendlyPhase(phase()) + ".");
+                    "A Speed Build is already in " + friendlyPhase(phase()) + ".");
             return;
         }
         if (blockEditor.isBusy()) {
@@ -506,9 +506,9 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                             ? "Solo mode is on: your challenger is the bundled sample build!"
                             : "Starting with one builder and one extra practice plot.");
         } else {
-            sender.sendMessage("Starting Build Battle for " + players.size() + " builders!");
+            sender.sendMessage("Starting Speed Build for " + players.size() + " builders!");
         }
-        broadcast("Build Battle is getting the arena ready in safe little batches!");
+        broadcast("Speed Build is getting the arena ready in safe little batches!");
 
         long mutations;
         try {
@@ -544,14 +544,14 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
     public void stop(CommandSender sender) {
         Objects.requireNonNull(sender, "sender");
         if (phase() == RoundPhase.IDLE) {
-            sender.sendMessage("There is no active Build Battle to stop.");
+            sender.sendMessage("There is no active Speed Build to stop.");
             return;
         }
         RoundPhase stoppedPhase = phase();
         abortRound();
         sender.sendMessage(
-                "Build Battle stopped cleanly from " + friendlyPhase(stoppedPhase) + ".");
-        broadcast("Build Battle stopped. Everyone is safe at the hub.");
+                "Speed Build stopped cleanly from " + friendlyPhase(stoppedPhase) + ".");
+        broadcast("Speed Build stopped. Everyone is safe at the hub.");
         logger.info("Round stopped from " + stoppedPhase + " and returned to IDLE.");
     }
 
@@ -1104,7 +1104,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
         roundStarter = null;
         resetNotePickState();
         plots = List.of();
-        broadcast("Build Battle complete — amazing creating, everyone!");
+        broadcast("Speed Build complete — amazing creating, everyone!");
         logger.info("Round complete: returned to IDLE.");
     }
 
@@ -1171,7 +1171,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
             return;
         }
         CommandSender starter = roundStarter;
-        logger.log(Level.SEVERE, "Build Battle arena work failed; aborting round", failure);
+        logger.log(Level.SEVERE, "Speed Build arena work failed; aborting round", failure);
         abortRound();
         String message =
                 "The arena could not get ready this time. Please ask a grown-up helper to check the server.";
@@ -1840,7 +1840,7 @@ public final class RoundController implements BattleRound, Listener, AutoCloseab
                         + affectedPlayer.getName()
                         + " could not move to "
                         + destinationWorld.getKey()
-                        + ". Run /battle stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
+                        + ". Run /speedbuild stop and check SCENARIOCRAFT_TELEPORT_FAILURE.";
         server.getConsoleSender().sendMessage(alert);
         for (Player onlinePlayer : server.getOnlinePlayers()) {
             if (receivesOperatorAlerts(onlinePlayer)) {

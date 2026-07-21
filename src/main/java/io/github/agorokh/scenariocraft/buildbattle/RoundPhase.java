@@ -3,7 +3,7 @@ package io.github.agorokh.scenariocraft.buildbattle;
 import java.util.EnumSet;
 import java.util.Set;
 
-/** Explicit Build Battle phase graph, including clean abort edges back to idle. */
+/** Explicit Speed Build phase graph, including clean abort edges back to idle. */
 public enum RoundPhase {
     IDLE,
     PREPARING,

@@ -88,4 +88,4 @@ connection and response timeout with a value from 1 through 60 seconds. RCON is 
 missing configuration skips the network request. A connection, authentication, or command
 failure is reported without the password and does not change the judge status or remove
 `results.json`/`results.txt`. If the files are shared with the server, ScenarioCraft's REVEAL
-poll still announces them; `/battle results` replays the latest readable result at any time.
+poll still announces them; `/speedbuild results` replays the latest readable result at any time.
