@@ -77,24 +77,23 @@ class TaskDeckTest {
     }
 
     @Test
-    void flushWaitsForPendingHistoryWrite() {
+    void flushPersistsLatestHistoryWithoutWaitingForPendingExecutor() {
         Path history = temporaryDirectory.resolve("flushed-task-history.txt");
-        try (ExecutorService writer = Executors.newSingleThreadExecutor()) {
-            TaskDeck deck =
-                    new TaskDeck(
-                            List.of("Castle", "Rocket"),
-                            ignored -> 0,
-                            history,
-                            null,
-                            writer);
+        List<Runnable> queuedWrites = new ArrayList<>();
+        TaskDeck deck =
+                new TaskDeck(
+                        List.of("Castle", "Rocket"),
+                        ignored -> 0,
+                        history,
+                        null,
+                        queuedWrites::add);
 
-            assertEquals("Castle", deck.draw());
-            deck.flushHistory();
+        assertEquals("Castle", deck.draw());
+        deck.flushHistory();
 
-            TaskDeck restarted =
-                    new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
-            assertEquals("Rocket", restarted.draw());
-        }
+        TaskDeck restarted =
+                new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
+        assertEquals("Rocket", restarted.draw());
     }
 
     @Test

@@ -65,6 +65,18 @@ cat >"$test_root/repo/demo/check-bedrock.sh" <<'SH'
 if [ "${FAKE_PROBE_FAIL:-false}" = true ]; then
     exit 1
 fi
+if [ "${FAKE_PROBE_FAILURES:-0}" -gt 0 ]; then
+    attempts_file=${FAKE_PROBE_ATTEMPTS_FILE:?}
+    attempts=0
+    if [ -f "$attempts_file" ]; then
+        attempts=$(cat "$attempts_file")
+    fi
+    attempts=$((attempts + 1))
+    printf '%s\n' "$attempts" >"$attempts_file"
+    if [ "$attempts" -le "$FAKE_PROBE_FAILURES" ]; then
+        exit 1
+    fi
+fi
 echo "SCENARIOCRAFT_BEDROCK_OK host=$1 port=$2 motd=Speed Build"
 SH
 
@@ -75,12 +87,18 @@ chmod +x "$test_root/bin/docker" "$test_root/bin/launchctl" \
 export PATH="$test_root/bin:$PATH"
 export HOME="$test_root/home"
 export FAKE_DOCKER_LOG="$test_root/docker.log"
+export FAKE_PROBE_ATTEMPTS_FILE="$test_root/probe-attempts"
 export SCENARIOCRAFT_CONFIG_FILE=./demo/plugin-config.yml
 export SCENARIOCRAFT_BEDROCK_PORT=19133
 
 "$test_root/repo/demo/family-server.sh" up >"$test_root/up.out"
 grep -Fq 'ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132.' "$test_root/up.out"
 grep -Eq '^./demo/family-config.yml\|19132\|compose .* up -d --build$' "$FAKE_DOCKER_LOG"
+
+rm -f "$FAKE_PROBE_ATTEMPTS_FILE"
+FAKE_PROBE_FAILURES=2 "$test_root/repo/demo/family-server.sh" up >"$test_root/retried-up.out"
+test "$(cat "$FAKE_PROBE_ATTEMPTS_FILE")" -eq 3
+grep -Fq 'ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132.' "$test_root/retried-up.out"
 
 "$test_root/repo/demo/family-server.sh" status >"$test_root/status.out"
 grep -Fq 'Bedrock UDP 19132 answered a RakNet discovery probe.' "$test_root/status.out"

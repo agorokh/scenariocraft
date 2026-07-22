@@ -47,6 +47,18 @@ raknet_probe() {
         "$repo_dir/demo/check-bedrock.sh" "$1" 19132
 }
 
+wait_for_bedrock() {
+    for _ in $(seq 1 30); do
+        if raknet_probe 127.0.0.1; then
+            return
+        fi
+        sleep 2
+    done
+    echo "Geyser did not answer UDP 19132 within 60 seconds." >&2
+    compose_cmd logs --tail=100 paper >&2 || true
+    return 1
+}
+
 wait_for_paper() {
     local container_id status
     for _ in $(seq 1 90); do
@@ -286,7 +298,7 @@ case "${1:-up}" in
         else
             SCENARIOCRAFT_BEDROCK_PORT=19132 compose_cmd up -d --build
             wait_for_paper
-            raknet_probe 127.0.0.1
+            wait_for_bedrock
             verify_floodgate_health
         fi
         echo "ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132."

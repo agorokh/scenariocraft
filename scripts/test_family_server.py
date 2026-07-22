@@ -43,6 +43,8 @@ class FamilyServerContractTest(unittest.TestCase):
         )
         self.assertIn('SCENARIOCRAFT_CONFIG_FILE=./demo/family-config.yml', script)
         self.assertIn('export SCENARIOCRAFT_BEDROCK_PORT=19132', script)
+        self.assertIn('wait_for_bedrock', script)
+        self.assertIn('Geyser did not answer UDP 19132 within 60 seconds.', script)
         self.assertIn('trap cleanup_failed_macos_up EXIT', script)
         self.assertIn('compose_cmd down || true', script)
         unload = script.split('unload_macos_geyser() {', 1)[1].split(
