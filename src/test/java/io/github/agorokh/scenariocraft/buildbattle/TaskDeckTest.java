@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -93,6 +94,27 @@ class TaskDeckTest {
             TaskDeck restarted =
                     new TaskDeck(List.of("Castle", "Rocket"), ignored -> 0, history, null);
             assertEquals("Rocket", restarted.draw());
+        }
+    }
+
+    @Test
+    void concurrentDrawsAndAsyncSnapshotsDoNotCorruptHistory() throws Exception {
+        Path history = temporaryDirectory.resolve("concurrent-task-history.txt");
+        List<String> tasks = List.of("Castle", "Rocket", "Bakery", "Dragon");
+        try (ExecutorService writers = Executors.newFixedThreadPool(2);
+                ExecutorService callers = Executors.newFixedThreadPool(4)) {
+            TaskDeck deck = new TaskDeck(tasks, ignored -> 0, history, null, writers);
+            List<Future<?>> draws = new ArrayList<>();
+            for (int index = 0; index < 99; index++) {
+                draws.add(callers.submit(deck::draw));
+            }
+            for (Future<?> draw : draws) {
+                draw.get();
+            }
+            deck.flushHistory();
+
+            TaskDeck restarted = new TaskDeck(tasks, ignored -> 0, history, null);
+            assertFalse(tasks.subList(0, 3).contains(restarted.draw()));
         }
     }
 }

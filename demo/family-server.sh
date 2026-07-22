@@ -136,17 +136,28 @@ unload_macos_geyser() {
     fi
     if [[ "$remove_plist" == true ]]; then
         rm -f "$plist"
-        for _ in $(seq 1 20); do
-            if ! lsof -nP -iUDP:19132 >/dev/null 2>&1; then
-                return
-            fi
-            sleep 0.25
-        done
-        if lsof -nP -iUDP:19132 >/dev/null 2>&1; then
-            echo "UDP 19132 is still occupied by a Geyser process not managed by ScenarioCraft." >&2
-            return 1
-        fi
     fi
+    for _ in $(seq 1 20); do
+        if ! lsof -nP -iUDP:19132 >/dev/null 2>&1; then
+            return
+        fi
+        sleep 0.25
+    done
+    if lsof -nP -iUDP:19132 >/dev/null 2>&1; then
+        echo "UDP 19132 did not become available after stopping the managed macOS Geyser service." >&2
+        return 1
+    fi
+}
+
+cleanup_failed_macos_up() {
+    local failure_status=$?
+    trap - EXIT
+    if [[ "$failure_status" -ne 0 ]]; then
+        echo "Family startup failed; removing partial macOS Geyser and Compose services." >&2
+        unload_macos_geyser true || true
+        compose_cmd down || true
+    fi
+    exit "$failure_status"
 }
 
 install_geyser() {
@@ -266,15 +277,18 @@ case "${1:-up}" in
             # Colima and some Docker Desktop configurations do not expose UDP
             # to LAN discovery. Keep container Geyser on a non-public fallback
             # port and let the host LaunchAgent own the canonical Bedrock port.
+            trap cleanup_failed_macos_up EXIT
             SCENARIOCRAFT_BEDROCK_PORT=19133 compose_cmd up -d --build
             wait_for_paper
             start_macos_geyser
+            verify_floodgate_health
+            trap - EXIT
         else
             SCENARIOCRAFT_BEDROCK_PORT=19132 compose_cmd up -d --build
             wait_for_paper
             raknet_probe 127.0.0.1
+            verify_floodgate_health
         fi
-        verify_floodgate_health
         echo "ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132."
         ;;
     status)

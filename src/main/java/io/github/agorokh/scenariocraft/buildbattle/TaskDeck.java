@@ -26,7 +26,10 @@ final class TaskDeck {
     private final Logger logger;
     private final Executor historyExecutor;
     private final Set<String> recentPicks = new LinkedHashSet<>();
+    private final Object historyWriteLock = new Object();
     private CompletableFuture<Void> pendingWrite = CompletableFuture.completedFuture(null);
+    private long historyRevision;
+    private long persistedRevision = -1;
 
     TaskDeck(List<String> tasks, IntUnaryOperator randomIndex) {
         this(tasks, randomIndex, null, null);
@@ -57,7 +60,7 @@ final class TaskDeck {
         loadHistory();
     }
 
-    String draw() {
+    synchronized String draw() {
         if (recentPicks.size() == tasks.size()) {
             recentPicks.clear();
         }
@@ -73,7 +76,7 @@ final class TaskDeck {
         return selected;
     }
 
-    private void loadHistory() {
+    private synchronized void loadHistory() {
         if (historyFile == null || !Files.isRegularFile(historyFile)) {
             return;
         }
@@ -91,33 +94,41 @@ final class TaskDeck {
             return;
         }
         List<String> snapshot = List.copyOf(recentPicks);
+        long revision = ++historyRevision;
         try {
             pendingWrite =
                     pendingWrite
                             .handle((ignored, failure) -> null)
-                            .thenRunAsync(() -> writeHistory(snapshot), historyExecutor);
+                            .thenRunAsync(() -> writeHistory(snapshot, revision), historyExecutor);
         } catch (RuntimeException failure) {
             logHistoryFailure("schedule a write for", failure);
+            writeHistory(snapshot, revision);
         }
     }
 
-    private void writeHistory(List<String> snapshot) {
-        Path parent = historyFile.toAbsolutePath().normalize().getParent();
-        Path temporary = parent.resolve(historyFile.getFileName() + ".tmp");
-        try {
-            Files.createDirectories(parent);
-            Files.write(temporary, snapshot, StandardCharsets.UTF_8);
-            try {
-                Files.move(
-                        temporary,
-                        historyFile,
-                        StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException unsupported) {
-                Files.move(temporary, historyFile, StandardCopyOption.REPLACE_EXISTING);
+    private void writeHistory(List<String> snapshot, long revision) {
+        synchronized (historyWriteLock) {
+            if (revision <= persistedRevision) {
+                return;
             }
-        } catch (IOException failure) {
-            logHistoryFailure("write", failure);
+            Path parent = historyFile.toAbsolutePath().normalize().getParent();
+            Path temporary = parent.resolve(historyFile.getFileName() + ".tmp");
+            try {
+                Files.createDirectories(parent);
+                Files.write(temporary, snapshot, StandardCharsets.UTF_8);
+                try {
+                    Files.move(
+                            temporary,
+                            historyFile,
+                            StandardCopyOption.ATOMIC_MOVE,
+                            StandardCopyOption.REPLACE_EXISTING);
+                } catch (AtomicMoveNotSupportedException unsupported) {
+                    Files.move(temporary, historyFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+                persistedRevision = revision;
+            } catch (IOException failure) {
+                logHistoryFailure("write", failure);
+            }
         }
     }
 
@@ -130,12 +141,28 @@ final class TaskDeck {
             write.get(5, TimeUnit.SECONDS);
         } catch (TimeoutException failure) {
             logHistoryFailure("flush", failure);
+            writeLatestHistory();
         } catch (InterruptedException failure) {
             Thread.currentThread().interrupt();
             logHistoryFailure("flush", failure);
+            writeLatestHistory();
         } catch (Exception failure) {
             logHistoryFailure("flush", failure);
+            writeLatestHistory();
         }
+    }
+
+    private void writeLatestHistory() {
+        List<String> snapshot;
+        long revision;
+        synchronized (this) {
+            if (historyFile == null) {
+                return;
+            }
+            snapshot = List.copyOf(recentPicks);
+            revision = historyRevision;
+        }
+        writeHistory(snapshot, revision);
     }
 
     private void logHistoryFailure(String operation, Exception failure) {

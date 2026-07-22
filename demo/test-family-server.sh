@@ -45,6 +45,11 @@ printf '%s|%s|%s\n' \
 if [ "$*" = "compose version" ]; then
     exit 0
 fi
+if [ "${FAKE_DOCKER_UP_FAIL:-false}" = true ]; then
+    case " $* " in
+        *" up -d --build "*) exit 1 ;;
+    esac
+fi
 case " $* " in
     *" inspect --format "*)
         echo healthy
@@ -96,5 +101,14 @@ if FAKE_UNAME=Darwin FAKE_LSOF_BUSY=true \
 fi
 after_mac_down=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
 test "$after_mac_down" -eq $((before_mac_down + 1))
+
+before_failed_mac_up=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
+if FAKE_UNAME=Darwin FAKE_DOCKER_UP_FAIL=true \
+        "$test_root/repo/demo/family-server.sh" up >/dev/null 2>&1; then
+    echo "failed macOS family up unexpectedly succeeded" >&2
+    exit 1
+fi
+after_failed_mac_up=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
+test "$after_failed_mac_up" -eq $((before_failed_mac_up + 1))
 
 echo SCENARIOCRAFT_FAMILY_SERVER_LIFECYCLE_OK

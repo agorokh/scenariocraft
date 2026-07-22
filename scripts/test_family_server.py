@@ -43,6 +43,13 @@ class FamilyServerContractTest(unittest.TestCase):
         )
         self.assertIn('SCENARIOCRAFT_CONFIG_FILE=./demo/family-config.yml', script)
         self.assertIn('export SCENARIOCRAFT_BEDROCK_PORT=19132', script)
+        self.assertIn('trap cleanup_failed_macos_up EXIT', script)
+        self.assertIn('compose_cmd down || true', script)
+        unload = script.split('unload_macos_geyser() {', 1)[1].split(
+            '\n}\n', 1
+        )[0]
+        port_wait = unload.index('for _ in $(seq 1 20); do', unload.index('rm -f'))
+        self.assertGreater(port_wait, unload.index('if [[ "$remove_plist" == true ]]'))
 
     def test_status_exits_when_bedrock_probe_fails(self):
         script = (ROOT / "demo" / "family-server.sh").read_text(encoding="utf-8")
