@@ -208,4 +208,12 @@ fi
 after_failed_mac_up=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
 test "$after_failed_mac_up" -eq $((before_failed_mac_up + 1))
 
+before_failed_linux_up=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
+if FAKE_PROBE_FAIL=true "$test_root/repo/demo/family-server.sh" up >/dev/null 2>&1; then
+    echo "failed Linux family up unexpectedly succeeded" >&2
+    exit 1
+fi
+after_failed_linux_up=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
+test "$after_failed_linux_up" -eq $((before_failed_linux_up + 1))
+
 echo SCENARIOCRAFT_FAMILY_SERVER_LIFECYCLE_OK

@@ -47,8 +47,9 @@ class FamilyServerContractTest(unittest.TestCase):
         self.assertIn('Geyser did not answer UDP 19132 within 60 seconds.', script)
         self.assertIn('return 0', script)
         self.assertIn("printf '%s\\n' \"$probe_output\"", script)
-        self.assertIn('trap cleanup_failed_macos_up EXIT', script)
+        self.assertIn('trap cleanup_failed_up EXIT', script)
         self.assertIn('compose_cmd down || true', script)
+        self.assertIn('install -d -m 700 "$runtime_dir"', script)
         unload = script.split('unload_macos_geyser() {', 1)[1].split(
             '\n}\n', 1
         )[0]

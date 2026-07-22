@@ -161,12 +161,14 @@ unload_macos_geyser() {
     fi
 }
 
-cleanup_failed_macos_up() {
+cleanup_failed_up() {
     local failure_status=$?
     trap - EXIT
     if [[ "$failure_status" -ne 0 ]]; then
-        echo "Family startup failed; removing partial macOS Geyser and Compose services." >&2
-        unload_macos_geyser true || true
+        echo "Family startup failed; removing partial Geyser and Compose services." >&2
+        if [[ $(uname -s) == Darwin ]]; then
+            unload_macos_geyser true || true
+        fi
         compose_cmd down || true
     fi
     exit "$failure_status"
@@ -174,7 +176,7 @@ cleanup_failed_macos_up() {
 
 install_geyser() {
     local actual
-    mkdir -p "$runtime_dir"
+    install -d -m 700 "$runtime_dir"
     if [[ -f "$geyser_jar" ]]; then
         actual=$(shasum -a 256 "$geyser_jar" | awk '{print $1}')
     else
@@ -285,22 +287,22 @@ start_macos_geyser() {
 
 case "${1:-up}" in
     up)
+        trap cleanup_failed_up EXIT
         if [[ $(uname -s) == Darwin ]]; then
             # Colima and some Docker Desktop configurations do not expose UDP
             # to LAN discovery. Keep container Geyser on a non-public fallback
             # port and let the host LaunchAgent own the canonical Bedrock port.
-            trap cleanup_failed_macos_up EXIT
             SCENARIOCRAFT_BEDROCK_PORT=19133 compose_cmd up -d --build
             wait_for_paper
             start_macos_geyser
             verify_floodgate_health
-            trap - EXIT
         else
             SCENARIOCRAFT_BEDROCK_PORT=19132 compose_cmd up -d --build
             wait_for_paper
             wait_for_bedrock
             verify_floodgate_health
         fi
+        trap - EXIT
         echo "ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132."
         ;;
     status)
