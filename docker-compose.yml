@@ -13,10 +13,11 @@ services:
       target: plugin-installer
     volumes:
       - plugins:/plugins
-      - ./demo/plugin-config.yml:/demo/plugin-config.yml:ro
+      - ${SCENARIOCRAFT_CONFIG_FILE:-./demo/family-config.yml}:/demo/plugin-config.yml:ro
 
   paper:
     image: itzg/minecraft-server:2026.4.0-java21
+    restart: unless-stopped
     depends_on:
       demo-secrets:
         condition: service_completed_successfully
@@ -56,6 +57,7 @@ services:
     build:
       context: .
       target: judge
+    restart: unless-stopped
     depends_on:
       paper:
         condition: service_healthy

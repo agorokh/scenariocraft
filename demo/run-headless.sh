@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+export SCENARIOCRAFT_CONFIG_FILE=./demo/plugin-config.yml
+
 if [ -z "${OPENAI_API_KEY:-}" ] && [ "${SCENARIOCRAFT_DEMO_DRY_RUN:-false}" != "true" ]; then
     echo "OPENAI_API_KEY is required. Export it before running make demo." >&2
     exit 2

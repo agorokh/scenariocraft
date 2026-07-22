@@ -187,6 +187,22 @@ class RoundControllerTest {
     }
 
     @Test
+    void buildingModeIsReassertedAfterPlotEntryForBedrockClients() {
+        TestRig rig = new TestRig();
+
+        rig.advanceTo(RoundPhase.BUILDING);
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+
+        // Model a Bedrock client applying the teleport's earlier Adventure ability
+        // packet after Paper has already entered BUILDING.
+        rig.gameMode.set(GameMode.ADVENTURE);
+        rig.runDelayedTasks();
+
+        assertEquals(GameMode.CREATIVE, rig.gameMode.get());
+        rig.close();
+    }
+
+    @Test
     void offHandChestInteractionIsCancelledWithoutRevealing() {
         TestRig rig = new TestRig();
         rig.advanceTo(RoundPhase.NOTE_PICK);
@@ -2832,6 +2848,10 @@ class RoundControllerTest {
                                                 throw new IllegalStateException(
                                                         "test scheduler rejection");
                                             }
+                                            ((Runnable) arguments[1]).run();
+                                            yield task;
+                                        }
+                                        case "runTaskAsynchronously" -> {
                                             ((Runnable) arguments[1]).run();
                                             yield task;
                                         }

@@ -1,4 +1,13 @@
-.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit geyser-config-seed-check proof-round proof-check renderer-dist showcase-fixtures-check showcase-scenes site-check verify-wrapper
+.PHONY: bedrock-compose-check bedrock-compose-smoke bedrock-probe-check ci-fast demo demo-dry-run docs-check evals-check evals-release evals-unit family-down family-server-check family-status family-up geyser-config-seed-check proof-round proof-check renderer-dist showcase-fixtures-check showcase-scenes site-check verify-wrapper
+
+family-up:
+	./demo/family-server.sh up
+
+family-status:
+	./demo/family-server.sh status
+
+family-down:
+	./demo/family-server.sh down
 
 demo:
 	./demo/run-headless.sh
@@ -9,7 +18,7 @@ demo-dry-run:
 proof-round:
 	./e2e/run-proof-round.sh
 
-ci-fast: site-check proof-check showcase-fixtures-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check
+ci-fast: site-check proof-check showcase-fixtures-check docs-check evals-unit geyser-config-seed-check bedrock-probe-check family-server-check
 	./gradlew build --no-daemon
 	./evals/run.sh --dry-run --allow-synthetic-only
 
@@ -40,6 +49,7 @@ evals-release: evals-unit
 	./evals/run.sh --dry-run
 
 site-check:
+	bash -n demo/family-server.sh
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 	python3 scripts/site_check.py
 	grep -Fq 'One household, every device' site/index.html
@@ -49,6 +59,7 @@ docs-check:
 	grep -Fq 'One household, every device' README.md
 	grep -Fq 'Docker Desktop on macOS' demo/README.md
 	test -x demo/check-bedrock.sh
+	test -x demo/test-family-server.sh
 	test -x demo/smoke-bedrock-compose.sh
 	test -x demo/seed-geyser-config.sh
 	test -f docker-compose.smoke.yml
@@ -58,6 +69,9 @@ geyser-config-seed-check:
 
 bedrock-probe-check:
 	./demo/test-check-bedrock.py
+
+family-server-check:
+	./demo/test-family-server.sh
 
 bedrock-compose-check:
 	./demo/test-bedrock-compose.sh

@@ -2,6 +2,7 @@
 .idea/
 .scratch/
 .local/
+.runtime/
 build/
 node_modules/
 out/

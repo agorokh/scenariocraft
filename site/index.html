@@ -232,7 +232,7 @@
       <div class="panel-heading">
         <p class="kicker">Your family is next</p>
         <h2 id="home-heading">Run it at home tonight</h2>
-        <p>These are the same three steps as the repository quickstart.</p>
+        <p>These are the same four steps as the repository quickstart.</p>
       </div>
       <ol class="home-steps">
         <li>
@@ -242,12 +242,19 @@
         <li>
           <b>Start the local server</b>
           <code>export OPENAI_API_KEY='&lt;your OpenAI API key&gt;'</code>
-          <code>docker compose up --build</code>
+          <code>make family-up</code>
         </li>
         <li>
-          <b>Play</b>
-          <span>Join <code>localhost:25565</code> in Minecraft Java 1.21.x.</span>
+          <b>Play on Java or Bedrock</b>
+          <span>Java 1.21.x: join <code>localhost:25565</code>.</span>
+          <span>Bedrock on an iPad, phone, or computer: add the Docker host's LAN IP with port <code>19132</code>.</span>
+          <span>Xbox with a macOS host on the same LAN: open the Friends tab and join ScenarioCraft family demo when it appears under LAN Games.</span>
           <span>Run <code>/speedbuild start</code> in chat. <code>/battle</code> and <code>/bb</code> remain available for existing servers.</span>
+        </li>
+        <li>
+          <b>Verify the family server</b>
+          <code>make family-status</code>
+          <span>On macOS, startup automatically uses a host Geyser service so Xbox and iPad LAN discovery can reach UDP <code>19132</code>.</span>
         </li>
       </ol>
       <a class="panel-link" href="https://github.com/agorokh/scenariocraft#quickstart">Full guide in the README <span aria-hidden="true">→</span></a>
