@@ -19,7 +19,22 @@ SH
 
 cat >"$test_root/bin/launchctl" <<'SH'
 #!/bin/sh
-exit 1
+set -eu
+case "${1:-}" in
+    print)
+        if [ -f "${FAKE_LAUNCH_STATE_FILE:?}" ]; then
+            printf '{\n\tpid = 4242\n}\n'
+            exit 0
+        fi
+        exit 1
+        ;;
+    bootout)
+        rm -f "${FAKE_LAUNCH_STATE_FILE:?}"
+        ;;
+    bootstrap)
+        touch "${FAKE_LAUNCH_STATE_FILE:?}"
+        ;;
+esac
 SH
 
 cat >"$test_root/bin/lsof" <<'SH'
@@ -27,7 +42,48 @@ cat >"$test_root/bin/lsof" <<'SH'
 if [ "${FAKE_LSOF_BUSY:-false}" = true ]; then
     exit 0
 fi
+case " $* " in
+    *" -a -p 4242 -iUDP:19132 "*)
+        test -f "${FAKE_LAUNCH_STATE_FILE:?}"
+        exit $?
+        ;;
+esac
 exit 1
+SH
+
+cat >"$test_root/bin/java" <<'SH'
+#!/bin/sh
+if [ "${1:-}" = -version ]; then
+    echo 'openjdk version "21.0.11"' >&2
+fi
+exit 0
+SH
+
+cat >"$test_root/bin/curl" <<'SH'
+#!/bin/sh
+set -eu
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = -o ]; then
+        shift
+        printf 'mock geyser jar\n' >"$1"
+        exit 0
+    fi
+    shift
+done
+exit 1
+SH
+
+cat >"$test_root/bin/shasum" <<'SH'
+#!/bin/sh
+echo '036475e5a1dfea07bd0d2974d117e67fb477df1c47db7c95b90de0638c019d22  mock'
+SH
+
+cat >"$test_root/bin/plutil" <<'SH'
+#!/bin/sh
+if [ "${1:-}" = -create ]; then
+    : >"${3:?}"
+fi
+exit 0
 SH
 
 cat >"$test_root/bin/sleep" <<'SH'
@@ -51,6 +107,17 @@ if [ "${FAKE_DOCKER_UP_FAIL:-false}" = true ]; then
     esac
 fi
 case " $* " in
+    *" cp paper-container:/data/plugins/floodgate/key.pem "*)
+        for argument in "$@"; do
+            destination=$argument
+        done
+        printf 'mock floodgate key\n' >"$destination"
+        ;;
+    *" exec paper-container test -s /data/plugins/floodgate/key.pem "*)
+        ;;
+    *" exec paper-container sha256sum /data/plugins/floodgate/key.pem "*)
+        echo '036475e5a1dfea07bd0d2974d117e67fb477df1c47db7c95b90de0638c019d22  key.pem'
+        ;;
     *" inspect --format "*)
         echo healthy
         ;;
@@ -80,13 +147,15 @@ fi
 echo "SCENARIOCRAFT_BEDROCK_OK host=$1 port=$2 motd=Speed Build"
 SH
 
-chmod +x "$test_root/bin/docker" "$test_root/bin/launchctl" \
-    "$test_root/bin/lsof" "$test_root/bin/sleep" "$test_root/bin/uname" \
+chmod +x "$test_root/bin/curl" "$test_root/bin/docker" "$test_root/bin/java" \
+    "$test_root/bin/launchctl" "$test_root/bin/lsof" "$test_root/bin/plutil" \
+    "$test_root/bin/shasum" "$test_root/bin/sleep" "$test_root/bin/uname" \
     "$test_root/repo/demo/check-bedrock.sh" "$test_root/repo/demo/family-server.sh"
 
 export PATH="$test_root/bin:$PATH"
 export HOME="$test_root/home"
 export FAKE_DOCKER_LOG="$test_root/docker.log"
+export FAKE_LAUNCH_STATE_FILE="$test_root/launch-state"
 export FAKE_PROBE_ATTEMPTS_FILE="$test_root/probe-attempts"
 export SCENARIOCRAFT_CONFIG_FILE=./demo/plugin-config.yml
 export SCENARIOCRAFT_BEDROCK_PORT=19133
@@ -110,6 +179,16 @@ fi
 
 "$test_root/repo/demo/family-server.sh" down
 grep -Eq '^./demo/family-config.yml\|19132\|compose .* down$' "$FAKE_DOCKER_LOG"
+
+FAKE_UNAME=Darwin "$test_root/repo/demo/family-server.sh" up >"$test_root/mac-up.out"
+grep -Fq 'ScenarioCraft is ready: Java TCP 25565; Bedrock UDP 19132.' "$test_root/mac-up.out"
+test -f "$FAKE_LAUNCH_STATE_FILE"
+test -s "$test_root/repo/.local/geyser/key.pem"
+grep -Fq 'auth-type: floodgate' "$test_root/repo/.local/geyser/config.yml"
+FAKE_UNAME=Darwin "$test_root/repo/demo/family-server.sh" status >"$test_root/mac-status.out"
+grep -Fq 'Bedrock UDP 19132 answered a RakNet discovery probe.' "$test_root/mac-status.out"
+FAKE_UNAME=Darwin "$test_root/repo/demo/family-server.sh" down
+test ! -f "$FAKE_LAUNCH_STATE_FILE"
 
 before_mac_down=$(grep -Ec '\|compose .* down$' "$FAKE_DOCKER_LOG")
 if FAKE_UNAME=Darwin FAKE_LSOF_BUSY=true \

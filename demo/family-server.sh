@@ -151,7 +151,7 @@ unload_macos_geyser() {
     fi
     for _ in $(seq 1 20); do
         if ! lsof -nP -iUDP:19132 >/dev/null 2>&1; then
-            return
+            return 0
         fi
         sleep 0.25
     done
@@ -226,7 +226,7 @@ YAML
 }
 
 start_macos_geyser() {
-    local container_id java_bin listener_pid plist service_target service_state
+    local container_id java_bin listener_pid plist probe_output service_target service_state
     command -v lsof >/dev/null 2>&1 || {
         echo "lsof is required to verify the macOS Geyser listener." >&2
         exit 1
@@ -272,9 +272,9 @@ start_macos_geyser() {
         listener_pid=$(printf '%s\n' "$service_state" | awk '/^[[:space:]]*pid = [0-9]+$/ {print $3; exit}')
         if [[ -n "$listener_pid" ]] \
                 && lsof -nP -a -p "$listener_pid" -iUDP:19132 >/dev/null 2>&1 \
-                && raknet_probe 127.0.0.1 >/dev/null 2>&1; then
-            raknet_probe 127.0.0.1
-            return
+                && probe_output=$(raknet_probe 127.0.0.1 2>/dev/null); then
+            printf '%s\n' "$probe_output"
+            return 0
         fi
         sleep 2
     done

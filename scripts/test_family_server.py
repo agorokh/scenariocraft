@@ -45,6 +45,8 @@ class FamilyServerContractTest(unittest.TestCase):
         self.assertIn('export SCENARIOCRAFT_BEDROCK_PORT=19132', script)
         self.assertIn('wait_for_bedrock', script)
         self.assertIn('Geyser did not answer UDP 19132 within 60 seconds.', script)
+        self.assertIn('return 0', script)
+        self.assertIn("printf '%s\\n' \"$probe_output\"", script)
         self.assertIn('trap cleanup_failed_macos_up EXIT', script)
         self.assertIn('compose_cmd down || true', script)
         unload = script.split('unload_macos_geyser() {', 1)[1].split(
@@ -59,6 +61,20 @@ class FamilyServerContractTest(unittest.TestCase):
 
         self.assertIn('else', status_case)
         self.assertIn('exit 1', status_case)
+
+    def test_documented_macos_log_and_status_match_runtime(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        script = (ROOT / "demo" / "family-server.sh").read_text(encoding="utf-8")
+
+        self.assertIn('.local/geyser/geyser.log', readme)
+        self.assertIn('runtime_dir="$repo_dir/.local/geyser"', script)
+        self.assertIn('geyser_log="$runtime_dir/geyser.log"', script)
+        self.assertIn(
+            'Bedrock UDP 19132 answered a RakNet discovery probe.', readme
+        )
+        self.assertIn(
+            'Bedrock UDP 19132 answered a RakNet discovery probe.', script
+        )
 
     def test_automated_demos_keep_the_short_test_configuration(self):
         for relative_path in ("demo/run-headless.sh", "e2e/run-proof-round.sh"):
